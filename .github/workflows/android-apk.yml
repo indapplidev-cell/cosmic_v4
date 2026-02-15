@@ -11,26 +11,67 @@ permissions:
 
 jobs:
   build-android-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build with Buildozer (Docker)
-        id: buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          workdir: .
-          buildozer_version: stable
-          command: buildozer -v android debug
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt update
+          sudo apt install -y \
+            git zip unzip curl openjdk-17-jdk python3-pip python3-virtualenv \
+            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo6 cmake libffi-dev libssl-dev automake autopoint gettext
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          fi
+          source "$HOME/.cargo/env"
+          rustc --version
+          cargo --version
+
+      - name: Print tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 -m pip --version
+          java -version
+          javac -version
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/android/*.sh
+          ./scripts/android/venv_buildozer.sh
+          source .venv_buildozer/bin/activate
+          buildozer -v android debug
 
       - name: Normalize output
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/apk
-          cp "${{ steps.buildozer.outputs.filename }}" artifacts/apk/Cosmic-debug.apk
+          APK_PATH="$(ls -1t bin/*.apk 2>/dev/null | head -n 1 || true)"
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK found in bin/" >&2
+            exit 1
+          fi
+          cp "$APK_PATH" artifacts/apk/Cosmic-debug.apk
           sha256sum artifacts/apk/Cosmic-debug.apk
 
       - name: Upload APK to Actions artifacts
