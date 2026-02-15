@@ -23,7 +23,6 @@ android.minapi = 21
 android.api = 34
 android.release_artifact = apk
 
-p4a.branch = master
 
 [buildozer]
 log_level = 2

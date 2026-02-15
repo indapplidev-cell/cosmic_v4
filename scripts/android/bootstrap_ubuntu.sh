@@ -6,7 +6,7 @@ sudo apt install -y \
   git zip unzip \
   python3 python3-pip python3-venv python3-virtualenv \
   openjdk-17-jdk \
-  autoconf libtool pkg-config \
+  autoconf libtool libtool-bin pkg-config \
   zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
   cmake libffi-dev libssl-dev \
   automake autopoint gettext \
