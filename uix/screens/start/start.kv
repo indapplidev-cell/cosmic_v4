@@ -1,0 +1,37 @@
+
+<StartScreenView>:
+    MDBoxLayout:
+        id: main_layout
+        MDBoxLayout:
+            id: topbar
+            MDBoxLayout:
+                id: lefttopbar
+            MDBoxLayout:
+                id: midltopbar
+                AdsBannerSlot:
+            MDBoxLayout:
+                id: righttopbar
+        MDBoxLayout:
+            id: contentbar
+            AnchorLayout:
+                id: content_center
+                MDLabel:
+                    id: title_lbl
+        MDBoxLayout:
+            id: bottombar
+            AnchorLayout:
+                id: bottom_center
+                MDBoxLayout:
+                    id: btn_stack
+                    MDButton:
+                        id: game_btn
+                        MDButtonText:
+                            id: game_btn_text
+                    MDButton:
+                        id: profile_btn
+                        MDButtonText:
+                            id: profile_btn_text
+                    MDButton:
+                        id: settings_btn
+                        MDButtonText:
+                            id: settings_btn_text

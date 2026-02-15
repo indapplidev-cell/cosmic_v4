@@ -1,0 +1,15 @@
+#:import t manager.lang.lang_manager.t
+
+<AdsBannerSlot@MDBoxLayout>:
+    orientation: "horizontal"
+    size_hint: 1, 1
+
+    AnchorLayout:
+        anchor_x: "center"
+        anchor_y: "center"
+        MDLabel:
+            id: banner_text
+            text: t("ads.banner.placeholder")
+            halign: "center"
+            valign: "middle"
+            text_size: self.size

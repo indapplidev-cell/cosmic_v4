@@ -1,0 +1,144 @@
+
+<ProfileScreenView>:
+    MDBoxLayout:
+        id: main_layout
+        MDBoxLayout:
+            id: topbar
+            MDBoxLayout:
+                id: lefttopbar
+                AnchorLayout:
+                    anchor_x: "center"
+                    anchor_y: "center"
+                    MDLabel:
+                        id: profile_top_left_title
+                        halign: "center"
+                        valign: "middle"
+                        text_size: self.size
+            MDBoxLayout:
+                id: midltopbar
+                AdsBannerSlot:
+            MDBoxLayout:
+                id: righttopbar
+                AnchorLayout:
+                    anchor_x: "center"
+                    anchor_y: "center"
+                    MDLabel:
+                        id: profile_top_right_login
+                        halign: "center"
+                        valign: "middle"
+                        text_size: self.size
+        MDBoxLayout:
+            id: contentbar
+            AnchorLayout:
+                id: content_center
+                MDBoxLayout:
+                    id: profile_card
+                    orientation: "horizontal"
+                    size_hint: 1, 1
+                    MDBoxLayout:
+                        id: profile_left_col
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        size_hint_y: 1
+                        MDCard:
+                            id: card_record
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                padding: [root.ids.profile_card.height * 0.05] * 4
+                                MDLabel:
+                                    id: lbl_record_title
+                                    halign: "center"
+                                MDLabel:
+                                    id: val_record
+                                    halign: "center"
+                        MDCard:
+                            id: card_rating
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                padding: [root.ids.profile_card.height * 0.05] * 4
+                                MDLabel:
+                                    id: lbl_rating_title
+                                    halign: "center"
+                                MDLabel:
+                                    id: val_rating
+                                    halign: "center"
+                                    text: root.rating_text
+                        MDCard:
+                            id: card_balance
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                padding: [root.ids.profile_card.height * 0.05] * 4
+                                MDLabel:
+                                    id: lbl_balance_title
+                                    halign: "center"
+                                MDLabel:
+                                    id: val_balance
+                                    halign: "center"
+                    MDBoxLayout:
+                        id: profile_right_col
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        size_hint_y: 1
+                        MDCard:
+                            id: card_login
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                padding: [root.ids.profile_card.height * 0.05] * 4
+                                MDLabel:
+                                    id: lbl_email_title
+                                    halign: "center"
+                                MDLabel:
+                                    id: val_email
+                                    halign: "center"
+                        MDCard:
+                            id: card_phone
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                padding: [root.ids.profile_card.height * 0.05] * 4
+                                MDLabel:
+                                    id: lbl_phone_title
+                                    halign: "center"
+                                MDLabel:
+                                    id: val_phone
+                                    halign: "center"
+                        MDCard:
+                            id: card_tg
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "vertical"
+                                padding: [root.ids.profile_card.height * 0.05] * 4
+                                MDLabel:
+                                    id: lbl_tg_title
+                                    halign: "center"
+                                MDLabel:
+                                    id: val_tg
+                                    halign: "center"
+        MDBoxLayout:
+            id: bottombar
+            AnchorLayout:
+                id: bottom_center
+                MDBoxLayout:
+                    id: btn_stack
+                    MDButton:
+                        id: payout_btn
+                        pos_hint: {"center_x": 0.5}
+                        on_release: root.controller.payout()
+                        MDButtonText:
+                            id: payout_label
+                    MDButton:
+                        id: login_btn
+                        pos_hint: {"center_x": 0.5}
+                        on_release: root.controller.open_profile_change()
+                        MDButtonText:
+                            id: login_label
+                    MDButton:
+                        id: back_btn
+                        pos_hint: {"center_x": 0.5}
+                        on_release: root.controller.back()
+                        MDButtonText:
+                            id: back_label

@@ -1,0 +1,103 @@
+#:import dp kivy.metrics.dp
+#:import GifBackground uix.widgets.gif_background.GifBackground
+
+<GameScreenView>:
+    MDRelativeLayout:
+        id: root_layer
+        MDRelativeLayout:
+            id: gameplay_layout
+            size_hint: 1, 1
+            pos_hint: {"x": 0, "y": 0}
+            GifBackground:
+                id: game_bg_gif
+                source: "assets/img/outerspace-55.gif"
+                reverse: True
+                size_hint: None, None
+                size: self.parent.size
+                pos: self.parent.pos
+        MDBoxLayout:
+            id: main_layout
+            MDBoxLayout:
+                id: topbar
+                MDBoxLayout:
+                    id: lefttopbar
+                MDBoxLayout:
+                    id: midltopbar
+                    AdsBannerSlot:
+                MDBoxLayout:
+                    id: righttopbar
+            MDBoxLayout:
+                id: contentbar
+                AnchorLayout:
+                    id: content_center
+                    MDBoxLayout:
+                        id: game_frame
+                        size_hint: 1, 1
+                        MDRelativeLayout:
+                            id: game_layer
+                            size_hint: 1, 1
+                            MDBoxLayout:
+                                id: game_root
+                                size_hint: 1, 1
+                            MDLabel:
+                                id: title_lbl
+                                size_hint: 1, None
+                                height: dp(96)
+                                pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                                halign: "center"
+                                valign: "middle"
+                                text_size: self.width, self.height
+            MDBoxLayout:
+                id: bottombar
+                AnchorLayout:
+                    id: bottom_center
+                    MDBoxLayout:
+                        id: btn_stack
+                        MDButton:
+                            id: game_btn
+                            MDButtonText:
+                                id: game_btn_text
+                        MDButton:
+                            id: back_btn
+                            MDButtonText:
+                                id: back_btn_text
+        MDRelativeLayout:
+            id: touch_controls_layer
+            opacity: 0
+            disabled: True
+            size_hint: 1, 1
+            pos_hint: {"x": 0, "y": 0}
+            # LEFT
+            MDButton:
+                id: btn_left
+                style: "outlined"
+                size_hint: None, None
+                on_press: root.on_screen_control("left", True)
+                on_release: root.on_screen_control("left", False)
+                MDButtonIcon:
+                    icon: "arrow-left"
+            MDButton:
+                id: btn_brake_left
+                style: "outlined"
+                size_hint: None, None
+                on_press: root.on_screen_control("brake", True)
+                on_release: root.on_screen_control("brake", False)
+                MDButtonIcon:
+                    icon: "arrow-down"
+            # RIGHT
+            MDButton:
+                id: btn_right
+                style: "outlined"
+                size_hint: None, None
+                on_press: root.on_screen_control("right", True)
+                on_release: root.on_screen_control("right", False)
+                MDButtonIcon:
+                    icon: "arrow-right"
+            MDButton:
+                id: btn_brake_right
+                style: "outlined"
+                size_hint: None, None
+                on_press: root.on_screen_control("brake", True)
+                on_release: root.on_screen_control("brake", False)
+                MDButtonIcon:
+                    icon: "arrow-down"

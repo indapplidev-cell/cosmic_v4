@@ -1,0 +1,186 @@
+
+<ProfileChangeView>:
+    MDBoxLayout:
+        id: main_layout
+        MDBoxLayout:
+            id: topbar
+            MDBoxLayout:
+                id: lefttopbar
+                AnchorLayout:
+                    anchor_x: "center"
+                    anchor_y: "center"
+                    MDLabel:
+                        id: title_lbl
+                        halign: "center"
+                        valign: "middle"
+                        text_size: self.size
+                        text: root.vm.title if root.vm else ""
+            MDBoxLayout:
+                id: midltopbar
+                AdsBannerSlot:
+            MDBoxLayout:
+                id: righttopbar
+                AnchorLayout:
+                    anchor_x: "center"
+                    anchor_y: "center"
+                    MDLabel:
+                        id: profile_change_right
+                        halign: "center"
+                        valign: "middle"
+                        text_size: self.size
+                        text: root.right_text
+        MDBoxLayout:
+            id: contentbar
+            AnchorLayout:
+                id: content_center
+                MDBoxLayout:
+                    id: profile_change_card
+                    orientation: "horizontal"
+                    size_hint: 1, 1
+                    MDBoxLayout:
+                        id: profile_change_left_col
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        size_hint_y: 1
+                        MDCard:
+                            id: card_login
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.profile_change_card.height * 0.05] * 4
+                                MDTextField:
+                                    id: inp_login
+                                    size_hint_x: 0.7
+                                    MDTextFieldHintText:
+                                        id: hint_login
+                                        text: root.vm.field_login if root.vm else ""
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDCheckbox:
+                                        id: chk_login
+                                        size_hint: None, None
+                                        width: dp(48)
+                                        height: dp(48)
+                        MDCard:
+                            id: card_email
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.profile_change_card.height * 0.05] * 4
+                                MDTextField:
+                                    id: inp_email
+                                    size_hint_x: 0.7
+                                    MDTextFieldHintText:
+                                        id: hint_email
+                                        text: root.vm.field_email if root.vm else ""
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDCheckbox:
+                                        id: chk_email
+                                        size_hint: None, None
+                                        width: dp(48)
+                                        height: dp(48)
+                        MDCard:
+                            id: card_phone
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.profile_change_card.height * 0.05] * 4
+                                MDTextField:
+                                    id: inp_phone
+                                    size_hint_x: 0.7
+                                    MDTextFieldHintText:
+                                        id: hint_phone
+                                        text: root.vm.field_phone if root.vm else ""
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDCheckbox:
+                                        id: chk_phone
+                                        size_hint: None, None
+                                        width: dp(48)
+                                        height: dp(48)
+                    MDBoxLayout:
+                        id: profile_change_right_col
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        size_hint_y: 1
+                        MDCard:
+                            id: card_tg
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.profile_change_card.height * 0.05] * 4
+                                MDTextField:
+                                    id: inp_tg
+                                    size_hint_x: 0.7
+                                    MDTextFieldHintText:
+                                        id: hint_tg
+                                        text: root.vm.field_tg if root.vm else ""
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDCheckbox:
+                                        id: chk_tg
+                                        size_hint: None, None
+                                        width: dp(48)
+                                        height: dp(48)
+                        MDCard:
+                            id: card_password
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.profile_change_card.height * 0.05] * 4
+                                MDBoxLayout:
+                                    orientation: "horizontal"
+                                    size_hint_x: 0.7
+                                    size_hint_y: 1
+                                    spacing: dp(8)
+                                    MDTextField:
+                                        id: inp_password
+                                        password: True
+                                        password_mask: "*"
+                                        size_hint_x: 1
+                                        MDTextFieldHintText:
+                                            id: hint_password
+                                            text: root.vm.field_password if root.vm else ""
+                                    MDIconButton:
+                                        id: edit_password_eye_btn
+                                        icon: "eye-off"
+                                        pos_hint: {"center_y": 0.5}
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDCheckbox:
+                                        id: chk_password
+                                        size_hint: None, None
+                                        width: dp(48)
+                                        height: dp(48)
+                        MDCard:
+                            id: card_spacer
+                            size_hint_y: 1
+        MDBoxLayout:
+            id: bottombar
+            AnchorLayout:
+                id: bottom_center
+                MDBoxLayout:
+                    id: btn_stack
+                    MDButton:
+                        id: ok_btn
+                        MDButtonText:
+                            id: ok_label
+                    MDButton:
+                        id: delete_btn
+                        MDButtonText:
+                            id: delete_label
+                    MDButton:
+                        id: back_btn
+                        MDButtonText:
+                            id: back_label

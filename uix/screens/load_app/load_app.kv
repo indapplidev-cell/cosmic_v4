@@ -1,0 +1,16 @@
+#:import dp kivy.metrics.dp
+
+<LoadAppScreenView>:
+    md_bg_color: 0, 0, 0, 1
+
+    AnchorLayout:
+        anchor_x: "center"
+        anchor_y: "center"
+
+        MDLinearProgressIndicator:
+            id: pb
+            size_hint_x: 0.7
+            size_hint_y: None
+            height: dp(6)
+            value: 0
+            max: 100

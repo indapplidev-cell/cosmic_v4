@@ -1,0 +1,71 @@
+<LoginScreenView>:
+    MDBoxLayout:
+        id: main_layout
+        MDBoxLayout:
+            id: topbar
+            MDBoxLayout:
+                id: lefttopbar
+                AnchorLayout:
+                    anchor_x: "center"
+                    anchor_y: "center"
+                    MDLabel:
+                        id: title_lbl
+                        halign: "center"
+                        valign: "middle"
+                        text_size: self.size
+            MDBoxLayout:
+                id: midltopbar
+            MDBoxLayout:
+                id: righttopbar
+        MDBoxLayout:
+            id: contentbar
+            AnchorLayout:
+                id: content_center
+                MDCard:
+                    id: card
+                    MDBoxLayout:
+                        id: content_stack
+                        orientation: "vertical"
+                        MDTextField:
+                            id: email_field
+                            MDTextFieldHintText:
+                                id: email_hint
+                                text: ""
+                        MDBoxLayout:
+                            orientation: "horizontal"
+                            spacing: dp(8)
+                            size_hint_x: 1
+                            size_hint_y: None
+                            height: password_field.height
+                            MDTextField:
+                                id: password_field
+                                password: True
+                                password_mask: "*"
+                                size_hint_x: 1
+                                MDTextFieldHintText:
+                                    id: password_hint
+                                    text: ""
+                            MDIconButton:
+                                id: password_eye_btn
+                                icon: "eye-off"
+                                pos_hint: {"center_y": 0.5}
+                        MDLabel:
+                            id: error_lbl
+        MDBoxLayout:
+            id: bottombar
+            AnchorLayout:
+                id: bottom_center
+                MDBoxLayout:
+                    id: btn_stack
+                    MDButton:
+                        id: login_btn
+                        MDButtonText:
+                            id: login_btn_text
+                    MDButton:
+                        id: register_btn
+                        MDButtonText:
+                            id: register_btn_text
+                    MDButton:
+                        id: forgot_btn
+                        MDButtonText:
+                            id: forgot_btn_text

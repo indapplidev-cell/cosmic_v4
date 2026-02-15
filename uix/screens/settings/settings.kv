@@ -1,0 +1,216 @@
+#:import dp kivy.metrics.dp
+
+<SettingsScreenView>:
+    MDBoxLayout:
+        id: main_layout
+        MDBoxLayout:
+            id: topbar
+            MDBoxLayout:
+                id: lefttopbar
+                MDLabel:
+                    id: left_text
+                    halign: "center"
+                    valign: "middle"
+                    text_size: self.size
+            MDBoxLayout:
+                id: midltopbar
+                AdsBannerSlot:
+            MDBoxLayout:
+                id: righttopbar
+                AnchorLayout:
+                    anchor_x: "center"
+                    anchor_y: "center"
+                    MDLabel:
+                        id: settings_top_right_login
+                        halign: "center"
+                        valign: "middle"
+                        text_size: self.size
+        MDBoxLayout:
+            id: contentbar
+            AnchorLayout:
+                id: content_center
+                MDBoxLayout:
+                    id: settings_card
+                    orientation: "horizontal"
+                    size_hint: 1, 1
+                    MDBoxLayout:
+                        id: settings_left_col
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        size_hint_y: 1
+                        MDCard:
+                            id: card_rules
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.settings_card.height * 0.05] * 4
+
+                                MDBoxLayout:
+                                    id: doc_rules_box
+                                    size_hint_x: 0.7
+                                    padding: [dp(16), dp(10), dp(16), dp(10)]
+                                    MDLabel:
+                                        id: doc_rules
+                                        text: t("settings.docs.rules")
+                                        halign: "left"
+                                        valign: "middle"
+                                        text_size: self.size
+
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDIconButton:
+                                        id: ico_rules
+                                        icon: "book-open-page-variant"
+                                        on_release: root.open_doc_popup(root.ids.doc_rules.text)
+                        MDCard:
+                            id: card_policy
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.settings_card.height * 0.05] * 4
+
+                                MDBoxLayout:
+                                    id: doc_policy_box
+                                    size_hint_x: 0.7
+                                    padding: [dp(16), dp(10), dp(16), dp(10)]
+                                    MDLabel:
+                                        id: doc_policy
+                                        text: t("settings.docs.policy")
+                                        halign: "left"
+                                        valign: "middle"
+                                        text_size: self.size
+
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDIconButton:
+                                        id: ico_policy
+                                        icon: "book-open-page-variant"
+                                        on_release: root.open_doc_popup(root.ids.doc_policy.text)
+                        MDCard:
+                            id: card_about
+                            size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                padding: [root.ids.settings_card.height * 0.05] * 4
+
+                                MDBoxLayout:
+                                    id: doc_about_box
+                                    size_hint_x: 0.7
+                                    padding: [dp(16), dp(10), dp(16), dp(10)]
+                                    MDLabel:
+                                        id: doc_about
+                                        text: t("settings.docs.about")
+                                        halign: "left"
+                                        valign: "middle"
+                                        text_size: self.size
+
+                                AnchorLayout:
+                                    size_hint_x: 0.3
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MDIconButton:
+                                        id: ico_about
+                                        icon: "book-open-page-variant"
+                                        on_release: root.open_doc_popup(root.ids.doc_about.text)
+                    MDBoxLayout:
+                        id: settings_right_col
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        size_hint_y: 1
+                        MDCard:
+                            id: card_spacer_1
+                            size_hint_y: 1
+                            AnchorLayout:
+                                anchor_x: "center"
+                                anchor_y: "center"
+
+                                MDBoxLayout:
+                                    id: lang_row
+                                    orientation: "horizontal"
+                                    size_hint: 1, None
+                                    height: dp(56)
+                                    padding: dp(16), 0, dp(16), 0
+                                    spacing: dp(24)
+
+                                    MDBoxLayout:
+                                        orientation: "horizontal"
+                                        size_hint_x: 0.5
+                                        spacing: dp(10)
+
+                                        MDLabel:
+                                            id: lang_ru_lbl
+                                            text: t("settings.lang.ru")
+                                            halign: "left"
+                                            valign: "middle"
+                                            text_size: self.size
+
+                                        MDCheckbox:
+                                            id: lang_ru_radio
+                                            group: "lang_select"
+
+                                    MDBoxLayout:
+                                        orientation: "horizontal"
+                                        size_hint_x: 0.5
+                                        spacing: dp(10)
+
+                                        MDLabel:
+                                            id: lang_en_lbl
+                                            text: t("settings.lang.en")
+                                            halign: "left"
+                                            valign: "middle"
+                                            text_size: self.size
+
+                                        MDCheckbox:
+                                            id: lang_en_radio
+                                            group: "lang_select"
+                        MDCard:
+                            id: card_spacer_2
+                            size_hint_y: 1
+                        MDCard:
+                            id: card_spacer_3
+                            size_hint_y: 1
+                            AnchorLayout:
+                                anchor_x: "center"
+                                anchor_y: "center"
+
+                                MDBoxLayout:
+                                    orientation: "horizontal"
+                                    size_hint: 1, None
+                                    height: dp(56)
+                                    padding: dp(16), 0, dp(16), 0
+                                    spacing: dp(12)
+
+                                    MDIconButton:
+                                        id: delete_account_icon
+                                        icon: "account-minus-outline"
+                                        on_release: root.on_delete_account_pressed()
+                                        pos_hint: {"center_y": 0.5}
+
+                                    MDLabel:
+                                        id: delete_account_lbl
+                                        text: t("settings.delete_account")
+                                        halign: "left"
+                                        valign: "middle"
+                                        text_size: self.size
+        MDBoxLayout:
+            id: bottombar
+            AnchorLayout:
+                id: bottom_center
+                MDBoxLayout:
+                    id: btn_stack
+                    MDButton:
+                        id: login_btn
+                        MDButtonText:
+                            id: login_btn_text
+                    MDButton:
+                        id: action_btn
+                        MDButtonText:
+                            id: action_btn_text
+                    MDButton:
+                        id: back_btn
+                        MDButtonText:
+                            id: back_btn_text

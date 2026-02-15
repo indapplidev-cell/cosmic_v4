@@ -1,0 +1,53 @@
+# Ignore everything by default
+*
+
+# Allow directories so tracked folders can exist
+!*/
+
+# Allow source and data files
+!*.py
+!*.kv
+!*.md
+!*.json
+!*.png
+!*.jpg
+!*.jpeg
+!*.webp
+!*.svg
+!*.gif
+!*.mp3
+!*.wav
+!*.ogg
+!*.flac
+!*.m4a
+!*.sh
+!*.yml
+
+# Allow required root files
+!.gitignore
+!requirements.txt
+!buildozer.spec
+
+# Keep required package folders
+!uix/
+!uix/__init__.py
+
+# Explicit ignores
+.venv/
+.venv_buildozer/
+.buildozer/
+bin/
+artifacts/
+*.apk
+*.aab
+**/__pycache__/
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+.idea/
+.vscode/

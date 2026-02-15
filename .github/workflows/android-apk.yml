@@ -1,0 +1,78 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "apk-*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          sudo apt update
+          sudo apt install -y \
+            git zip unzip curl openjdk-17-jdk python3-pip python3-virtualenv \
+            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo6 cmake libffi-dev libssl-dev automake autopoint gettext
+
+      - name: Install Rust toolchain
+        run: |
+          set -euo pipefail
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          fi
+          source "$HOME/.cargo/env"
+          rustc --version
+          cargo --version
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/android/*.sh
+          ./scripts/android/venv_buildozer.sh
+          source .venv_buildozer/bin/activate
+          buildozer -v android debug
+
+      - name: Collect APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/apk
+          APK_PATH="$(ls -1 bin/*.apk 2>/dev/null | head -n 1 || true)"
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK found in bin/" >&2
+            exit 1
+          fi
+          cp "$APK_PATH" artifacts/apk/Cosmic-debug.apk
+          sha256sum artifacts/apk/Cosmic-debug.apk
+
+      - name: Upload APK to Actions artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cosmic-debug-apk
+          path: artifacts/apk/Cosmic-debug.apk
+
+      - name: Publish APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/apk-')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Cosmic debug APK (${{ github.ref_name }})
+          prerelease: true
+          files: artifacts/apk/Cosmic-debug.apk
