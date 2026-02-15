@@ -20,23 +20,32 @@ if [ -z "$LATEST_APK" ]; then
 fi
 
 # Verify that the filetype module is bundled in the Python payload.
-TMP_PRIVATE=""
-cleanup_tmp() {
-  if [ -n "${TMP_PRIVATE:-}" ] && [ -f "$TMP_PRIVATE" ]; then
-    rm -f "$TMP_PRIVATE"
-  fi
+has_filetype_in_zip() {
+  local zip_path="$1"
+  unzip -Z1 "$zip_path" 2>/dev/null | grep -Eiq '(^|/)(filetype/|filetype\.py$|filetype-[^/]+\.dist-info/)'
 }
-trap cleanup_tmp EXIT
 
-if unzip -l "$LATEST_APK" | grep -q "assets/private.mp3"; then
+FILETYPE_FOUND=0
+
+if has_filetype_in_zip "$LATEST_APK"; then
+  FILETYPE_FOUND=1
+elif unzip -Z1 "$LATEST_APK" | grep -q '^assets/private.mp3$'; then
   TMP_PRIVATE="$(mktemp)"
   unzip -p "$LATEST_APK" assets/private.mp3 > "$TMP_PRIVATE"
-  if ! unzip -l "$TMP_PRIVATE" | grep -E -q '(^|/)filetype(/|\\.|__init__)'; then
-    echo "APK validation failed: python module 'filetype' was not found in assets/private.mp3." >&2
-    exit 1
+  if has_filetype_in_zip "$TMP_PRIVATE"; then
+    FILETYPE_FOUND=1
   fi
-elif ! unzip -l "$LATEST_APK" | grep -E -q '(^|/)filetype(/|\\.|__init__)'; then
-  echo "APK validation failed: python module 'filetype' was not found in APK contents." >&2
+  rm -f "$TMP_PRIVATE"
+fi
+
+if [ "$FILETYPE_FOUND" -eq 0 ]; then
+  if find "$ROOT_DIR/.buildozer" -type f \( -name "filetype.py" -o -path "*/filetype/__init__.py" -o -path "*/filetype-*.dist-info/*" \) | grep -q .; then
+    FILETYPE_FOUND=1
+  fi
+fi
+
+if [ "$FILETYPE_FOUND" -eq 0 ]; then
+  echo "APK validation failed: python module 'filetype' was not found in APK or build payload." >&2
   exit 1
 fi
 
