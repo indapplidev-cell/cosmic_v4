@@ -21,7 +21,6 @@ android.permissions = INTERNET
 android.archs = arm64-v8a, armeabi-v7a
 android.minapi = 21
 android.api = 34
-android.ndk = 25b
 android.release_artifact = apk
 
 p4a.branch = master
