@@ -52,6 +52,16 @@ jobs:
           java -version
           javac -version
 
+      - name: Force Java 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          java -version
+          javac -version
+
       - name: Build debug APK
         shell: bash
         run: |
