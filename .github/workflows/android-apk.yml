@@ -81,7 +81,16 @@ jobs:
             echo "No APK found in bin/" >&2
             exit 1
           fi
-          if ! unzip -l "$APK_PATH" | grep -E -q 'filetype(/|\\.|__init__)'; then
+          if unzip -l "$APK_PATH" | grep -q "assets/private.mp3"; then
+            TMP_PRIVATE="$(mktemp)"
+            unzip -p "$APK_PATH" assets/private.mp3 > "$TMP_PRIVATE"
+            if ! unzip -l "$TMP_PRIVATE" | grep -E -q '(^|/)filetype(/|\\.|__init__)'; then
+              echo "APK validation failed: python module 'filetype' was not found in assets/private.mp3." >&2
+              rm -f "$TMP_PRIVATE"
+              exit 1
+            fi
+            rm -f "$TMP_PRIVATE"
+          elif ! unzip -l "$APK_PATH" | grep -E -q '(^|/)filetype(/|\\.|__init__)'; then
             echo "APK validation failed: python module 'filetype' was not found in APK contents." >&2
             exit 1
           fi

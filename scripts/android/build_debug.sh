@@ -19,8 +19,23 @@ if [ -z "$LATEST_APK" ]; then
   exit 1
 fi
 
-# Verify that the filetype module is actually bundled in the APK.
-if ! unzip -l "$LATEST_APK" | grep -E -q 'filetype(/|\\.|__init__)'; then
+# Verify that the filetype module is bundled in the Python payload.
+TMP_PRIVATE=""
+cleanup_tmp() {
+  if [ -n "${TMP_PRIVATE:-}" ] && [ -f "$TMP_PRIVATE" ]; then
+    rm -f "$TMP_PRIVATE"
+  fi
+}
+trap cleanup_tmp EXIT
+
+if unzip -l "$LATEST_APK" | grep -q "assets/private.mp3"; then
+  TMP_PRIVATE="$(mktemp)"
+  unzip -p "$LATEST_APK" assets/private.mp3 > "$TMP_PRIVATE"
+  if ! unzip -l "$TMP_PRIVATE" | grep -E -q '(^|/)filetype(/|\\.|__init__)'; then
+    echo "APK validation failed: python module 'filetype' was not found in assets/private.mp3." >&2
+    exit 1
+  fi
+elif ! unzip -l "$LATEST_APK" | grep -E -q '(^|/)filetype(/|\\.|__init__)'; then
   echo "APK validation failed: python module 'filetype' was not found in APK contents." >&2
   exit 1
 fi
