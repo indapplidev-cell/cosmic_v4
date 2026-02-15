@@ -20,7 +20,8 @@ android.accept_sdk_license = True
 android.permissions = INTERNET
 android.archs = arm64-v8a, armeabi-v7a
 android.minapi = 21
-android.api = 34
+android.api = 35
+android.ndk = 27c
 android.release_artifact = apk
 
 
