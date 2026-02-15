@@ -8,7 +8,7 @@ source.include_exts = py,kv,json,txt,md,ttf,otf,png,jpg,jpeg,gif
 source.exclude_patterns = **/__pycache__/**,**/*.pyc,**/*.pyo,.git/**,.github/**,.vscode/**,docs/**,scripts/**,*.zip,.venv/**,.venv_buildozer/**,.buildozer/**,bin/**,artifacts/**
 version = 0.1.0
 
-requirements = python3,cython==0.29.34,kivy==2.3.1,https://github.com/kivymd/KivyMD/archive/d668d8b2b3d9eb54517892f613ffe34d9914517a.zip,pillow
+requirements = python3,cython==0.29.34,kivy==2.3.1,https://github.com/kivymd/KivyMD/archive/d668d8b2b3d9eb54517892f613ffe34d9914517a.zip,pillow,filetype
 
 orientation = portrait
 fullscreen = 0

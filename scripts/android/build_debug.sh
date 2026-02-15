@@ -19,6 +19,12 @@ if [ -z "$LATEST_APK" ]; then
   exit 1
 fi
 
+# Verify that the filetype module is actually bundled in the APK.
+if ! unzip -l "$LATEST_APK" | grep -E -q 'filetype(/|\\.|__init__)'; then
+  echo "APK validation failed: python module 'filetype' was not found in APK contents." >&2
+  exit 1
+fi
+
 mkdir -p "$ROOT_DIR/artifacts/apk"
 cp "$LATEST_APK" "$ROOT_DIR/artifacts/apk/Cosmic-debug.apk"
 

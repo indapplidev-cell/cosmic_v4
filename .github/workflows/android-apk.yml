@@ -81,6 +81,10 @@ jobs:
             echo "No APK found in bin/" >&2
             exit 1
           fi
+          if ! unzip -l "$APK_PATH" | grep -E -q 'filetype(/|\\.|__init__)'; then
+            echo "APK validation failed: python module 'filetype' was not found in APK contents." >&2
+            exit 1
+          fi
           cp "$APK_PATH" artifacts/apk/Cosmic-debug.apk
           sha256sum artifacts/apk/Cosmic-debug.apk
 
