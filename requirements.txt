@@ -12,7 +12,7 @@ kivy_deps.glew==0.3.1
 kivy_deps.sdl2==0.8.0
 kivymd @ git+https://github.com/kivymd/KivyMD.git@d668d8b2b3d9eb54517892f613ffe34d9914517a
 materialshapes==0.3
-materialyoucolor==2.0.10
+materialyoucolor==3.0.1
 packaging==26.0
 pillow==12.1.0
 pycairo==1.29.0

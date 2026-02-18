@@ -1,0 +1,167 @@
+﻿name: Android Debug APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip curl openjdk-17-jdk python3-pip python3-virtualenv \
+            autoconf libtool libtool-bin pkg-config zlib1g-dev libncurses5-dev \
+            libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev automake autopoint gettext
+
+      - name: Prepare buildozer venv
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .venv_buildozer_ci
+          source .venv_buildozer_ci/bin/activate
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install buildozer cython==0.29.36
+          buildozer --version
+
+      - name: Generate buildozer.spec
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _buildozer_cfg
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          spec = dedent("""\
+          [app]
+          title = Cosmic
+          package.name = cosmic
+          package.domain = org.zenol.cosmic
+          source.dir = ${{ github.workspace }}
+          source.include_exts = py,kv,json,txt,md,ttf,otf,png,jpg,jpeg,gif
+          source.exclude_patterns = .git/**,.github/**,.vscode/**,.venv/**,.buildozer/**,bin/**,build/**,dist/**,__pycache__/**,*.pyc,*.pyo,android_build_env/**
+          version = 0.1.0
+
+          requirements = python3,kivy==2.3.1,kivymd==2.0.1,materialyoucolor==3.0.1,filetype,pillow,requests
+
+          orientation = landscape
+          fullscreen = 0
+
+          android.accept_sdk_license = True
+          android.permissions = INTERNET
+          android.archs = arm64-v8a, armeabi-v7a
+          android.minapi = 24
+          android.api = 34
+          android.release_artifact = apk
+          p4a.branch = develop
+
+          [buildozer]
+          log_level = 2
+          warn_on_root = 0
+          """)
+          Path("_buildozer_cfg/buildozer.spec").write_text(spec, encoding="utf-8")
+          PY
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .venv_buildozer_ci/bin/activate
+          export BUILDOZER_HOME="$GITHUB_WORKSPACE/_buildozer_home"
+          cd _buildozer_cfg
+          buildozer android clean
+          buildozer -v android debug
+
+      - name: Validate bundled modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          has_module_in_zip() {
+            local zip_path="$1"
+            local module_name="$2"
+            unzip -Z1 "$zip_path" 2>/dev/null | grep -Eiq "(^|/)${module_name}(/|\.py$|-.*\.dist-info/)"
+          }
+          APK_PATH="$(ls -1t _buildozer_cfg/bin/*.apk | head -n 1)"
+          if [ -z "${APK_PATH:-}" ]; then
+            echo "No APK generated" >&2
+            exit 1
+          fi
+          for mod in materialyoucolor filetype; do
+            if has_module_in_zip "$APK_PATH" "$mod"; then
+              continue
+            fi
+            if unzip -Z1 "$APK_PATH" | grep -q '^assets/private.mp3$'; then
+              TMP_PRIVATE="$(mktemp)"
+              unzip -p "$APK_PATH" assets/private.mp3 > "$TMP_PRIVATE"
+              if has_module_in_zip "$TMP_PRIVATE" "$mod"; then
+                rm -f "$TMP_PRIVATE"
+                continue
+              fi
+              rm -f "$TMP_PRIVATE"
+            fi
+            echo "APK validation failed: module '$mod' not found in APK payload" >&2
+            exit 1
+          done
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          APK_PATH="$(ls -1t _buildozer_cfg/bin/*.apk | head -n 1)"
+          cp "$APK_PATH" artifacts/Cosmic-debug.apk
+          sha256sum artifacts/Cosmic-debug.apk | tee artifacts/Cosmic-debug.apk.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cosmic-debug-apk
+          path: |
+            artifacts/Cosmic-debug.apk
+            artifacts/Cosmic-debug.apk.sha256
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    needs: build-debug
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Cosmic-debug-apk
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/Cosmic-debug.apk
+          name: Debug APK ${{ github.ref_name }}
+          body: |
+            Install:
+            adb install -r Cosmic-debug.apk
+
+            Launch:
+            adb shell monkey -p org.zenol.cosmic.cosmic -c android.intent.category.LAUNCHER 1
+          prerelease: true
