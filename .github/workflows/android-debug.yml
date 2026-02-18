@@ -90,7 +90,7 @@ jobs:
           source .venv_buildozer_ci/bin/activate
           export BUILDOZER_HOME="$GITHUB_WORKSPACE/_buildozer_home"
           cd _buildozer_cfg
-          buildozer android clean
+          buildozer android clean || true
           buildozer -v android debug
 
       - name: Validate bundled modules
