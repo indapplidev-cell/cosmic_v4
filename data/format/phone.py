@@ -101,6 +101,20 @@ def attach_phone_mask(text_input) -> None:
             return
         trigger_mask()
 
+    def _on_window_key_down(_window, key, _scancode, _codepoint, _modifiers):
+        """EN: Force Android numeric keyboard backspace/delete for focused field.
+        RU: Принудительно обработать backspace/delete цифровой Android-клавиатуры для поля в фокусе.
+        """
+        if not getattr(text_input, "focus", False):
+            return False
+        if key in (8, 67):
+            text_input.do_backspace(mode="bkspc")
+            return True
+        if key in (127, 112):
+            text_input.do_backspace(mode="del")
+            return True
+        return False
+
     if not getattr(text_input, "_phone_mask_backspace_patched", False):
         text_input._orig_do_backspace = text_input.do_backspace
 
@@ -143,5 +157,10 @@ def attach_phone_mask(text_input) -> None:
         text_input._phone_mask_backspace_patched = True
 
     text_input.bind(text=_on_text)
+    if not getattr(text_input, "_phone_mask_keydown_bound", False):
+        from kivy.core.window import Window
+
+        Window.bind(on_key_down=_on_window_key_down)
+        text_input._phone_mask_keydown_bound = True
     text_input._phone_mask_attached = True
     trigger_mask()
