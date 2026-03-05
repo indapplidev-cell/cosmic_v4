@@ -22,13 +22,6 @@ class RootView(MDScreen):
         super().__init__(**kwargs)
         self.add_widget(manager)
         self._backspace_bound = False
-
-    def on_kv_post(self, _base_widget) -> None:
-        """EN: Bind mobile key handler once after widget tree is ready.
-        RU: Один раз привязать обработчик мобильных клавиш после готовности дерева виджетов.
-        """
-        if self._backspace_bound:
-            return
         if kivy_platform in ("android", "ios"):
             Window.bind(on_key_down=self._on_window_key_down)
             self._backspace_bound = True
