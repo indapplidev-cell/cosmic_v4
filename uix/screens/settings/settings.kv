@@ -1,5 +1,16 @@
 #:import dp kivy.metrics.dp
 
+<MirrorToggleIconButton>:
+    canvas.before:
+        PushMatrix
+        Scale:
+            x: -1 if self.mirrored else 1
+            y: 1
+            z: 1
+            origin: self.center
+    canvas.after:
+        PopMatrix
+
 <SettingsScreenView>:
     MDBoxLayout:
         id: main_layout
@@ -63,7 +74,7 @@
                                     MDIconButton:
                                         id: ico_rules
                                         icon: "book-open-page-variant"
-                                        on_release: root.open_doc_popup(root.ids.doc_rules.text)
+                                        on_release: root.open_game_rules()
                         MDCard:
                             id: card_policy
                             size_hint_y: 1
@@ -89,7 +100,7 @@
                                     MDIconButton:
                                         id: ico_policy
                                         icon: "book-open-page-variant"
-                                        on_release: root.open_doc_popup(root.ids.doc_policy.text)
+                                        on_release: root.open_privacy_policy()
                         MDCard:
                             id: card_about
                             size_hint_y: 1
@@ -170,6 +181,34 @@
                         MDCard:
                             id: card_spacer_2
                             size_hint_y: 1
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                size_hint_x: 1
+                                size_hint_y: 1
+
+                                AnchorLayout:
+                                    size_hint_x: 1
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    ToggleIconButton:
+                                        id: middle_card_sound_icon
+                                        icon_on: "music"
+                                        icon_off: "music-off"
+
+                                AnchorLayout:
+                                    size_hint_x: 1
+                                    anchor_x: "center"
+                                    anchor_y: "center"
+                                    MirrorToggleIconButton:
+                                        id: middle_card_keyboard_side_icon
+                                        icon: "gamepad-square-outline"
+                                        on_release: root.toggle_hud_layout()
+
+                                AnchorLayout:
+                                    id: middle_card_placeholder_area
+                                    size_hint_x: 1
+                                    anchor_x: "center"
+                                    anchor_y: "center"
                         MDCard:
                             id: card_spacer_3
                             size_hint_y: 1

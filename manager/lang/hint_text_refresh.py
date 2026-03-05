@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from kivy.clock import Clock
+from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 
@@ -57,3 +58,53 @@ def _refresh_one_hint(hint) -> None:
             field.canvas.ask_update()
         except Exception:
             pass
+
+
+def refresh_md_textfield_hint(textfield) -> None:
+    """
+    EN: Refresh MDTextField hint visuals without focus changes.
+    RU: Обновить отображение hint в MDTextField без изменения фокуса.
+    """
+    if textfield is None:
+        return
+    try:
+        for w in textfield.walk(restrict=True):
+            if w.__class__.__name__ == "MDTextFieldHintText":
+                _refresh_one_hint(w)
+    except Exception:
+        pass
+
+
+def refresh_kivy_textinput_hint(textfield, hint_text: str | None = None) -> None:
+    """
+    EN: Refresh inner Kivy TextInput hint without focus changes.
+    RU: Обновить hint внутреннего Kivy TextInput без изменения фокуса.
+    """
+    if textfield is None:
+        return
+
+    inner = getattr(textfield, "_text_input", None) or getattr(textfield, "text_input", None)
+    if not isinstance(inner, TextInput):
+        try:
+            for w in textfield.walk(restrict=True):
+                if isinstance(w, TextInput):
+                    inner = w
+                    break
+        except Exception:
+            inner = None
+    if not isinstance(inner, TextInput):
+        return
+
+    if hint_text is not None:
+        try:
+            inner.hint_text = hint_text
+        except Exception:
+            pass
+    try:
+        inner.do_layout()
+    except Exception:
+        pass
+    try:
+        inner.canvas.ask_update()
+    except Exception:
+        pass

@@ -25,9 +25,11 @@ def wire_password_eye(field, icon_btn, *, start_hidden: bool = True) -> None:
         """EN: Toggle password visibility and keep focus on field.
         RU: Переключить видимость пароля и оставить фокус на поле.
         """
+        was_focused = bool(getattr(field, "focus", False))
         field.password = not field.password
         _sync()
-        field.focus = True
+        if was_focused:
+            field.focus = True
 
     _sync()
     icon_btn.on_release = _toggle

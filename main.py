@@ -1,4 +1,4 @@
-# --- logging bootstrap (must be before any kivy/kivymd imports) ---
+﻿# --- logging bootstrap (must be before any kivy/kivymd imports) ---
 from kivy.config import Config
 
 Config.set("kivy", "log_level", "info")
@@ -8,9 +8,11 @@ import logging
 from pathlib import Path
 
 """EN: Application entry point for the KivyMD app. Starts the app only.
-RU: РўРѕС‡РєР° РІС…РѕРґР° РґР»СЏ РїСЂРёР»РѕР¶РµРЅРёСЏ KivyMD. РўРѕР»СЊРєРѕ Р·Р°РїСѓСЃРє РїСЂРёР»РѕР¶РµРЅРёСЏ.
+RU: Точка входа для приложения KivyMD. Только запуск приложения.
 """
 
+from kivy.clock import Clock
+from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.properties import BooleanProperty, StringProperty
 from kivymd.app import MDApp
@@ -23,13 +25,13 @@ from uix.screens.builders.auth_builder import build_auth_flow
 from uix.screens.root_view import RootView
 from uix.screens.screen_manager import AppScreenManager
 
-# Pillow (PIL) РЅРµ РґРѕР»Р¶РµРЅ С€СѓРјРµС‚СЊ РІ DEBUG
+# Pillow (PIL) не должен шуметь в DEBUG
 logging.getLogger("PIL").setLevel(logging.WARNING)
 
 
 class CosmicApp(MDApp):
     """EN: MDApp that provides the root view.
-    RU: MDApp, РєРѕС‚РѕСЂС‹Р№ РїСЂРµРґРѕСЃС‚Р°РІР»СЏРµС‚ РєРѕСЂРЅРµРІРѕРµ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ.
+    RU: MDApp, который предоставляет корневое представление.
     """
 
     is_logged_in = BooleanProperty(False)
@@ -37,7 +39,7 @@ class CosmicApp(MDApp):
 
     def build(self) -> RootView:
         """EN: Build and return the root view.
-        RU: РЎРѕР·РґР°С‚СЊ Рё РІРµСЂРЅСѓС‚СЊ РєРѕСЂРЅРµРІРѕРµ РїСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ.
+        RU: Создать и вернуть корневое представление.
         """
         apply_window_config()
         enable_debug_borders(DEBUG_UI_BORDERS)
@@ -63,10 +65,13 @@ class CosmicApp(MDApp):
                 force_landscape()
             except Exception:
                 pass
+            Clock.schedule_once(lambda _dt: Window.release_all_keyboards(), 0)
+        elif kivy_platform == "ios":
+            Clock.schedule_once(lambda _dt: Window.release_all_keyboards(), 0)
 
     def set_logged_in(self, email: str) -> None:
         """EN: Mark user as logged in and store email.
-        RU: РћС‚РјРµС‚РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РєР°Рє Р°РІС‚РѕСЂРёР·РѕРІР°РЅРЅРѕРіРѕ Рё СЃРѕС…СЂР°РЅРёС‚СЊ email.
+        RU: Отметить пользователя как авторизованного и сохранить email.
         """
         email_value = (email or "").strip()
         if not email_value:
@@ -76,20 +81,19 @@ class CosmicApp(MDApp):
 
     def logout(self) -> None:
         """EN: Reset login state and clear stored email.
-        RU: РЎР±СЂРѕСЃРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РІС…РѕРґР° Рё РѕС‡РёСЃС‚РёС‚СЊ email.
+        RU: Сбросить состояние входа и очистить email.
         """
         self.user_email = ""
         self.is_logged_in = False
 
     def change_screen(self, name: str) -> None:
         """EN: Navigate to the screen by route name.
-        RU: РџРµСЂРµР№С‚Рё РЅР° СЌРєСЂР°РЅ РїРѕ РёРјРµРЅРё РјР°СЂС€СЂСѓС‚Р°.
+        RU: Перейти на экран по имени маршрута.
         """
         manager = getattr(self, "_manager", None)
         if manager:
             manager.go(name)
- 
+
 
 if __name__ == "__main__":
     CosmicApp().run()
-

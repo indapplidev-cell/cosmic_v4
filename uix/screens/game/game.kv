@@ -72,32 +72,36 @@
                 id: btn_left
                 style: "outlined"
                 size_hint: None, None
-                on_press: root.on_screen_control("left", True)
-                on_release: root.on_screen_control("left", False)
+                on_press: root.on_hud_button("left_top", True)
+                on_release: root.on_hud_button("left_top", False)
                 MDButtonIcon:
+                    id: ico_left_top
                     icon: "arrow-left"
             MDButton:
                 id: btn_brake_left
                 style: "outlined"
                 size_hint: None, None
-                on_press: root.on_screen_control("brake", True)
-                on_release: root.on_screen_control("brake", False)
+                on_press: root.on_hud_button("left_bottom", True)
+                on_release: root.on_hud_button("left_bottom", False)
                 MDButtonIcon:
+                    id: ico_left_bottom
                     icon: "arrow-down"
             # RIGHT
             MDButton:
                 id: btn_right
                 style: "outlined"
                 size_hint: None, None
-                on_press: root.on_screen_control("right", True)
-                on_release: root.on_screen_control("right", False)
+                on_press: root.on_hud_button("right_top", True)
+                on_release: root.on_hud_button("right_top", False)
                 MDButtonIcon:
+                    id: ico_right_top
                     icon: "arrow-right"
             MDButton:
                 id: btn_brake_right
                 style: "outlined"
                 size_hint: None, None
-                on_press: root.on_screen_control("brake", True)
-                on_release: root.on_screen_control("brake", False)
+                on_press: root.on_hud_button("right_bottom", True)
+                on_release: root.on_hud_button("right_bottom", False)
                 MDButtonIcon:
+                    id: ico_right_bottom
                     icon: "arrow-down"

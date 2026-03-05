@@ -16,7 +16,7 @@ from data.format.phone import attach_phone_mask, format_phone, normalize_phone
 from manager.profile_change.profile_change_manager import ProfileChangeManager
 from uix.screens.common.password_eye import wire_password_eye
 from uix.screens.common.bottom_bar_buttons import apply_bottom_buttons
-from uix.screens.layouts.layout_constants import BTN_H, ZONE_SPACING
+from uix.screens.layouts.layout_constants import ZONE_SPACING
 from uix.screens.routes import PROFILE
 
 
@@ -43,7 +43,6 @@ class ProfileChangeController:
             bottom_center=ids.bottom_center,
             btn_stack=ids.btn_stack,
             buttons=[ids.ok_btn, ids.delete_btn, ids.back_btn],
-            btn_h_dp=dp(BTN_H),
             spacing_dp=dp(ZONE_SPACING),
             width_ratio=0.5,
         )

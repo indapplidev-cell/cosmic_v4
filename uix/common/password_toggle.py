@@ -24,9 +24,11 @@ def attach_password_toggle(field, icon, *, start_hidden: bool = True) -> None:
         """EN: Toggle password visibility without touching field text.
         RU: Переключить видимость пароля без изменения текста поля.
         """
+        was_focused = bool(getattr(field, "focus", False))
         field.password = not field.password
         _sync_icon()
-        field.focus = True
+        if was_focused:
+            field.focus = True
 
     _sync_icon()
     icon.bind(on_release=lambda *_: _toggle())

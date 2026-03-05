@@ -7,6 +7,7 @@ from pathlib import Path
 from data.user_cache.user_session import UserSession
 from kivy.clock import Clock
 from kivy.lang import Builder
+from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
 from manager.auth.login_manager import LoginManager
 from manager.lang.lang_manager import t
@@ -70,6 +71,8 @@ class LoginScreenView(MDScreen):
             """EN: Move focus to email field after layout is ready.
             RU: Перевести фокус на поле email после готовности раскладки.
             """
+            if kivy_platform in ("android", "ios"):
+                return
             self.ids.password_field.focus = False
             self.ids.email_field.focus = True
             self.ids.email_field.cursor = (len(self.ids.email_field.text or ""), 0)

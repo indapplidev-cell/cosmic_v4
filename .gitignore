@@ -1,5 +1,6 @@
 # Ignore everything by default
 *
+!builds/android/tools/make_diag_pack.ps1
 
 # Allow directories so tracked folders can exist
 !*/
@@ -37,13 +38,21 @@
 .buildozer/
 buildozer.spec
 bin/
+_buildozer_cfg/
+android_build_env/
+android_tools/
 artifacts/
+.venv_buildozer_local/
 *.apk
 *.aab
 **/__pycache__/
 __pycache__/
 *.py[cod]
 *.log
+*.sha256*
+*.bak*
+*_REPORT*.md
+*_REPO*.md
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

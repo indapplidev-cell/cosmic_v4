@@ -8,7 +8,6 @@ from kivy.metrics import dp
 
 from uix.screens.common.bottom_bar_buttons import apply_bottom_buttons
 from uix.screens.layouts.layout_constants import (
-    BTN_H,
     FIELD_H,
     TITLE_FALLBACK_SIZE,
     TITLE_STYLE,
@@ -113,7 +112,6 @@ def apply_login_layout(view) -> None:
             bottom_center=ids.bottom_center,
             btn_stack=ids.btn_stack,
             buttons=[ids.login_btn, ids.register_btn, ids.forgot_btn],
-            btn_h_dp=dp(BTN_H),
             spacing_dp=dp(ZONE_SPACING),
             width_ratio=0.5,
         )

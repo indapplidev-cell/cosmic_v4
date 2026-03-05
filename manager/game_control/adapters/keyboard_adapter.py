@@ -10,6 +10,7 @@ from time import time
 
 from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.utils import platform as kivy_platform
 
 
 class KeyboardAdapter:
@@ -122,6 +123,9 @@ class KeyboardAdapter:
         self._reset_internal_state()
         Window.unbind(on_key_down=self._on_key_down_cb, on_key_up=self._on_key_up_cb)
         Window.bind(on_key_down=self._on_key_down_cb, on_key_up=self._on_key_up_cb)
+        if kivy_platform in ("android", "ios"):
+            self._keyboard = None
+            return
         if (self._keyboard is None) or getattr(self._keyboard, "closed", False):
             self._keyboard = Window.request_keyboard(self._keyboard_closed, widget)
 

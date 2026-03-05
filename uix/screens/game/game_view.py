@@ -17,6 +17,7 @@ from manager.life.attempts_session import GameSessionManager
 from manager.life.life_manager import LifeManager
 from manager.life.lives_indicator import LivesIndicator
 from manager.game_control.game_control_manager import GameControlManager
+from manager.game_control.hud_layout_store import get_swapped
 from manager.score.score_manager import ScoreManager
 from manager.score.score_widget import ScoreLabel
 from manager.time.time_manager import TimeManager
@@ -62,6 +63,7 @@ class GameScreenView(MDScreen):
         RU: Применить раскладку после загрузки KV.
         """
         apply_game_layout(self)
+        self.apply_hud_layout()
         apply_button_text_style(self, [self.ids.game_btn_text, self.ids.back_btn_text])
         apply_debug_borders_to_ids(self, GAME_DEBUG_IDS)
         self.touch_controls_hide()
@@ -103,6 +105,8 @@ class GameScreenView(MDScreen):
         """
         self._reset_to_first_start_state()
         self._rating_session = RatingSession()
+        apply_game_layout(self)
+        self.apply_hud_layout()
         self.touch_controls_hide()
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.attach(self._gameplay_surface)
@@ -152,6 +156,86 @@ class GameScreenView(MDScreen):
             return
         self._game_control.hud_event(action, pressed)
 
+    def is_hud_swapped(self) -> bool:
+        """EN: Return whether the touch HUD layout is swapped.
+        RU: Вернуть признак переставленной тач-раскладки HUD.
+        """
+        return get_swapped()
+
+    def _hud_action_for_slot(self, slot: str) -> str | None:
+        """EN: Map HUD button slot to control action according to current layout.
+        RU: Сопоставить слот HUD-кнопки с действием управления по текущей раскладке.
+        """
+        if not self.is_hud_swapped():
+            mapping = {
+                "left_top": None,
+                "left_bottom": "brake",
+                "right_top": "right",
+                "right_bottom": "left",
+            }
+        else:
+            mapping = {
+                "left_top": "left",
+                "left_bottom": "right",
+                "right_top": None,
+                "right_bottom": "brake",
+            }
+        return mapping.get(slot)
+
+    def on_hud_button(self, slot: str, pressed: bool) -> None:
+        """EN: Route touch HUD slot press/release into the current control action.
+        RU: Маршрутизировать нажатие/отпускание слота HUD в текущее действие управления.
+        """
+        action = self._hud_action_for_slot(slot)
+        if action is None:
+            return
+        self.on_screen_control(action, pressed)
+
+    def apply_hud_layout(self) -> None:
+        """EN: Apply touch HUD icons and visibility for the current layout.
+        RU: Применить иконки и видимость тач-HUD для текущей раскладки.
+        """
+        ids = self.ids
+        if not ids:
+            return
+
+        slot_to_btn = {
+            "left_top": ids.get("btn_left"),
+            "left_bottom": ids.get("btn_brake_left"),
+            "right_top": ids.get("btn_right"),
+            "right_bottom": ids.get("btn_brake_right"),
+        }
+        slot_to_icon = {
+            "left_top": ids.get("ico_left_top"),
+            "left_bottom": ids.get("ico_left_bottom"),
+            "right_top": ids.get("ico_right_top"),
+            "right_bottom": ids.get("ico_right_bottom"),
+        }
+        icon_by_action = {
+            "left": "arrow-left",
+            "right": "arrow-right",
+            "brake": "arrow-down",
+        }
+
+        for slot in ("left_top", "left_bottom", "right_top", "right_bottom"):
+            btn = slot_to_btn.get(slot)
+            ico = slot_to_icon.get(slot)
+            action = self._hud_action_for_slot(slot)
+            if btn is None:
+                continue
+
+            if action is None:
+                btn.opacity = 0
+                btn.disabled = True
+                btn.size_hint = (None, None)
+                btn.size = (0, 0)
+            else:
+                btn.opacity = 1
+                btn.disabled = False
+                btn.size_hint = (None, None)
+                if ico is not None:
+                    ico.icon = icon_by_action[action]
+
     def _touch_controls_set_visible(self, visible: bool) -> None:
         """EN: Show/hide touch controls layer.
         RU: Показать/скрыть слой тач-кнопок.
@@ -169,6 +253,7 @@ class GameScreenView(MDScreen):
         else:
             layer.size_hint = (None, None)
             layer.size = (0, 0)
+        Clock.schedule_once(lambda *_: apply_game_layout(self), 0)
 
     def touch_controls_show(self) -> None:
         """EN: Show and enable touch controls.

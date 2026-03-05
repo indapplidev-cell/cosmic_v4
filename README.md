@@ -39,6 +39,10 @@ pip install "kivymd @ git+https://github.com/kivymd/KivyMD.git@master"
 pip freeze > requirements.txt
 ```
 
+## Android build
+- EN: Use the dedicated WSL Android flow documented in `BUILD_ANDROID.md`.
+- RU: Для Android используйте выделенный WSL-процесс, описанный в `BUILD_ANDROID.md`.
+
 ## Run
 ```bash
 python main.py

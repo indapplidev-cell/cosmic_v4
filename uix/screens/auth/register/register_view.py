@@ -11,6 +11,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
+from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
 from manager.auth.logup_manager import LogupManager
 from manager.lang.lang_manager import t
@@ -117,7 +118,13 @@ class RegisterScreenView(MDScreen):
         }
         target = mapping.get(focus_field)
         if target is not None:
+            if kivy_platform in ("android", "ios"):
+                return
             target.focus = True
+            try:
+                target.select_all()
+            except Exception:
+                pass
 
     def _clear_fields(self) -> None:
         """EN: Clear registration input fields after successful validation.

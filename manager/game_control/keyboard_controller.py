@@ -10,6 +10,7 @@ from time import time
 
 from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.utils import platform as kivy_platform
 
 
 class KeyboardController:
@@ -47,6 +48,9 @@ class KeyboardController:
         """
         if self._keyboard:
             return
+        if kivy_platform in ("android", "ios"):
+            Window.bind(on_key_down=self.on_key_down, on_key_up=self.on_key_up)
+            return
         self._keyboard = Window.request_keyboard(self._keyboard_closed, widget)
         if not self._keyboard:
             return
@@ -61,6 +65,8 @@ class KeyboardController:
         RU: Отписывается и освобождает клавиатуру.
         """
         if not self._keyboard:
+            if kivy_platform in ("android", "ios"):
+                Window.unbind(on_key_down=self.on_key_down, on_key_up=self.on_key_up)
             return
         self._stop_hold()
         self._keyboard.unbind(on_key_down=self.on_key_down)

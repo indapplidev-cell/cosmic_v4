@@ -7,7 +7,7 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 
 from uix.screens.common.bottom_bar_buttons import apply_bottom_buttons
-from uix.screens.layouts.layout_constants import BTN_H, ZONE_SPACING
+from uix.screens.layouts.layout_constants import ZONE_SPACING
 
 
 def apply_profile_layout(view) -> None:
@@ -71,7 +71,6 @@ def apply_profile_layout(view) -> None:
             bottom_center=ids.bottom_center,
             btn_stack=ids.btn_stack,
             buttons=[ids.payout_btn, ids.login_btn, ids.back_btn],
-            btn_h_dp=dp(BTN_H),
             spacing_dp=dp(ZONE_SPACING),
             width_ratio=0.5,
         )

@@ -1,9 +1,11 @@
 ﻿from __future__ import annotations
 
 from kivy.clock import Clock
+from kivy.utils import platform as kivy_platform
 from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
 
+from manager.lang.hint_text_refresh import refresh_kivy_textinput_hint, refresh_md_textfield_hint
 from manager.lang.lang_manager import lang, t
 from uix.screens import routes
 from uix.screens.common.button_text_style import caps
@@ -320,48 +322,14 @@ def _sync_hint_to_textinput(textfield, hint_widget) -> None:
 
 def _redraw_textfield(tf, delay: float = 0.0) -> None:
     def _do(_dt):
-        try:
-            # если пользователь уже печатает — не вмешиваемся
-            if getattr(tf, "focus", False):
-                return
-        except Exception:
-            pass
-
-        try:
-            is_empty = (getattr(tf, "text", "") or "") == ""
-        except Exception:
-            is_empty = False
-
-        # обновление hint в пустом поле гарантируется событием focus
-        if is_empty:
-            try:
-                tf.focus = True
-            except Exception:
-                pass
-
-            def _off(_dt2):
-                try:
-                    tf.focus = False
-                except Exception:
-                    pass
-                try:
-                    tf.do_layout()
-                    tf.canvas.ask_update()
-                except Exception:
-                    pass
-
-                inner = getattr(tf, "_text_input", None) or getattr(tf, "text_input", None)
-                if inner:
-                    try:
-                        inner.do_layout()
-                        inner.canvas.ask_update()
-                    except Exception:
-                        pass
-
-            Clock.schedule_once(_off, 0)
+        if tf is None:
             return
-
-        # если поле не пустое — обычный redraw (без фокуса)
+        # EN: Never use focus-walk on mobile, and avoid it on desktop too.
+        # RU: Никогда не используем focus-walk на мобильных, и также избегаем его на десктопе.
+        if kivy_platform in ("android", "ios"):
+            pass
+        refresh_md_textfield_hint(tf)
+        refresh_kivy_textinput_hint(tf)
         try:
             tf.do_layout()
             tf.canvas.ask_update()

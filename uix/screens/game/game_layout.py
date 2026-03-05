@@ -5,10 +5,10 @@ RU: Применение раскладки для экрана игры.
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.metrics import dp
+from manager.game_control.hud_layout_store import get_swapped
 
 from uix.screens.common.bottom_bar_buttons import apply_bottom_buttons
 from uix.screens.layouts.layout_constants import (
-    BTN_H,
     TITLE_FALLBACK_SIZE,
     TITLE_STYLE,
     ZONE_SPACING,
@@ -56,25 +56,53 @@ def apply_game_layout(view) -> None:
             ids.game_bg_gif.pos = ids.gameplay_layout.pos
             ids.game_bg_gif.opacity = 1
         if "touch_controls_layer" in ids:
-            ids.touch_controls_layer.size_hint = (None, None)
-            ids.touch_controls_layer.pos = (0, 0)
-            ids.touch_controls_layer.size = (win_w, win_h)
+            layer = ids.touch_controls_layer
+            visible = (not layer.disabled) and (layer.opacity > 0)
 
-            btn_w = max(win_w * 0.18, dp(140))
-            btn_h = max(win_h * 0.08, dp(70))
-            gap = max(win_h * 0.02, dp(14))
-            side = max(win_w * 0.05, dp(24))
-            bottom = max(win_h * 0.10, dp(40))
+            def _hide_btn(btn) -> None:
+                btn.size_hint = (None, None)
+                btn.size = (0, 0)
+                btn.opacity = 0
+                btn.disabled = True
 
-            ids.btn_left.size = (btn_w, btn_h)
-            ids.btn_brake_left.size = (btn_w, btn_h)
-            ids.btn_brake_left.pos = (side, bottom)
-            ids.btn_left.pos = (side, bottom + btn_h + gap)
+            if not visible:
+                layer.size_hint = (None, None)
+                layer.size = (0, 0)
+                layer.opacity = 0
+                layer.disabled = True
+                _hide_btn(ids.btn_left)
+                _hide_btn(ids.btn_right)
+                _hide_btn(ids.btn_brake_left)
+                _hide_btn(ids.btn_brake_right)
+            else:
+                layer.size_hint = (None, None)
+                layer.pos = (0, 0)
+                layer.size = (win_w, win_h)
 
-            ids.btn_right.size = (btn_w, btn_h)
-            ids.btn_brake_right.size = (btn_w, btn_h)
-            ids.btn_brake_right.pos = (win_w - side - btn_w, bottom)
-            ids.btn_right.pos = (win_w - side - btn_w, bottom + btn_h + gap)
+                btn_w = max(win_w * 0.18, dp(140))
+                btn_h = max(win_h * 0.08, dp(70))
+                gap = max(win_h * 0.02, dp(14))
+                side = max(win_w * 0.05, dp(24))
+                bottom = max(win_h * 0.10, dp(40))
+                swapped = get_swapped()
+
+                def _show_btn(btn, pos) -> None:
+                    btn.size_hint = (None, None)
+                    btn.size = (btn_w, btn_h)
+                    btn.pos = pos
+                    btn.opacity = 1
+                    btn.disabled = False
+
+                if not swapped:
+                    _hide_btn(ids.btn_left)
+                    _show_btn(ids.btn_brake_left, (side, bottom))
+                    _show_btn(ids.btn_brake_right, (win_w - side - btn_w, bottom))
+                    _show_btn(ids.btn_right, (win_w - side - btn_w, bottom + btn_h + gap))
+                else:
+                    _show_btn(ids.btn_brake_left, (side, bottom))
+                    _show_btn(ids.btn_left, (side, bottom + btn_h + gap))
+                    _hide_btn(ids.btn_right)
+                    _show_btn(ids.btn_brake_right, (win_w - side - btn_w, bottom))
 
         ids.topbar.orientation = "horizontal"
         ids.topbar.size_hint_y = None
@@ -120,7 +148,6 @@ def apply_game_layout(view) -> None:
             bottom_center=ids.bottom_center,
             btn_stack=ids.btn_stack,
             buttons=[ids.game_btn, ids.back_btn],
-            btn_h_dp=dp(BTN_H),
             spacing_dp=dp(ZONE_SPACING),
             width_ratio=0.5,
             height_ratio=0.5,
