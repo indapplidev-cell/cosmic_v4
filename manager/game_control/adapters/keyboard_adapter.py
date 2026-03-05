@@ -10,6 +10,7 @@ from time import time
 
 from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.uix.textinput import TextInput
 from kivy.utils import platform as kivy_platform
 
 
@@ -158,9 +159,13 @@ class KeyboardAdapter:
         EN: Triggers step and starts hold timer.
         RU: Делает шаг и запускает таймер удержания.
         """
+        focused = getattr(Window, "keyboard_focused", None)
+        if isinstance(focused, TextInput):
+            return False
+
         key_name = self._resolve_key_name(key, scancode, codepoint)
         if not key_name:
-            return True
+            return False
         if key_name in self._pressed:
             return True
         self._pressed.add(key_name)
@@ -185,7 +190,13 @@ class KeyboardAdapter:
         EN: Stops linear mode when a movement key is released.
         RU: Останавливает линейный режим при отпускании клавиши.
         """
+        focused = getattr(Window, "keyboard_focused", None)
+        if isinstance(focused, TextInput):
+            return False
+
         key_name = self._resolve_key_name(key, scancode, None)
+        if not key_name:
+            return False
         if key_name in self._pressed:
             self._pressed.remove(key_name)
         if self._is_left(key_name):

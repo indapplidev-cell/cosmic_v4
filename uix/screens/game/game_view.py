@@ -87,7 +87,6 @@ class GameScreenView(MDScreen):
                 self._life._session = runtime._session
                 self._life.sync()
             self._game_control = GameControlManager(runtime)
-            self._game_control.attach(surface)
             self._start_hud_sync()
     def configure(self, vm: GameScreenVM, controller: GameScreenController) -> None:
         """EN: Configure texts and bind callbacks.
