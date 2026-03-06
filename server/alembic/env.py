@@ -11,7 +11,7 @@ from sqlalchemy import engine_from_config, pool
 
 from server.config import DATABASE_URL
 from server.db import Base
-from server.models import *  # noqa: F401,F403
+import server.models  # noqa: F401
 
 config = context.config
 

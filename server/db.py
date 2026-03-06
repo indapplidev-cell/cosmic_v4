@@ -10,12 +10,12 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-from server.config import DATABASE_URL, get_engine_connect_args
+from server.config import DATABASE_URL
 
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args=get_engine_connect_args(DATABASE_URL),
+    pool_pre_ping=True,
     future=True,
 )
 

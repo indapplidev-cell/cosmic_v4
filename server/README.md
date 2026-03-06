@@ -1,41 +1,75 @@
-# Server DB Module (SQLAlchemy + Alembic)
+# Local Linux Deploy: PostgreSQL + API + HTTPS Access
 
-## 1) Create virtual environment and install deps
+## A) Установка на Linux
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-## 2) Configure database URL
-
-Default (SQLite):
+1. Установите Docker Engine и Docker Compose plugin.
+2. Добавьте пользователя в группу `docker`:
 
 ```bash
-export DATABASE_URL="sqlite:///./server/app.db"
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
-PostgreSQL example:
+## B) Запуск стека
+
+1. Подготовьте env:
 
 ```bash
-export DATABASE_URL="postgresql+psycopg://user:password@localhost:5432/app_db"
+cp server/.env.example server/.env
 ```
 
-## 3) Create migration (autogenerate)
+2. Заполните в `server/.env`:
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `DATABASE_URL` (должен ссылаться на `postgres:5432` внутри compose)
+- `PUBLIC_DOMAIN`, `CADDY_EMAIL` (для Caddy HTTPS)
+
+3. Запуск:
 
 ```bash
-alembic -c server/alembic.ini revision --autogenerate -m "init"
+docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build
 ```
 
-## 4) Apply migrations
+4. Проверка:
 
 ```bash
-alembic -c server/alembic.ini upgrade head
+curl https://<PUBLIC_DOMAIN>/healthz
 ```
 
-## 5) Optional smoke check
+## C) Доступ из мобильной сети
+
+### Вариант A (основной): Caddy + публичный HTTPS
+
+- В compose уже включен `caddy` (порты `80` и `443`).
+- Нужно:
+  - домен, указывающий на внешний IP домашней сети;
+  - проброс `443` (и обычно `80` для ACME challenge) на Linux-сервер.
+- Наружу открыт только reverse proxy. Postgres наружу не публикуется.
+
+### Вариант B (fallback): Cloudflare Tunnel (без проброса портов)
+
+- В `.env` задайте `CLOUDFLARE_TUNNEL_TOKEN`.
+- Запустите профиль tunnel:
 
 ```bash
-python -m server.scripts.smoke_auth
+docker compose -f server/infra/docker-compose.yml --env-file server/.env --profile tunnel up -d
 ```
+
+- Токен берётся в Cloudflare Zero Trust (Tunnel token).
+- Этот режим позволяет внешний доступ без публичного IP и без port-forwarding.
+
+## D) Проверка API
+
+```bash
+curl https://<PUBLIC_DOMAIN>/healthz
+curl -X POST https://<PUBLIC_DOMAIN>/auth/register -H "Content-Type: application/json" -d '{"email":"demo@example.com","psw":"123456"}'
+curl -X POST https://<PUBLIC_DOMAIN>/auth/login -H "Content-Type: application/json" -d '{"email":"demo@example.com","psw":"123456"}'
+```
+
+## Безопасность (минимум)
+
+- Postgres (`5432`) не публикуется наружу в compose.
+- Для публичного доступа используйте только:
+  - `443` через Caddy (вариант A), или
+  - Cloudflare Tunnel без открытых портов (вариант B).
+- Не коммитьте `server/.env`.
+- Обязательно используйте сильный `POSTGRES_PASSWORD`.

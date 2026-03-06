@@ -60,3 +60,4 @@ build/
 dist/
 .idea/
 .vscode/
+server/.env

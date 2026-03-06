@@ -1,0 +1,242 @@
+[
+    {
+        "Id": "1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e",
+        "Created": "2025-11-09T18:02:46.069100349Z",
+        "Path": "bash",
+        "Args": [
+            "-lc",
+            "alembic upgrade head &&\n          uvicorn server_engine.app.main:app --host 0.0.0.0 --port 8000"
+        ],
+        "State": {
+            "Status": "restarting",
+            "Running": true,
+            "Paused": false,
+            "Restarting": true,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 0,
+            "ExitCode": 1,
+            "Error": "",
+            "StartedAt": "2026-03-06T19:21:41.478212541Z",
+            "FinishedAt": "2026-03-06T19:21:43.221165957Z"
+        },
+        "Image": "sha256:2a97c11f9dcd4ce86dfc0195e8def7593636c092d948c0b621fdfd229d1f3b68",
+        "ResolvConfPath": "/var/lib/docker/containers/1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e/hostname",
+        "HostsPath": "/var/lib/docker/containers/1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e/hosts",
+        "LogPath": "/var/lib/docker/containers/1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e/1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e-json.log",
+        "Name": "/gamecom-engine",
+        "RestartCount": 83616,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "docker-default",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "infra_default",
+            "PortBindings": {
+                "8000/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "8000"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "unless-stopped",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": [],
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": null,
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": null,
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "ID": "1f2b4f884f07a0b203531a4dd2ca0255560f9f3ec3e954239cc55c559fe9a31e",
+                "LowerDir": "/var/lib/docker/overlay2/e284c3576a442fb2693716806e5f2afb94d393f4312cada731fd4821544ec3d4-init/diff:/var/lib/docker/overlay2/toy1kechg1xa1djl80lyi7dsy/diff:/var/lib/docker/overlay2/kgakigyeu9klccdw69kach93q/diff:/var/lib/docker/overlay2/qu4c9lodwn8pp5fxxjbmw4o52/diff:/var/lib/docker/overlay2/9n1jnuydbhnnju9bt8ta6p7uy/diff:/var/lib/docker/overlay2/di951t2eky7ugfdcfr9h14tgq/diff:/var/lib/docker/overlay2/vjrmvdwwj0uqxt971a3yoqsln/diff:/var/lib/docker/overlay2/bl2vhb8jscj82xgyc6ghm23fn/diff:/var/lib/docker/overlay2/02ee2ef4c3f0eeb45f054296885133c0d0e6476b773e394615939d17b6f16c83/diff:/var/lib/docker/overlay2/0a66c4435c51dfe348ba0b6602cd1d9fb5ed15908560a817adac8941734e1763/diff:/var/lib/docker/overlay2/44c71801fb40ce75a08d3789e8ee6d1f5732b2e3d7bd3b0773d6cb72a59179be/diff:/var/lib/docker/overlay2/8bb666daff5faf008b3b8de13b46c67eb3722b5578bb19bbc1b869e95b684d47/diff",
+                "MergedDir": "/var/lib/docker/overlay2/e284c3576a442fb2693716806e5f2afb94d393f4312cada731fd4821544ec3d4/merged",
+                "UpperDir": "/var/lib/docker/overlay2/e284c3576a442fb2693716806e5f2afb94d393f4312cada731fd4821544ec3d4/diff",
+                "WorkDir": "/var/lib/docker/overlay2/e284c3576a442fb2693716806e5f2afb94d393f4312cada731fd4821544ec3d4/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "1f2b4f884f07",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "ExposedPorts": {
+                "8000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "DATABASE_URL_ASYNC=postgresql+asyncpg://root_db_engine:strongpass@gamecom-db:5432/gamecom",
+                "APP_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000",
+                "APP_PORT=8000",
+                "TZ=UTC",
+                "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=C.UTF-8",
+                "GPG_KEY=A035C8C19219BA821ECEA86B64E628F8D684696D",
+                "PYTHON_VERSION=3.11.14",
+                "PYTHON_SHA256=8d3ed8ec5c88c1c95f5e558612a725450d2452813ddad5e58fdb1a53b1209b78",
+                "PYTHONUNBUFFERED=1"
+            ],
+            "Cmd": [
+                "bash",
+                "-lc",
+                "alembic upgrade head &&\n          uvicorn server_engine.app.main:app --host 0.0.0.0 --port 8000"
+            ],
+            "Image": "infra-engine",
+            "Volumes": null,
+            "WorkingDir": "/app",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {
+                "com.docker.compose.config-hash": "5b58c6d10b617c1a34106f0d36a9305370025f1d6c87107f52b89d56e2d15ad1",
+                "com.docker.compose.container-number": "1",
+                "com.docker.compose.depends_on": "",
+                "com.docker.compose.image": "sha256:2a97c11f9dcd4ce86dfc0195e8def7593636c092d948c0b621fdfd229d1f3b68",
+                "com.docker.compose.oneoff": "False",
+                "com.docker.compose.project": "infra",
+                "com.docker.compose.project.config_files": "/opt/gamecom/server_engine/infra/docker-compose.yml",
+                "com.docker.compose.project.working_dir": "/opt/gamecom/server_engine/infra",
+                "com.docker.compose.replace": "gamecom-engine",
+                "com.docker.compose.service": "engine",
+                "com.docker.compose.version": "2.40.3"
+            }
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "",
+            "SandboxKey": "",
+            "Ports": {},
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "MacAddress": "",
+            "Networks": {
+                "infra_default": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "gamecom-engine",
+                        "engine"
+                    ],
+                    "MacAddress": "",
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "eb3c170bbcac876e412e327934f45eedb146bda21bf439de776a586f5bcc8d64",
+                    "EndpointID": "",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "gamecom-engine",
+                        "engine",
+                        "1f2b4f884f07"
+                    ]
+                }
+            }
+        }
+    }
+]

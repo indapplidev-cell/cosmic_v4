@@ -4,7 +4,7 @@ RU: Модель игрового профиля один-к-одному с а�
 
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, text
+from sqlalchemy import BigInteger, ForeignKey, Integer, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from server.db import Base
@@ -17,10 +17,12 @@ class ProfileGame(Base):
 
     __tablename__ = "profile_games"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
+        BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
         unique=True,
+        index=True,
         nullable=False,
     )
     record: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default=text("0"))

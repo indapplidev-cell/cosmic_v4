@@ -1,21 +1,22 @@
-"""EN: Database configuration for the server module.
-RU: Конфигурация базы данных для серверного модуля.
+"""EN: Environment-only database configuration for the server module.
+RU: Конфигурация серверной БД только через переменные окружения.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any
 
 
-DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./server/app.db")
+DATABASE_URL: str = os.getenv("DATABASE_URL", "").strip()
 
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is required for server module. "
+        "Set it via environment or Docker Compose env file."
+    )
 
-def get_engine_connect_args(database_url: str | None = None) -> dict[str, Any]:
-    """EN: Return SQLAlchemy engine connect args for the selected backend.
-    RU: Вернуть параметры подключения SQLAlchemy engine для выбранного backend.
-    """
-    url = database_url or DATABASE_URL
-    if url.startswith("sqlite"):
-        return {"check_same_thread": False}
-    return {}
+if not DATABASE_URL.startswith("postgresql"):
+    raise RuntimeError(
+        "Only PostgreSQL DATABASE_URL is supported in server/config.py. "
+        f"Got DATABASE_URL={DATABASE_URL!r}"
+    )

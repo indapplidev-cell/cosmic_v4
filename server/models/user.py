@@ -1,12 +1,12 @@
 """EN: User model with credentials and profile/statistics relations.
-RU: Модель пользователя с учетными данными и связями профилей/статистики.
+RU: Модель пользователя с учётными данными и связями профиля/статистики.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String
+from sqlalchemy import BigInteger, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from server.db import Base
@@ -24,9 +24,9 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    psw: Mapped[str] = mapped_column(String(255), nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    psw: Mapped[str] = mapped_column(Text, nullable=False)
 
     profile_user: Mapped["ProfileUser"] = relationship(
         back_populates="user",

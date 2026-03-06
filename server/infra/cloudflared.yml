@@ -1,0 +1,6 @@
+tunnel: cosmic-api
+
+ingress:
+  - hostname: ${PUBLIC_DOMAIN}
+    service: http://api:8000
+  - service: http_status:404
