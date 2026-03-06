@@ -13,6 +13,7 @@ from server.services.profile_service import (
     update_profile_game,
     update_profile_user,
 )
+from server.services.rating_service import get_top_ratings as get_top_ratings_service
 
 
 def register(email: str, psw: str) -> Tuple[bool, str | int]:
@@ -95,3 +96,10 @@ def delete_profile_game_fields(user_id: int, fields: list[str]) -> bool:
     """
     result = clear_profile_game_fields(user_id, fields)
     return bool(result.get("ok"))
+
+
+def get_top_ratings(limit: int = 100) -> list[dict]:
+    """EN: Return leaderboard rows sorted by rating/record.
+    RU: Вернуть строки лидерборда, отсортированные по rating/record.
+    """
+    return get_top_ratings_service(limit=limit)

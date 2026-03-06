@@ -14,6 +14,7 @@ from server.services.profile_service import (
     update_profile_game,
     update_profile_user,
 )
+from server.services.rating_service import get_top_ratings
 
 __all__ = [
     "register_user",
@@ -24,4 +25,5 @@ __all__ = [
     "clear_profile_user_fields",
     "update_profile_game",
     "clear_profile_game_fields",
+    "get_top_ratings",
 ]

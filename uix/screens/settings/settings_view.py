@@ -19,7 +19,7 @@ from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
 from manager.auth.account_delete import confirm_delete_account
-from manager.docs.doc_locale import doc_path, doc_title, get_lang_code
+from manager.docs.doc_locale import get_lang_code
 from manager.game_control.hud_layout_store import get_swapped, toggle_swapped
 from manager.lang.lang_manager import t
 from uix.debug.debug_borders import apply_debug_borders_to_ids
@@ -30,6 +30,14 @@ from .settings_layout import SETTINGS_DEBUG_IDS, apply_settings_layout
 from .settings_vm import SettingsScreenVM
 
 KV_PATH = Path(__file__).with_name("settings.kv")
+RULE_DOC_REL_PATHS = {
+    "ru": "server/doc/rule_ru.md",
+    "en": "server/doc/rule_en.md",
+}
+POLICY_DOC_REL_PATHS = {
+    "ru": "server/doc/policy_ru.md",
+    "en": "server/doc/policy_en.md",
+}
 
 
 class ToggleIconButton(MDIconButton):
@@ -205,33 +213,27 @@ class SettingsScreenView(MDScreen):
 
     def open_privacy_policy(self) -> None:
         """EN: Open privacy policy for the currently selected app language.
-        RU: Открыть политику для текущего выбранного языка приложения.
+        RU: Open privacy policy according to current app language.
         """
         code = get_lang_code()
-        missing_message = (
-            "Privacy policy file not found."
-            if code == "en"
-            else "Файл политики не найден."
-        )
+        rel_path = POLICY_DOC_REL_PATHS.get(code, POLICY_DOC_REL_PATHS["ru"])
+        missing_message = "File not found."
         self.open_text_doc(
-            doc_title("privacy_policy"),
-            doc_path("privacy_policy", code),
+            t("settings.docs.policy"),
+            rel_path,
             missing_message,
         )
 
     def open_game_rules(self) -> None:
         """EN: Open game rules for the currently selected app language.
-        RU: Открыть правила игры для текущего выбранного языка приложения.
+        RU: Open game rules according to current app language.
         """
         code = get_lang_code()
-        missing_message = (
-            "Game rules file not found."
-            if code == "en"
-            else "Файл правил не найден."
-        )
+        rel_path = RULE_DOC_REL_PATHS.get(code, RULE_DOC_REL_PATHS["ru"])
+        missing_message = "File not found."
         self.open_text_doc(
-            doc_title("game_rules"),
-            doc_path("game_rules", code),
+            t("settings.docs.rules"),
+            rel_path,
             missing_message,
         )
 
