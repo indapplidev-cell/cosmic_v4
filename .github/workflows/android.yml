@@ -1,4 +1,4 @@
-﻿name: Android APK (Debug)
+name: Android APK (Debug)
 
 on:
   push:
@@ -43,39 +43,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Resolve build mode
-        id: resolve_build_mode
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f "builds/android/tools/build_android.sh" ]; then
-            echo "build_mode=fallback_script" >> "$GITHUB_OUTPUT"
-            echo "spec_path=" >> "$GITHUB_OUTPUT"
-            echo "BUILD_MODE=fallback_script" >> "$GITHUB_ENV"
-            echo "Resolved build mode: fallback_script"
-            exit 0
-          fi
-          if [ -f "buildozer.spec" ]; then
-            echo "build_mode=buildozer" >> "$GITHUB_OUTPUT"
-            echo "spec_path=buildozer.spec" >> "$GITHUB_OUTPUT"
-            echo "BUILD_MODE=buildozer" >> "$GITHUB_ENV"
-            echo "BUILDOZER_SPEC_PATH=buildozer.spec" >> "$GITHUB_ENV"
-            echo "Resolved build mode: buildozer (buildozer.spec)"
-            exit 0
-          fi
-          if [ -f "_buildozer_cfg/buildozer.spec" ] && [ -f "scripts/run_buildozer_with_spec.py" ]; then
-            echo "build_mode=buildozer_explicit_spec" >> "$GITHUB_OUTPUT"
-            echo "spec_path=_buildozer_cfg/buildozer.spec" >> "$GITHUB_OUTPUT"
-            echo "BUILD_MODE=buildozer_explicit_spec" >> "$GITHUB_ENV"
-            echo "BUILDOZER_SPEC_PATH=_buildozer_cfg/buildozer.spec" >> "$GITHUB_ENV"
-            echo "Resolved build mode: buildozer_explicit_spec (_buildozer_cfg/buildozer.spec)"
-            exit 0
-          fi
-          echo "ERROR: No build configuration found. Expected either builds/android/tools/build_android.sh or buildozer spec file." >&2
-          exit 1
-
       - name: Resolve P4A_COMMIT (fork-safe)
-        if: steps.resolve_build_mode.outputs.build_mode != 'fallback_script'
         shell: bash
         env:
           P4A_COMMIT_VAR: ${{ vars.P4A_COMMIT }}
@@ -97,14 +65,14 @@ jobs:
           fi
 
           if [[ "$is_fork_pr" == "true" ]]; then
-            if [[ -z "${DEFAULT_P4A_COMMIT:-}" || "$DEFAULT_P4A_COMMIT" == "PUT_YOUR_KNOWN_GOOD_P4A_COMMIT_HERE" ]]; then
+            if [[ -z "${DEFAULT_P4A_COMMIT:-}" ]]; then
               echo "::error::Fork PR: vars.P4A_COMMIT недоступен и DEFAULT_P4A_COMMIT не задан."
               exit 1
             fi
             echo "P4A_COMMIT=$DEFAULT_P4A_COMMIT" >> "$GITHUB_ENV"
             echo "::notice::Fork PR detected; using DEFAULT_P4A_COMMIT=$DEFAULT_P4A_COMMIT"
           else
-            echo "::error::Missing vars.P4A_COMMIT (Settings → Secrets and variables → Actions → Variables)."
+            echo "::error::Missing vars.P4A_COMMIT (Settings -> Secrets and variables -> Actions -> Variables)."
             exit 1
           fi
 
@@ -112,7 +80,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.buildozer
-          key: ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-buildozer-py${{ env.PYTHON_VERSION }}-bz${{ env.BUILDOZER_VERSION }}-${{ hashFiles('buildozer.spec', '_buildozer_cfg/buildozer.spec', '.github/workflows/android.yml') }}
+          key: ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-buildozer-py${{ env.PYTHON_VERSION }}-bz${{ env.BUILDOZER_VERSION }}-${{ hashFiles('buildozer.spec', '**/requirements*', '**/ANDROID_*lock*', 'builds/android/tools/build_android.sh', 'builds/android/tools/doctor*', 'builds/android/tools/offline_audit*', 'scripts/build_android*', 'scripts/doctor*', 'scripts/offline_audit*') }}
           restore-keys: |
             ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-buildozer-py${{ env.PYTHON_VERSION }}-
 
@@ -120,7 +88,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.gradle
-          key: ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'buildozer.spec', '_buildozer_cfg/buildozer.spec') }}
+          key: ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-gradle-${{ hashFiles('buildozer.spec', '**/requirements*', '**/ANDROID_*lock*', 'builds/android/tools/build_android.sh', 'builds/android/tools/doctor*', 'builds/android/tools/offline_audit*', 'scripts/build_android*', 'scripts/doctor*', 'scripts/offline_audit*') }}
           restore-keys: |
             ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-gradle-
 
@@ -128,7 +96,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-pip-${{ hashFiles('**/requirements*.txt', '**/*lock*', 'buildozer.spec', '_buildozer_cfg/buildozer.spec') }}
+          key: ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-pip-${{ hashFiles('buildozer.spec', '**/requirements*', '**/ANDROID_*lock*', 'builds/android/tools/build_android.sh', 'builds/android/tools/doctor*', 'builds/android/tools/offline_audit*', 'scripts/build_android*', 'scripts/doctor*', 'scripts/offline_audit*') }}
           restore-keys: |
             ${{ runner.os }}-epoch${{ env.CACHE_EPOCH }}-pip-
 
@@ -185,7 +153,6 @@ jobs:
             setuptools==${SETUPTOOLS_VERSION}
 
       - name: Checkout pinned python-for-android
-        if: steps.resolve_build_mode.outputs.build_mode != 'fallback_script'
         shell: bash
         run: |
           set -euo pipefail
@@ -204,11 +171,10 @@ jobs:
           echo "APP_P4A_SOURCE_DIR=${GITHUB_WORKSPACE}/.p4a-src" >> "$GITHUB_ENV"
 
       - name: Validate buildozer.spec (p4a.commit)
-        if: steps.resolve_build_mode.outputs.spec_path != ''
         shell: bash
         run: |
           set -euo pipefail
-          spec="${{ steps.resolve_build_mode.outputs.spec_path }}"
+          spec="buildozer.spec"
           [[ -f "$spec" ]] || { echo "::error::Spec not found at $spec"; exit 1; }
 
           p4a_commit="$(grep -E '^\s*p4a\.commit\s*=' "$spec" | tail -n1 | sed -E 's/^\s*p4a\.commit\s*=\s*//')"
@@ -221,44 +187,58 @@ jobs:
             fi
           fi
 
-      - name: Build debug APK
+      - name: Build debug APK (single entrypoint)
         shell: bash
         run: |
           set -euxo pipefail
-          if [ "${BUILD_MODE}" = "fallback_script" ]; then
-            chmod +x builds/android/tools/build_android.sh
-            bash builds/android/tools/build_android.sh android debug
-            exit 0
-          fi
-
+          chmod +x builds/android/tools/build_android.sh
           export APP_ANDROID_API="${ANDROID_API}"
           export APP_ANDROID_NDK="${ANDROID_NDK}"
           export APP_ANDROID_BUILD_TOOLS_VERSION="${ANDROID_BUILD_TOOLS}"
-
-          if [ "${BUILD_MODE}" = "buildozer_explicit_spec" ]; then
-            python scripts/run_buildozer_with_spec.py -v android debug
-          else
-            buildozer -v android debug
-          fi
+          bash builds/android/tools/build_android.sh android debug
 
       - name: Locate APK
-        id: locate_apk
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
           APK_PATH="$(find . -type f \( -name '*debug*.apk' -o -name '*.apk' \) \
             | grep -E '/(bin|outputs/apk)/' \
             | head -n 1 || true)"
-          if [ -z "${APK_PATH}" ]; then
-            echo "No APK found after build." >&2
+          if [ -n "${APK_PATH}" ]; then
+            echo "APK_PATH=$APK_PATH" | tee -a "$GITHUB_ENV"
+            echo "APK found at: $APK_PATH"
+          else
+            echo "APK not found."
+          fi
+
+      - name: Ensure APK exists on successful build
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${APK_PATH:-}" ]; then
+            echo "::error::Build succeeded but APK not found."
             exit 1
           fi
-          echo "APK_PATH=$APK_PATH" | tee -a "$GITHUB_ENV"
-          echo "APK found at: $APK_PATH"
 
-      - name: Upload debug APK artifact
+      - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: android-debug-apk
-          path: ${{ env.APK_PATH }}
-          if-no-files-found: error
+          path: |
+            bin/*.apk
+            **/outputs/apk/**/*.apk
+          if-no-files-found: warn
+
+      - name: Upload Android build logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-build-logs
+          path: |
+            builds/android/logs/build_android.log
+            builds/android/logs/offline_audit_report.md
+            builds/android/logs/offline_audit.json
+          if-no-files-found: warn
