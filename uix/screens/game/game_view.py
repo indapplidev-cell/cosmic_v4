@@ -29,6 +29,10 @@ from ads.payment.balance_store import BalanceStore
 from ads.payment.payment_math import calc_balance
 from manager.gameover.gameover_counters import counters
 from manager.lang.lang_manager import t
+from manager import auth_backend
+from data.user_cache.user_cache_reader import get_user_cache
+from data.user_cache.user_cache_writer import update_user_cache_fields
+from data.user_cache.user_session import UserSession
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 from ads.rewarded.rewarded_modal import RewardedAdModal
@@ -464,6 +468,7 @@ class GameScreenView(MDScreen):
             best_score = self._record_store.commit_if_higher(current_score)
             print(f"[Record] best_score={best_score}", flush=True)
             self._game_over_flag = False
+        self._sync_profile_game_db()
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
@@ -476,6 +481,46 @@ class GameScreenView(MDScreen):
         self._reset_to_first_start_state()
         if self.manager:
             self.manager.back()
+
+    def _resolve_user_id(self) -> int | None:
+        """EN: Resolve active user id from cache with email fallback.
+        RU: Определить активный user_id из кеша с fallback через email.
+        """
+        cache = get_user_cache() or {}
+        raw_user_id = cache.get("user_id")
+        if isinstance(raw_user_id, int):
+            return raw_user_id
+        if isinstance(raw_user_id, str) and raw_user_id.isdigit():
+            return int(raw_user_id)
+
+        email = (cache.get("email") or "").strip() or (UserSession().get_email() or "").strip()
+        if not email:
+            return None
+
+        ok, payload = auth_backend.resolve_user_id(email)
+        if not ok:
+            return None
+        user_id = int(payload)
+        update_user_cache_fields({"user_id": user_id})
+        return user_id
+
+    def _sync_profile_game_db(self) -> None:
+        """EN: Persist current record/rating/balance snapshot to profile_game.
+        RU: Сохранить текущий снимок record/rating/balance в profile_game.
+        """
+        user_id = self._resolve_user_id()
+        if user_id is None:
+            return
+
+        record = self._record_store.get_best_score()
+        rating = RatingStorage().load_points()
+        balance = self._balance_store.get_balance()
+        auth_backend.save_profile_game(
+            user_id,
+            record=int(record),
+            rating=int(rating),
+            balance=int(balance),
+        )
 
     def _on_start_pressed(self) -> None:
         """EN: Hide HUD and start the gameplay runtime.
