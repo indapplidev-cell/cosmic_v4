@@ -7,6 +7,8 @@ from kivymd.uix.dialog import (
     MDDialogSupportingText,
 )
 
+from data.user_cache.user_cache_reader import get_user_cache
+from manager import auth_backend
 from manager.lang.lang_manager import t
 from manager.auth.account_wipe import wipe_all_user_data
 
@@ -35,6 +37,29 @@ def confirm_delete_account(on_deleted, on_cancel) -> None:
 
     def _sure(*_):
         _close()
+        cache = get_user_cache() or {}
+        user_id_raw = cache.get("user_id")
+
+        user_id = None
+        if isinstance(user_id_raw, int):
+            user_id = user_id_raw
+        elif isinstance(user_id_raw, str) and user_id_raw.isdigit():
+            user_id = int(user_id_raw)
+
+        deleted = False
+        if user_id is not None:
+            deleted = auth_backend.delete_account(user_id)
+        else:
+            email = (cache.get("email") or "").strip()
+            if email:
+                ok_resolve, payload = auth_backend.resolve_user_id(email)
+                if ok_resolve:
+                    deleted = auth_backend.delete_account(int(payload))
+
+        if not deleted:
+            on_cancel()
+            return
+
         wipe_all_user_data()
         on_deleted()
 

@@ -17,9 +17,9 @@ def _cache_path() -> Path:
     return Path(__file__).resolve().parent / "user_cache.json"
 
 
-def save_user(email: str, password: str) -> None:
-    """EN: Save user credentials to the cache JSON.
-    RU: Сохранить учётные данные пользователя в JSON-кэш.
+def save_user(email: str, password: str, user_id: int | None = None) -> None:
+    """EN: Save credentials to JSON cache and optionally persist user_id.
+    RU: Сохранить учётные данные в JSON-кэш и при необходимости записать user_id.
     """
     cache_path = _cache_path()
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -28,6 +28,8 @@ def save_user(email: str, password: str) -> None:
         "email": email,
         "password": password,
     }
+    if user_id is not None:
+        data["user_id"] = int(user_id)
 
     with tmp_path.open("w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2)
@@ -35,11 +37,11 @@ def save_user(email: str, password: str) -> None:
     os.replace(tmp_path, cache_path)
 
 
-def write_user_cache(email: str, password: str) -> None:
-    """EN: Save user credentials to the cache JSON.
-    RU: Сохранить учётные данные пользователя в JSON-кэш.
+def write_user_cache(email: str, password: str, user_id: int | None = None) -> None:
+    """EN: Compatibility alias for saving credentials and optional user_id.
+    RU: Совместимый алиас для сохранения учётных данных и опционального user_id.
     """
-    save_user(email, password)
+    save_user(email, password, user_id=user_id)
 
 
 def update_user_cache_fields(fields: dict) -> None:

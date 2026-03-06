@@ -34,3 +34,8 @@ alembic -c server/alembic.ini revision --autogenerate -m "init"
 alembic -c server/alembic.ini upgrade head
 ```
 
+## 5) Optional smoke check
+
+```bash
+python -m server.scripts.smoke_auth
+```

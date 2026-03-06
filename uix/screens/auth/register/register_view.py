@@ -4,6 +4,7 @@ RU: Представление экрана регистрации.
 
 from pathlib import Path
 
+from manager import auth_backend
 from data.user_cache.user_cache_writer import save_user
 from kivy.lang import Builder
 from kivy.metrics import dp
@@ -85,7 +86,15 @@ class RegisterScreenView(MDScreen):
             self._show_error_popup(message, focus_field)
             return
 
-        save_user(email, password)
+        ok_register, payload = auth_backend.register(email, password)
+        if not ok_register:
+            if payload == "EMAIL_EXISTS":
+                self._show_error_popup("Email already exists / Такой email уже зарегистрирован", "email")
+            else:
+                self._show_error_popup("Registration failed / Ошибка регистрации", "email")
+            return
+
+        save_user(email, password, user_id=int(payload))
         self._clear_fields()
         self.controller.create()
 

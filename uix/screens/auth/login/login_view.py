@@ -4,12 +4,13 @@ RU: Представление экрана входа.
 
 from pathlib import Path
 
+from manager import auth_backend
+from data.user_cache.user_cache_writer import update_user_cache_fields
 from data.user_cache.user_session import UserSession
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
-from manager.auth.login_manager import LoginManager
 from manager.lang.lang_manager import t
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
@@ -85,11 +86,16 @@ class LoginScreenView(MDScreen):
         """
         email = (self.ids.email_field.text or "").strip()
         password = self.ids.password_field.text or ""
-        if not LoginManager.check(email, password):
+        ok_login, payload = auth_backend.login(email, password)
+        if not ok_login:
             self.set_error(t("login.error.invalid_credentials"))
             return
         self.set_error("")
         UserSession().set_email(email)
+        try:
+            update_user_cache_fields({"user_id": int(payload)})
+        except Exception:
+            pass
         self.controller.login()
         self._clear_fields()
 
