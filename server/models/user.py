@@ -1,5 +1,5 @@
 """EN: User model with credentials and profile/statistics relations.
-RU: Модель пользователя с учётными данными и связями профиля/статистики.
+RU: Модель пользователя с учетными данными и связями профиля/статистики.
 """
 
 from __future__ import annotations
@@ -18,15 +18,15 @@ if TYPE_CHECKING:
 
 
 class User(Base):
-    """EN: Primary user table with unique email and password string field.
-    RU: Основная таблица пользователей с уникальным email и строковым полем пароля.
+    """EN: Primary user table with unique email and secure password hash.
+    RU: Основная таблица пользователей с уникальным email и стойким хешем пароля.
     """
 
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
-    psw: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
 
     profile_user: Mapped["ProfileUser"] = relationship(
         back_populates="user",

@@ -27,6 +27,9 @@ REMOTE_HOST_DEFAULT = os.getenv("DB_INSPECT_REMOTE_HOST", "185.216.87.26")
 REMOTE_USER_DEFAULT = os.getenv("DB_INSPECT_REMOTE_USER", "root")
 REMOTE_CONTAINER_DEFAULT = os.getenv("DB_INSPECT_REMOTE_CONTAINER", "infra-api-1")
 REMOTE_KEY_DEFAULT = os.getenv("DB_INSPECT_REMOTE_KEY", str(Path.home() / ".ssh" / "cosmic_vps_ed25519"))
+COMPOSE_FILE_DEFAULT = os.getenv("DB_INSPECT_COMPOSE_FILE", "server/infra/docker-compose.yml")
+COMPOSE_ENV_FILE_DEFAULT = os.getenv("DB_INSPECT_COMPOSE_ENV_FILE", "server/.env")
+COMPOSE_API_SERVICE_DEFAULT = os.getenv("DB_INSPECT_COMPOSE_API_SERVICE", "api")
 
 
 def find_project_root(start: Path) -> Path:
@@ -91,6 +94,26 @@ def _parse_args() -> argparse.Namespace:
         "--local",
         action="store_true",
         help="Force local SQLAlchemy mode (disable SSH remote mode).",
+    )
+    parser.add_argument(
+        "--compose",
+        action="store_true",
+        help="Force docker compose mode (inspect via api container).",
+    )
+    parser.add_argument(
+        "--compose-file",
+        default=COMPOSE_FILE_DEFAULT,
+        help="Docker compose file path for compose mode.",
+    )
+    parser.add_argument(
+        "--compose-env-file",
+        default=COMPOSE_ENV_FILE_DEFAULT,
+        help="Docker compose env file path for compose mode.",
+    )
+    parser.add_argument(
+        "--compose-api-service",
+        default=COMPOSE_API_SERVICE_DEFAULT,
+        help="Docker compose service name where DATABASE_URL is configured.",
     )
     parser.add_argument("--remote-host", default=REMOTE_HOST_DEFAULT, help="SSH host for remote inspect.")
     parser.add_argument("--remote-user", default=REMOTE_USER_DEFAULT, help="SSH user for remote inspect.")
@@ -232,6 +255,14 @@ def quote_table(name: str, sc: str | None) -> str:
     return prep.quote_identifier(name)
 
 result = {"ok": True, "tables": []}
+
+def to_jsonable(value):
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
 for name in tables:
     cols = inspector.get_columns(name, schema=schema)
     serial_cols = []
@@ -249,11 +280,14 @@ for name in tables:
         stmt = text(f"SELECT * FROM {quote_table(name, schema)} LIMIT :limit")
         with engine.connect() as conn:
             rows = conn.execute(stmt, {"limit": limit}).mappings().all()
-            rec["rows"] = [dict(r) for r in rows]
+            rec["rows"] = [
+                {key: to_jsonable(value) for key, value in dict(r).items()}
+                for r in rows
+            ]
     result["tables"].append(rec)
 
 print(json.dumps(result, ensure_ascii=False))
-'''
+    '''
     b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
 
     remote_code = f"import os,base64;exec(base64.b64decode('{b64}'))"
@@ -306,6 +340,136 @@ print(json.dumps(result, ensure_ascii=False))
     if payload.get("ok") is not True:
         raise RuntimeError(str(payload.get("error", "REMOTE_ERROR")))
     return payload
+
+
+def _run_embedded_collect_via_command(
+    base_command: list[str],
+    args: argparse.Namespace,
+    *,
+    error_prefix: str,
+) -> dict[str, Any]:
+    """EN: Run embedded SQLAlchemy collector script through provided command and parse JSON.
+    RU: Запустить встроенный SQLAlchemy-коллектор через переданную команду и разобрать JSON.
+    """
+
+    script = r'''
+import json
+import os
+from sqlalchemy import create_engine, inspect, text
+
+schema = os.environ.get("INSPECT_SCHEMA") or None
+table = os.environ.get("INSPECT_TABLE") or None
+limit = int(os.environ.get("INSPECT_LIMIT", "50"))
+no_rows = os.environ.get("INSPECT_NO_ROWS", "0") == "1"
+
+db_url = os.environ.get("DATABASE_URL", "").strip()
+if not db_url.startswith("postgresql"):
+    print(json.dumps({"ok": False, "error": f"BAD_DATABASE_URL:{db_url}"}))
+    raise SystemExit(0)
+
+engine = create_engine(db_url, future=True)
+inspector = inspect(engine)
+tables = inspector.get_table_names(schema=schema)
+if table:
+    if table not in tables:
+        print(json.dumps({"ok": False, "error": f"TABLE_NOT_FOUND:{table}"}))
+        raise SystemExit(0)
+    tables = [table]
+
+def quote_table(name: str, sc: str | None) -> str:
+    prep = engine.dialect.identifier_preparer
+    if sc:
+        return f"{prep.quote_identifier(sc)}.{prep.quote_identifier(name)}"
+    return prep.quote_identifier(name)
+
+result = {"ok": True, "tables": []}
+
+def to_jsonable(value):
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+for name in tables:
+    cols = inspector.get_columns(name, schema=schema)
+    serial_cols = []
+    for col in cols:
+        serial_cols.append(
+            {
+                "name": col.get("name"),
+                "type": str(col.get("type")),
+                "nullable": bool(col.get("nullable", True)),
+                "default": str(col.get("default")),
+            }
+        )
+    rec = {"name": name, "columns": serial_cols, "rows": []}
+    if not no_rows:
+        stmt = text(f"SELECT * FROM {quote_table(name, schema)} LIMIT :limit")
+        with engine.connect() as conn:
+            rows = conn.execute(stmt, {"limit": limit}).mappings().all()
+            rec["rows"] = [
+                {key: to_jsonable(value) for key, value in dict(r).items()}
+                for r in rows
+            ]
+    result["tables"].append(rec)
+
+print(json.dumps(result, ensure_ascii=False))
+    '''
+
+    b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    remote_code = f"import base64;exec(base64.b64decode('{b64}'))"
+    command = [
+        *base_command,
+        "python",
+        "-c",
+        remote_code,
+    ]
+    env = os.environ.copy()
+    env["INSPECT_SCHEMA"] = args.schema or ""
+    env["INSPECT_TABLE"] = args.table or ""
+    env["INSPECT_LIMIT"] = str(int(args.limit))
+    env["INSPECT_NO_ROWS"] = "1" if args.no_rows else "0"
+
+    proc = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout).strip() or f"{error_prefix}: execution failed")
+
+    out = (proc.stdout or "").strip()
+    if not out:
+        raise RuntimeError(f"{error_prefix}: empty output")
+
+    try:
+        payload = json.loads(out)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{error_prefix}: non-JSON output: {out[:500]}") from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{error_prefix}: unexpected payload type {type(payload)}")
+    if payload.get("ok") is not True:
+        raise RuntimeError(str(payload.get("error", f"{error_prefix}: collector error")))
+    return payload
+
+
+def _compose_collect(args: argparse.Namespace) -> dict[str, Any]:
+    """EN: Collect DB structure/rows via docker compose api service (fresh runtime DB config).
+    RU: Собрать структуру/строки БД через сервис api в docker compose (актуальная runtime-конфигурация БД).
+    """
+
+    compose_file = str((PROJECT_ROOT / args.compose_file).resolve())
+    compose_env_file = str((PROJECT_ROOT / args.compose_env_file).resolve())
+    base_command = [
+        "docker",
+        "compose",
+        "-f",
+        compose_file,
+        "--env-file",
+        compose_env_file,
+        "exec",
+        "-T",
+        args.compose_api_service,
+    ]
+    return _run_embedded_collect_via_command(base_command, args, error_prefix="COMPOSE_INSPECT_ERROR")
 
 
 def _run_local_sqlalchemy(args: argparse.Namespace, db_url: str) -> int:
@@ -429,6 +593,58 @@ def _run_remote(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_compose(args: argparse.Namespace) -> int:
+    """EN: Run inspection via docker compose api container and render output locally.
+    RU: Выполнить инспекцию через контейнер api в docker compose и отрисовать вывод локально.
+    """
+
+    compose_file = str((PROJECT_ROOT / args.compose_file).resolve())
+    compose_env_file = str((PROJECT_ROOT / args.compose_env_file).resolve())
+    console.print(
+        Panel.fit(
+            f"[bold]Compose mode:[/bold] service={args.compose_api_service}\n"
+            f"compose_file={compose_file}\n"
+            f"env_file={compose_env_file}",
+            border_style="blue",
+        )
+    )
+    try:
+        payload = _compose_collect(args)
+    except Exception as exc:
+        console.print(f"[bold red]ERROR:[/bold red] Compose inspect failed: {exc}")
+        return 1
+
+    tables = payload.get("tables", [])
+    if not tables:
+        console.print("[yellow]No tables found.[/yellow]")
+        return 0
+
+    for table in tables:
+        table_name = str(table.get("name", "unknown"))
+        columns = table.get("columns", []) if isinstance(table.get("columns"), list) else []
+        rows = table.get("rows", []) if isinstance(table.get("rows"), list) else []
+
+        console.rule(f"[bold cyan]{table_name}[/bold cyan]")
+        _render_columns_meta(table_name, columns)
+
+        if args.no_rows:
+            continue
+
+        if args.raw:
+            if not rows:
+                console.print(f"[dim]{table_name}: (0 rows)[/dim]")
+            else:
+                for row in rows:
+                    console.print(row)
+                console.print(f"[dim]({len(rows)} rows)[/dim]")
+            continue
+
+        col_names = [str(col.get("name")) for col in columns]
+        _render_rows_table(table_name, rows, col_names)
+
+    return 0
+
+
 def main() -> int:
     """EN: CLI entry point for read-only DB inspection.
     RU: Точка входа CLI для read-only инспекции БД.
@@ -438,15 +654,21 @@ def main() -> int:
         console.print("[bold red]ERROR:[/bold red] --limit must be > 0")
         return 1
 
-    db_url = _resolve_database_url(args.database_url)
-
-    # EN: If local URL is provided (or --local set), use direct SQLAlchemy mode.
-    # RU: Если задан локальный URL (или --local), использовать прямой режим SQLAlchemy.
-    if args.local or db_url:
+    # EN: Local SQLAlchemy mode is now explicit only: --local or --database-url.
+    # RU: Локальный режим SQLAlchemy теперь только явный: --local или --database-url.
+    if args.local or args.database_url:
+        db_url = _resolve_database_url(args.database_url)
         return _run_local_sqlalchemy(args, db_url)
 
-    # EN: Default path: remote VPS inspection over SSH, no DB credentials in client.
-    # RU: Путь по умолчанию: удалённая инспекция VPS по SSH, без DB-учётки в клиенте.
+    # EN: Default path tries docker compose first to always read fresh runtime DB state.
+    # RU: Путь по умолчанию сначала пробует docker compose, чтобы читать актуальное состояние runtime БД.
+    if args.compose or (PROJECT_ROOT / args.compose_file).exists():
+        compose_rc = _run_compose(args)
+        if compose_rc == 0:
+            return 0
+
+    # EN: Fallback path: remote VPS inspection over SSH, no DB credentials in client.
+    # RU: Резервный путь: удалённая инспекция VPS по SSH, без DB-учётки в клиенте.
     return _run_remote(args)
 
 

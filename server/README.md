@@ -73,3 +73,19 @@ curl -X POST https://<PUBLIC_DOMAIN>/auth/login -H "Content-Type: application/js
   - Cloudflare Tunnel без открытых портов (вариант B).
 - Не коммитьте `server/.env`.
 - Обязательно используйте сильный `POSTGRES_PASSWORD`.
+
+## Password Storage (EN/RU)
+
+EN:
+- `users` stores only `password_hash` (bcrypt via passlib). Plaintext passwords are never stored.
+- Input API contract stays the same: request payload uses `{ "email", "psw" }`.
+- `BCRYPT_ROUNDS` controls bcrypt cost (default `12`).
+- When `BCRYPT_ROUNDS` is increased, hashes are upgraded automatically on successful login (`rehash on login`).
+- Optional `PASSWORD_PEPPER` is supported via environment and is not stored in database.
+
+RU:
+- В `users` хранится только `password_hash` (bcrypt через passlib). Plaintext-пароли не сохраняются.
+- Входной API-контракт не меняется: payload остаётся `{ "email", "psw" }`.
+- `BCRYPT_ROUNDS` управляет cost bcrypt (по умолчанию `12`).
+- При увеличении `BCRYPT_ROUNDS` хеш обновляется автоматически при успешном логине (`rehash on login`).
+- Опциональный `PASSWORD_PEPPER` задаётся через окружение и не хранится в БД.

@@ -11,12 +11,14 @@ from server.models.balance import Balance
 from server.models.profile_game import ProfileGame
 from server.models.profile_user import ProfileUser
 from server.models.user import User
+from server.security.passwords import hash_password, needs_rehash, verify_password
 
 
 def register_user(email: str, psw: str) -> dict:
-    """EN: Register user and bootstrap related profile/balance rows.
-    RU: Зарегистрировать пользователя и создать связанные профильные/балансовые записи.
+    """EN: Register user, persist password hash, and bootstrap related rows.
+    RU: Зарегистрировать пользователя, сохранить хеш пароля и создать связанные строки.
     """
+
     email_value = (email or "").strip()
     psw_value = (psw or "").strip()
     if not email_value or not psw_value:
@@ -28,7 +30,7 @@ def register_user(email: str, psw: str) -> dict:
             if exists is not None:
                 return {"ok": False, "error": "EMAIL_EXISTS"}
 
-            user = User(email=email_value, psw=psw_value)
+            user = User(email=email_value, password_hash=hash_password(psw_value))
             session.add(user)
             session.flush()
 
@@ -42,9 +44,10 @@ def register_user(email: str, psw: str) -> dict:
 
 
 def login_user(email: str, psw: str) -> dict:
-    """EN: Validate login against DB users table.
-    RU: Проверить вход по таблице пользователей в БД.
+    """EN: Validate login against stored hash and upgrade hash cost when needed.
+    RU: Проверить вход по сохранённому хешу и обновить cost хеша при необходимости.
     """
+
     email_value = (email or "").strip()
     psw_value = (psw or "").strip()
     if not email_value or not psw_value:
@@ -55,8 +58,13 @@ def login_user(email: str, psw: str) -> dict:
             user = session.scalar(select(User).where(User.email == email_value))
             if user is None:
                 return {"ok": False, "error": "NOT_FOUND"}
-            if user.psw != psw_value:
+            if not verify_password(psw_value, user.password_hash):
                 return {"ok": False, "error": "BAD_PASSWORD"}
+
+            if needs_rehash(user.password_hash):
+                user.password_hash = hash_password(psw_value)
+                session.flush()
+
             return {"ok": True, "user_id": int(user.id)}
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
@@ -66,6 +74,7 @@ def get_user_id_by_email(email: str) -> dict:
     """EN: Resolve user id by email for legacy cache fallback paths.
     RU: Найти user id по email для fallback-путей со старым кешем.
     """
+
     email_value = (email or "").strip()
     if not email_value:
         return {"ok": False, "error": "EMPTY_FIELDS"}
@@ -83,6 +92,7 @@ def delete_user(user_id: int) -> dict:
     """EN: Delete user row; related rows are removed by DB cascade.
     RU: Удалить пользователя; связанные записи удаляются каскадом БД.
     """
+
     try:
         user_id_value = int(user_id)
     except Exception:
@@ -97,4 +107,3 @@ def delete_user(user_id: int) -> dict:
             return {"ok": True}
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
-
