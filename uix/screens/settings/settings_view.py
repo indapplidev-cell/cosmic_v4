@@ -4,12 +4,12 @@ RU: Представление экрана настроек.
 
 from pathlib import Path
 
+import requests
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_session import UserSession
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.properties import BooleanProperty, StringProperty
-from kivy.resources import resource_find
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
@@ -19,6 +19,7 @@ from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
 from manager.auth.account_delete import confirm_delete_account
+from manager.config import API_BASE_URL
 from manager.docs.doc_locale import get_lang_code
 from manager.game_control.hud_layout_store import get_swapped, toggle_swapped
 from manager.lang.lang_manager import t
@@ -30,19 +31,14 @@ from .settings_layout import SETTINGS_DEBUG_IDS, apply_settings_layout
 from .settings_vm import SettingsScreenVM
 
 KV_PATH = Path(__file__).with_name("settings.kv")
-RULE_DOC_REL_PATHS = {
-    "ru": "server/doc/rule_ru.md",
-    "en": "server/doc/rule_en.md",
-}
-POLICY_DOC_REL_PATHS = {
-    "ru": "server/doc/policy_ru.md",
-    "en": "server/doc/policy_en.md",
-}
+DOC_KEY_RULES = "rules"
+DOC_KEY_POLICY = "policy"
+DOC_KEY_ABOUT = "about"
 
 
 class ToggleIconButton(MDIconButton):
     """EN: Icon button that toggles between two icon names on every release.
-    RU: Кнопка-иконка, переключающаяся между двумя именами иконок при каждом отпускании.
+    RU: Кнопка-иконка, переключающаяся между двумя именами иконок при отпускании.
     """
 
     toggled = BooleanProperty(False)
@@ -51,14 +47,14 @@ class ToggleIconButton(MDIconButton):
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Initialize visible icon from current toggle state after KV binding.
-        RU: Инициализировать отображаемую иконку из текущего состояния после привязки KV.
+        RU: Инициализировать отображаемую иконку из текущего состояния после KV.
         """
         super().on_kv_post(base_widget)
         self._apply_icon()
 
     def on_release(self, *args) -> None:
         """EN: Toggle local icon state only; external callbacks may be added later.
-        RU: Переключить только локальное состояние иконки; внешние колбэки добавят позже.
+        RU: Переключить только локальное состояние иконки; внешние callback можно добавить позже.
         """
         self.toggled = not self.toggled
         self._apply_icon()
@@ -80,14 +76,14 @@ class MirrorToggleIconButton(MDIconButton):
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Enforce the fixed icon used for keyboard-side placeholder toggle.
-        RU: Зафиксировать иконку для заглушки переключения стороны управления.
+        RU: Зафиксировать иконку заглушки для переключения стороны управления.
         """
         super().on_kv_post(base_widget)
         self.icon = "gamepad-square-outline"
 
     def on_release(self, *args) -> None:
         """EN: Dispatch release event; mirrored state is synced by settings view handler.
-        RU: Сгенерировать событие отпускания; состояние зеркала синхронизирует обработчик settings view.
+        RU: Пробросить событие release; зеркальность синхронизируется в settings view.
         """
         return super().on_release(*args)
 
@@ -121,7 +117,7 @@ class SettingsScreenView(MDScreen):
 
     def on_pre_enter(self, *args) -> None:
         """EN: Update login button text based on auth state.
-        RU: Обновить текст кнопки входа по состоянию авторизации.
+        RU: Обновить текст/логин в верхней панели по состоянию авторизации.
         """
         super().on_pre_enter(*args)
         no_data = t("common.no_data")
@@ -147,7 +143,7 @@ class SettingsScreenView(MDScreen):
 
     def toggle_hud_layout(self) -> None:
         """EN: Toggle persisted HUD touch-layout swap flag and refresh gamepad icon state.
-        RU: Переключить сохранённый флаг перестановки тач-раскладки HUD и обновить иконку gamepad.
+        RU: Переключить флаг перестановки тач-раскладки HUD и обновить иконку gamepad.
         """
         new_val = toggle_swapped()
         gamepad_icon = self.ids.get("middle_card_keyboard_side_icon")
@@ -155,35 +151,49 @@ class SettingsScreenView(MDScreen):
             gamepad_icon.mirrored = bool(new_val)
 
     def open_doc_popup(self, text: str) -> None:
-        """EN: Open a simple document popup with the passed label text.
-        RU: Открыть простой popup документа с переданным текстом лейбла.
-        """
-        content = BoxLayout(orientation="vertical", spacing=10, padding=10)
-        content.add_widget(Label(text=text))
-        ok_btn = Button(text=t("common.ok"), size_hint_y=None, height=dp(40))
-        content.add_widget(ok_btn)
+        """EN: Open "About" document loaded from backend API.
+        RU: Открыть документ "О нас", загруженный из backend API.
 
-        popup = Popup(title="", content=content, size_hint=(0.8, 0.4), auto_dismiss=False)
-        ok_btn.bind(on_release=lambda _instance: popup.dismiss())
-        popup.open()
-
-    def _read_text_doc(self, rel_path: str, missing_message: str) -> str:
-        """EN: Read a text document by relative path with Android-safe fallback.
-        RU: Прочитать текстовый документ по относительному пути с Android-safe fallback.
+        EN: `text` argument is kept only for KV backward compatibility.
+        RU: Аргумент `text` сохранён только для обратной совместимости с KV.
         """
-        doc_path = resource_find(rel_path)
-        if not doc_path:
-            doc_path = str(Path(__file__).resolve().parents[3] / rel_path)
+        _ = text
+        self.open_text_doc(
+            t("settings.docs.about"),
+            DOC_KEY_ABOUT,
+            "File not found.",
+        )
+
+    def _read_text_doc(self, doc_key: str, missing_message: str) -> str:
+        """EN: Read localized markdown document text from backend API.
+        RU: Считать локализованный markdown-текст документа из backend API.
+
+        EN: Network timeout is limited to keep UI responsive.
+        RU: Таймаут сети ограничен, чтобы не блокировать UI надолго.
+        """
         try:
-            return Path(doc_path).read_text(encoding="utf-8")
+            response = requests.get(
+                f"{API_BASE_URL}/docs/{doc_key}",
+                params={"lang": get_lang_code()},
+                timeout=8,
+            )
+            if response.status_code != 200:
+                return missing_message
+            payload = response.json()
+            if not isinstance(payload, dict) or not payload.get("ok"):
+                return missing_message
+            content = payload.get("content")
+            if not isinstance(content, str) or not content.strip():
+                return missing_message
+            return content
         except Exception:
             return missing_message
 
-    def open_text_doc(self, title: str, rel_path: str, missing_message: str) -> None:
-        """EN: Open a scrollable popup with text loaded from file.
-        RU: Открыть прокручиваемый popup с текстом, загруженным из файла.
+    def open_text_doc(self, title: str, doc_key: str, missing_message: str) -> None:
+        """EN: Open a scrollable popup with text fetched from backend API.
+        RU: Открыть прокручиваемый popup с текстом, полученным из backend API.
         """
-        text = self._read_text_doc(rel_path, missing_message)
+        text = self._read_text_doc(doc_key, missing_message)
 
         content = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(10))
         scroller = ScrollView(do_scroll_x=False, do_scroll_y=True, size_hint=(1, 1))
@@ -212,32 +222,29 @@ class SettingsScreenView(MDScreen):
         popup.open()
 
     def open_privacy_policy(self) -> None:
-        """EN: Open privacy policy for the currently selected app language.
-        RU: Open privacy policy according to current app language.
+        """EN: Open localized policy document fetched from backend API.
+        RU: Открыть локализованный документ политики из backend API.
         """
-        code = get_lang_code()
-        rel_path = POLICY_DOC_REL_PATHS.get(code, POLICY_DOC_REL_PATHS["ru"])
-        missing_message = "File not found."
         self.open_text_doc(
             t("settings.docs.policy"),
-            rel_path,
-            missing_message,
+            DOC_KEY_POLICY,
+            "File not found.",
         )
 
     def open_game_rules(self) -> None:
-        """EN: Open game rules for the currently selected app language.
-        RU: Open game rules according to current app language.
+        """EN: Open localized rules document fetched from backend API.
+        RU: Открыть локализованный документ правил из backend API.
         """
-        code = get_lang_code()
-        rel_path = RULE_DOC_REL_PATHS.get(code, RULE_DOC_REL_PATHS["ru"])
-        missing_message = "File not found."
         self.open_text_doc(
             t("settings.docs.rules"),
-            rel_path,
-            missing_message,
+            DOC_KEY_RULES,
+            "File not found.",
         )
 
     def on_delete_account_pressed(self) -> None:
+        """EN: Ask for delete-account confirmation and delegate to controller on success.
+        RU: Попросить подтверждение удаления аккаунта и делегировать контроллеру при успехе.
+        """
         confirm_delete_account(
             on_deleted=lambda: self._controller.logout(),
             on_cancel=lambda: None,
@@ -245,7 +252,7 @@ class SettingsScreenView(MDScreen):
 
     def configure(self, vm: SettingsScreenVM, controller: SettingsScreenController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать колбэки.
+        RU: Настроить тексты и привязать callback-и.
         """
         self._controller = controller
         self.ids.left_text.text = vm.title

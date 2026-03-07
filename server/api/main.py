@@ -31,6 +31,7 @@ from server.services.profile_service import (
 )
 from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
+from server.services.docs_service import get_doc_content
 
 
 app = FastAPI(title="Cosmic API")
@@ -211,3 +212,12 @@ def rating_top(limit: int = Query(default=100, ge=1, le=100)) -> dict:
 
     items = get_top_ratings(limit=limit)
     return {"ok": True, "items": items}
+
+
+@app.get("/docs/{doc_key}")
+def docs_get(doc_key: str, lang: str = Query(default="ru", min_length=2, max_length=2)) -> dict:
+    """EN: Return localized markdown document content from server storage.
+    RU: Вернуть локализованное содержимое markdown-документа из серверного хранилища.
+    """
+
+    return get_doc_content(doc_key=doc_key, lang=lang)
