@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.api.schemas import (
@@ -26,9 +26,50 @@ from server.services.profile_service import (
     update_profile_user,
 )
 from server.services.rating_service import get_top_ratings
+from server.services.db_schema_guard import get_db_schema_status
 
 
 app = FastAPI(title="Cosmic API")
+
+
+@app.middleware("http")
+async def ensure_db_schema_is_current(request: Request, call_next):
+    """EN: Block non-diagnostic requests when DB schema is behind Alembic head.
+    RU: Блокировать недиагностические запросы, если схема БД отстаёт от Alembic head.
+    """
+
+    path = request.url.path
+    if path in {"/healthz", "/meta/compat"}:
+        return await call_next(request)
+
+    status = get_db_schema_status()
+    if not status.get("ok"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "error": "DB_SCHEMA_CHECK_FAILED",
+                "details": {
+                    "current_revision": status.get("current_revision"),
+                    "head_revision": status.get("head_revision"),
+                },
+            },
+        )
+
+    if not status.get("is_current"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "error": "DB_SCHEMA_OUTDATED",
+                "details": {
+                    "current_revision": status.get("current_revision"),
+                    "head_revision": status.get("head_revision"),
+                },
+            },
+        )
+
+    return await call_next(request)
 
 
 def _error(error_code: str, status_code: int = 400) -> JSONResponse:
@@ -60,6 +101,16 @@ def healthz() -> dict:
     """
 
     return {"ok": True}
+
+
+@app.get("/meta/compat")
+def meta_compat() -> dict:
+    """EN: Return runtime DB schema compatibility status for client-side readiness checks.
+    RU: Вернуть runtime-статус совместимости схемы БД для клиентской проверки готовности.
+    """
+
+    status = get_db_schema_status(force_refresh=True)
+    return {"ok": bool(status.get("ok")), "db": status}
 
 
 @app.post("/auth/register", response_model=None)

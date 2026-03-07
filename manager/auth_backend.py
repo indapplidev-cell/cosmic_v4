@@ -9,13 +9,14 @@ from typing import Tuple
 from manager import api_client
 
 _HEALTHCHECK_DONE = False
+_BACKEND_READY = False
 
 
 def _ensure_healthcheck_once() -> None:
     """EN: Run one lightweight API health probe and log result.
     RU: Выполнить один легкий health-пинг API и залогировать результат.
     """
-    global _HEALTHCHECK_DONE
+    global _HEALTHCHECK_DONE, _BACKEND_READY
     if _HEALTHCHECK_DONE:
         return
     _HEALTHCHECK_DONE = True
@@ -24,6 +25,31 @@ def _ensure_healthcheck_once() -> None:
         print("[API] /healthz OK", flush=True)
     else:
         print(f"[API] /healthz FAILED: {payload}", flush=True)
+        _BACKEND_READY = False
+        return
+
+    ok_meta, meta_payload = api_client.compatibility(timeout=3)
+    db_ok = bool(
+        ok_meta
+        and isinstance(meta_payload, dict)
+        and meta_payload.get("ok")
+        and isinstance(meta_payload.get("db"), dict)
+        and bool(meta_payload["db"].get("is_current"))
+    )
+    if db_ok:
+        print("[API] /meta/compat OK (DB current)", flush=True)
+    else:
+        print(f"[API] /meta/compat FAILED: {meta_payload}", flush=True)
+    _BACKEND_READY = db_ok
+
+
+def _backend_ready() -> bool:
+    """EN: Ensure backend checks are performed and return readiness flag.
+    RU: Гарантировать выполнение backend-проверок и вернуть флаг готовности.
+    """
+
+    _ensure_healthcheck_once()
+    return _BACKEND_READY
 
 
 def _error_code(payload: object, default: str) -> str:
@@ -39,7 +65,8 @@ def register(email: str, psw: str) -> Tuple[bool, str | int]:
     """EN: Register and return (ok, user_id|error_code).
     RU: Регистрация с ответом в формате (ok, user_id|код_ошибки).
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False, "DB_SCHEMA_OUTDATED"
     ok, payload = api_client.request("POST", "/auth/register", json={"email": email, "psw": psw})
     if not ok:
         return False, _error_code(payload, "NETWORK")
@@ -52,7 +79,8 @@ def login(email: str, psw: str) -> Tuple[bool, str | int]:
     """EN: Login and return (ok, user_id|error_code).
     RU: Вход с ответом в формате (ok, user_id|код_ошибки).
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False, "DB_SCHEMA_OUTDATED"
     ok, payload = api_client.request("POST", "/auth/login", json={"email": email, "psw": psw})
     if not ok:
         return False, _error_code(payload, "NETWORK")
@@ -75,7 +103,8 @@ def delete_account(user_id: int) -> bool:
     """EN: Delete account by user id.
     RU: Удалить аккаунт по user_id.
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False
     ok, payload = api_client.request("POST", "/auth/delete", json={"user_id": int(user_id)})
     if not ok:
         return False
@@ -92,7 +121,8 @@ def save_profile_user(
     """EN: Persist provided profile-user fields.
     RU: Сохранить переданные поля profile_user.
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False
     body = {"user_id": int(user_id)}
     if login is not None:
         body["login"] = login
@@ -108,7 +138,8 @@ def delete_profile_user_fields(user_id: int, fields: list[str]) -> bool:
     """EN: Reset selected profile-user fields to defaults.
     RU: Сбросить выбранные поля profile_user к значениям по умолчанию.
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False
     ok, payload = api_client.request(
         "POST",
         "/profile/user/clear",
@@ -127,7 +158,8 @@ def save_profile_game(
     """EN: Persist provided profile-game fields.
     RU: Сохранить переданные поля profile_game.
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False
     body = {"user_id": int(user_id)}
     if record is not None:
         body["record"] = int(record)
@@ -143,7 +175,8 @@ def delete_profile_game_fields(user_id: int, fields: list[str]) -> bool:
     """EN: Reset selected profile-game fields to defaults.
     RU: Сбросить выбранные поля profile_game к значениям по умолчанию.
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return False
     ok, payload = api_client.request(
         "POST",
         "/profile/game/clear",
@@ -156,7 +189,8 @@ def get_top_ratings(limit: int = 100) -> list[dict]:
     """EN: Return leaderboard rows sorted by rating/record.
     RU: Вернуть строки рейтинга, отсортированные по rating/record.
     """
-    _ensure_healthcheck_once()
+    if not _backend_ready():
+        return []
     ok, payload = api_client.request("GET", "/rating/top", params={"limit": int(limit)})
     if not ok or not isinstance(payload, list):
         return []

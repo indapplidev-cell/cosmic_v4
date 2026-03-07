@@ -56,3 +56,16 @@ def healthz(timeout: int = 3) -> Tuple[bool, dict]:
     if isinstance(payload, dict):
         return False, payload
     return False, {"error": "NETWORK"}
+
+
+def compatibility(timeout: int = 3) -> Tuple[bool, dict]:
+    """EN: Query backend compatibility endpoint with DB schema status details.
+    RU: Запросить endpoint совместимости backend со статусом схемы БД.
+    """
+
+    ok, payload = request("GET", "/meta/compat", timeout=timeout)
+    if ok and isinstance(payload, dict):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"error": "NETWORK"}
