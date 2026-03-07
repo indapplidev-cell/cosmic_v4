@@ -1,4 +1,4 @@
-﻿"""EN: Client bridge to backend HTTP API.
+"""EN: Client bridge to backend HTTP API.
 RU: Клиентский мост к backend HTTP API.
 """
 
@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import Tuple
 
 from manager import api_client
+from manager.session_manager import sync_user_snapshot_from_payload
+from manager.user_snapshot_store import UserSnapshotStore
 
 _HEALTHCHECK_DONE = False
 _BACKEND_READY = False
@@ -65,12 +67,14 @@ def register(email: str, psw: str) -> Tuple[bool, str | int]:
     """EN: Register and return (ok, user_id|error_code).
     RU: Регистрация с ответом в формате (ok, user_id|код_ошибки).
     """
-    if not _backend_ready():
-        return False, "DB_SCHEMA_OUTDATED"
+    # EN: Do not hard-block registration by cached readiness probe result.
+    # RU: Не блокировать регистрацию жёстко по кэшированному результату readiness-проверки.
+    _ensure_healthcheck_once()
     ok, payload = api_client.request("POST", "/auth/register", json={"email": email, "psw": psw})
     if not ok:
         return False, _error_code(payload, "NETWORK")
     if isinstance(payload, dict) and payload.get("ok"):
+        sync_user_snapshot_from_payload(payload)
         return True, int(payload["user_id"])
     return False, _error_code(payload, "API_ERROR")
 
@@ -79,12 +83,14 @@ def login(email: str, psw: str) -> Tuple[bool, str | int]:
     """EN: Login and return (ok, user_id|error_code).
     RU: Вход с ответом в формате (ok, user_id|код_ошибки).
     """
-    if not _backend_ready():
-        return False, "DB_SCHEMA_OUTDATED"
+    # EN: Do not hard-block login by cached readiness probe result.
+    # RU: Не блокировать вход жёстко по кэшированному результату readiness-проверки.
+    _ensure_healthcheck_once()
     ok, payload = api_client.request("POST", "/auth/login", json={"email": email, "psw": psw})
     if not ok:
         return False, _error_code(payload, "NETWORK")
     if isinstance(payload, dict) and payload.get("ok"):
+        sync_user_snapshot_from_payload(payload)
         return True, int(payload["user_id"])
     return False, _error_code(payload, "API_ERROR")
 
@@ -93,10 +99,19 @@ def resolve_user_id(email: str) -> Tuple[bool, str | int]:
     """EN: Resolve user id by email for legacy cache fallback.
     RU: Получить user_id по email для fallback со старым кешем.
     """
-    # EN: API contract currently has no dedicated endpoint for this lookup.
-    # RU: В текущем API-контракте нет отдельного эндпоинта для этого поиска.
-    _ = email
-    return False, "NOT_SUPPORTED"
+    _ensure_healthcheck_once()
+    ok, payload = api_client.auth_exists(email)
+    if not ok:
+        return False, _error_code(payload, "NETWORK")
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return False, _error_code(payload, "API_ERROR")
+    user = payload.get("user") if isinstance(payload, dict) else None
+    if not isinstance(user, dict):
+        return False, "API_ERROR"
+    try:
+        return True, int(user["user_id"])
+    except Exception:
+        return False, "API_ERROR"
 
 
 def delete_account(user_id: int) -> bool:
@@ -168,7 +183,10 @@ def save_profile_game(
     if balance is not None:
         body["balance"] = int(balance)
     ok, payload = api_client.request("POST", "/profile/game/update", json=body)
-    return bool(ok and isinstance(payload, dict) and payload.get("ok"))
+    is_ok = bool(ok and isinstance(payload, dict) and payload.get("ok"))
+    if is_ok:
+        UserSnapshotStore().patch_game(record=record, rating=rating, balance=balance)
+    return is_ok
 
 
 def delete_profile_game_fields(user_id: int, fields: list[str]) -> bool:

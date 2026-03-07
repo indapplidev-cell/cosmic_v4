@@ -69,3 +69,37 @@ def compatibility(timeout: int = 3) -> Tuple[bool, dict]:
     if isinstance(payload, dict):
         return False, payload
     return False, {"error": "NETWORK"}
+
+
+def auth_me(user_id: int, timeout: int = 8) -> Tuple[bool, dict]:
+    """EN: Request current user snapshot by user_id for startup cache sync.
+    RU: Запросить snapshot текущего пользователя по user_id для синхронизации кэша при старте.
+    """
+
+    ok, payload = request("GET", "/auth/me", timeout=timeout, params={"user_id": int(user_id)})
+    if ok and isinstance(payload, dict):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"error": "NETWORK"}
+
+
+def get_me(user_id: int, timeout: int = 8) -> Tuple[bool, dict]:
+    """EN: Compatibility alias for auth_me user snapshot request.
+    RU: Совместимый алиас для запроса snapshot пользователя через auth_me.
+    """
+
+    return auth_me(user_id=user_id, timeout=timeout)
+
+
+def auth_exists(email: str, timeout: int = 8) -> Tuple[bool, dict]:
+    """EN: Resolve user snapshot by email fallback when user_id is absent in cache.
+    RU: Найти snapshot пользователя по fallback-email, если в кэше отсутствует user_id.
+    """
+
+    ok, payload = request("GET", "/auth/exists", timeout=timeout, params={"email": email})
+    if ok and isinstance(payload, dict):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"error": "NETWORK"}

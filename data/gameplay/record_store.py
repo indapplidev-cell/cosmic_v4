@@ -71,3 +71,22 @@ class RecordStore:
             json.dump(payload, fh, ensure_ascii=False)
         os.replace(tmp_file, self._record_file)
         return current
+
+    def set_best_score(self, value: int) -> int:
+        """
+        Force-save best score and return persisted value.
+
+        EN: Used to synchronize local fallback storage with server snapshot.
+        RU: Используется для синхронизации локального fallback-хранилища с серверным snapshot.
+        """
+
+        score = int(value)
+        if score < 0:
+            score = 0
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+        tmp_file = self._record_file.with_suffix(".tmp")
+        payload = {"best_score": score}
+        with tmp_file.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        os.replace(tmp_file, self._record_file)
+        return score
