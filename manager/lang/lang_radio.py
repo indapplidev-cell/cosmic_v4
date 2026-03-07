@@ -5,7 +5,11 @@ from kivy.utils import platform as kivy_platform
 from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
 
-from manager.lang.hint_text_refresh import refresh_kivy_textinput_hint, refresh_md_textfield_hint
+from manager.lang.hint_text_refresh import (
+    refresh_all_hint_texts,
+    refresh_kivy_textinput_hint,
+    refresh_md_textfield_hint,
+)
 from manager.lang.lang_manager import lang, t
 from uix.screens import routes
 from uix.screens.common.button_text_style import caps
@@ -139,6 +143,7 @@ def _refresh_all_screens(old_no_data: str) -> None:
             login.ids.login_btn_text.text = caps(t("login.btn_login"))
         if "register_btn_text" in login.ids:
             login.ids.register_btn_text.text = caps(t("login.btn_register"))
+        _force_refresh_screen_hints(login)
 
     # --- REGISTER ---
     if register and hasattr(register, "ids"):
@@ -160,6 +165,7 @@ def _refresh_all_screens(old_no_data: str) -> None:
             register.ids.create_btn_text.text = caps(t("register.btn_create"))
         if "to_login_btn_text" in register.ids:
             register.ids.to_login_btn_text.text = caps(t("register.btn_to_login"))
+        _force_refresh_screen_hints(register)
 
     # --- PROFILE ---
     if profile and hasattr(profile, "ids"):
@@ -233,6 +239,7 @@ def _refresh_all_screens(old_no_data: str) -> None:
                 ids.profile_change_right.text = t("common.no_data")
 
         _refresh_banner_slot(profile_change)
+        _force_refresh_screen_hints(profile_change)
 
     # --- GAME ---
     if game and hasattr(game, "ids"):
@@ -252,28 +259,10 @@ def _refresh_all_screens(old_no_data: str) -> None:
 
         _refresh_banner_slot(game)
 
-    # --- FORCE HINT REFRESH FOR EMPTY FIELDS (focus-walk) ---
+    # --- FORCE HINT REFRESH VIA FOCUS-WALK ---
     try:
         screens = [start, settings, profile, profile_change, game, login, register]
-        fields = []
-        for scr in screens:
-            if not scr:
-                continue
-            for w in scr.walk(restrict=True):
-                if w.__class__.__name__ == "MDTextField":
-                    # трогаем только пустые и не сфокусированные
-                    try:
-                        if (getattr(w, "text", "") or "") != "":
-                            continue
-                        if getattr(w, "focus", False):
-                            continue
-                    except Exception:
-                        pass
-                    fields.append(w)
-
-        step = 0.02
-        for i, tf in enumerate(fields):
-            _redraw_textfield(tf, delay=i * step)
+        _force_focus_walk_mdtextfields(screens)
     except Exception:
         pass
 
@@ -301,6 +290,13 @@ def _sync_hint_to_textinput(textfield, hint_widget) -> None:
     """
 
     def _do(_dt):
+        # EN: Keep MDTextField and inner TextInput hint values in sync.
+        # RU: Держим синхронизированными hint в MDTextField и внутреннем TextInput.
+        try:
+            textfield.hint_text = hint_widget.text
+        except Exception:
+            pass
+
         ti = getattr(textfield, "_text_input", None) or getattr(textfield, "text_input", None)
         if not isinstance(ti, TextInput):
             for w in textfield.walk(restrict=True):
@@ -316,6 +312,8 @@ def _sync_hint_to_textinput(textfield, hint_widget) -> None:
                 ti.canvas.ask_update()
             except Exception:
                 pass
+        refresh_md_textfield_hint(textfield)
+        refresh_kivy_textinput_hint(textfield, hint_widget.text)
 
     Clock.schedule_once(_do, 0)
 
@@ -324,9 +322,72 @@ def _redraw_textfield(tf, delay: float = 0.0) -> None:
     def _do(_dt):
         if tf is None:
             return
-        # EN: Never use focus-walk on mobile, and avoid it on desktop too.
-        # RU: Никогда не используем focus-walk на мобильных, и также избегаем его на десктопе.
-        if kivy_platform in ("android", "ios"):
+        refresh_md_textfield_hint(tf)
+        refresh_kivy_textinput_hint(tf)
+        try:
+            tf.do_layout()
+            tf.canvas.ask_update()
+        except Exception:
+            pass
+
+    Clock.schedule_once(_do, delay)
+
+
+def _force_focus_walk_mdtextfields(screens) -> None:
+    """
+    EN: Force hint redraw by walking focus across all MDTextField widgets.
+    RU: Принудительно перерисовывает hint, прогоняя фокус по всем MDTextField.
+
+    EN: This reproduces the historically reliable workaround when MDTextField
+    hint labels do not refresh after language switch.
+    RU: Повторяет ранее рабочий обходной путь, когда hint-лейблы MDTextField
+    не обновляются после смены языка.
+    """
+    fields = []
+    focused_before = None
+    for scr in screens:
+        if not scr:
+            continue
+        for w in scr.walk(restrict=True):
+            if w.__class__.__name__ != "MDTextField":
+                continue
+            fields.append(w)
+            try:
+                if focused_before is None and getattr(w, "focus", False):
+                    focused_before = w
+            except Exception:
+                pass
+
+    if not fields:
+        return
+
+    step = 0.03
+    for i, tf in enumerate(fields):
+        _focus_pulse_textfield(tf, delay=i * step)
+
+    if focused_before is not None:
+        def _restore_focus(_dt):
+            try:
+                focused_before.focus = True
+            except Exception:
+                pass
+
+        Clock.schedule_once(_restore_focus, len(fields) * step + 0.03)
+
+
+def _focus_pulse_textfield(tf, delay: float = 0.0) -> None:
+    """
+    EN: Briefly set focus on/off for one field to trigger hint layout refresh.
+    RU: Кратко включает/выключает фокус поля, чтобы принудить refresh hint layout.
+    """
+
+    def _do(_dt):
+        if tf is None:
+            return
+        try:
+            tf.focus = True
+            tf.focus = False
+        except Exception:
             pass
         refresh_md_textfield_hint(tf)
         refresh_kivy_textinput_hint(tf)
@@ -337,3 +398,23 @@ def _redraw_textfield(tf, delay: float = 0.0) -> None:
             pass
 
     Clock.schedule_once(_do, delay)
+
+
+def _force_refresh_screen_hints(screen) -> None:
+    """
+    EN: Force refresh of all MDTextField hint widgets on a screen after language switch.
+    RU: Принудительно обновляет hint-виджеты всех MDTextField на экране после смены языка.
+    """
+    if not screen:
+        return
+
+    def _do(_dt):
+        try:
+            refresh_all_hint_texts(screen)
+        except Exception:
+            pass
+
+    # EN: Do two delayed passes to catch post-layout rendering.
+    # RU: Делаем два отложенных прохода, чтобы попасть в момент после layout.
+    Clock.schedule_once(_do, 0)
+    Clock.schedule_once(_do, 0.08)
