@@ -16,7 +16,13 @@ from server.api.schemas import (
     ProfileUserUpdateRequest,
     RegisterRequest,
 )
-from server.services.auth_service import delete_user, login_user, register_user
+from server.services.auth_service import (
+    delete_user,
+    get_user_snapshot,
+    get_user_snapshot_by_email,
+    login_user,
+    register_user,
+)
 from server.services.profile_service import (
     clear_profile_game_fields,
     clear_profile_user_fields,
@@ -117,6 +123,24 @@ def auth_login(payload: LoginRequest) -> dict:
 
     result = login_user(payload.email, payload.psw)
     return _service_result_to_response(result)
+
+
+@app.get("/auth/me")
+def auth_me(user_id: int = Query(gt=0)) -> dict:
+    """EN: Return current user snapshot by user_id for cache validation/synchronization.
+    RU: Вернуть snapshot текущего пользователя по user_id для проверки/синхронизации кэша.
+    """
+
+    return _service_result_to_response(get_user_snapshot(user_id))
+
+
+@app.get("/auth/exists")
+def auth_exists(email: str = Query(min_length=3)) -> dict:
+    """EN: Resolve user existence by email and return user snapshot when found.
+    RU: Проверить существование пользователя по email и вернуть snapshot при наличии.
+    """
+
+    return _service_result_to_response(get_user_snapshot_by_email(email))
 
 
 @app.post("/auth/delete")

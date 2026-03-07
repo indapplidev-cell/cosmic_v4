@@ -6,7 +6,6 @@ from pathlib import Path
 
 from manager import auth_backend
 from manager.input_validation import validate_register
-from data.user_cache.user_cache_writer import save_user
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -100,11 +99,14 @@ class RegisterScreenView(MDScreen):
         if not ok_register:
             if payload == "EMAIL_EXISTS":
                 self._show_error_popup("Email already exists / Такой email уже зарегистрирован", "email")
+            elif payload == "DB_SCHEMA_OUTDATED":
+                self._show_error_popup("Server DB migration required / Нужна миграция БД на сервере", "email")
+            elif payload == "NETWORK":
+                self._show_error_popup("Network error / Ошибка сети", "email")
             else:
                 self._show_error_popup("Registration failed / Ошибка регистрации", "email")
             return
 
-        save_user(email, password, user_id=int(payload))
         self._clear_fields()
         self.controller.create()
 

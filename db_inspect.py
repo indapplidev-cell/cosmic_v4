@@ -1,5 +1,5 @@
-﻿"""EN: Read-only DB inspector with local and remote (SSH) modes.
-RU: Read-only инспектор БД с локальным и удалённым (SSH) режимами.
+"""EN: Read-only DB inspector for real-time remote VPS database (SSH mode only).
+RU: Read-only инспектор БД для данных удалённого VPS в реальном времени (только SSH-режим).
 """
 
 from __future__ import annotations
@@ -654,21 +654,12 @@ def main() -> int:
         console.print("[bold red]ERROR:[/bold red] --limit must be > 0")
         return 1
 
-    # EN: Local SQLAlchemy mode is now explicit only: --local or --database-url.
-    # RU: Локальный режим SQLAlchemy теперь только явный: --local или --database-url.
-    if args.local or args.database_url:
-        db_url = _resolve_database_url(args.database_url)
-        return _run_local_sqlalchemy(args, db_url)
-
-    # EN: Default path tries docker compose first to always read fresh runtime DB state.
-    # RU: Путь по умолчанию сначала пробует docker compose, чтобы читать актуальное состояние runtime БД.
-    if args.compose or (PROJECT_ROOT / args.compose_file).exists():
-        compose_rc = _run_compose(args)
-        if compose_rc == 0:
-            return 0
-
-    # EN: Fallback path: remote VPS inspection over SSH, no DB credentials in client.
-    # RU: Резервный путь: удалённая инспекция VPS по SSH, без DB-учётки в клиенте.
+    # EN: Remote-only behavior by user requirement: always read from VPS over SSH.
+    # RU: Поведение remote-only по требованию пользователя: всегда читать БД с VPS по SSH.
+    if args.local or args.compose or args.database_url:
+        console.print(
+            "[yellow]WARNING:[/yellow] local/compose/database-url options are ignored in remote-only mode."
+        )
     return _run_remote(args)
 
 

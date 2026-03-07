@@ -6,8 +6,6 @@ from pathlib import Path
 
 from manager import auth_backend
 from manager.input_validation import validate_login
-from data.user_cache.user_cache_writer import update_user_cache_fields
-from data.user_cache.user_session import UserSession
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.utils import platform as kivy_platform
@@ -101,11 +99,6 @@ class LoginScreenView(MDScreen):
             self.set_error(t("login.error.invalid_credentials"))
             return
         self.set_error("")
-        UserSession().set_email(email)
-        try:
-            update_user_cache_fields({"user_id": int(payload)})
-        except Exception:
-            pass
         self.controller.login()
         self._clear_fields()
 

@@ -203,13 +203,59 @@ def delete_profile_game_fields(user_id: int, fields: list[str]) -> bool:
     return bool(ok and isinstance(payload, dict) and payload.get("ok"))
 
 
-def get_top_ratings(limit: int = 100) -> list[dict]:
+def get_top_ratings(limit: int = 100, timeout: int = 8) -> list[dict]:
     """EN: Return leaderboard rows sorted by rating/record.
     RU: Вернуть строки рейтинга, отсортированные по rating/record.
     """
     if not _backend_ready():
         return []
-    ok, payload = api_client.request("GET", "/rating/top", params={"limit": int(limit)})
-    if not ok or not isinstance(payload, list):
+
+    try:
+        ok, payload = api_client.request(
+            "GET",
+            "/rating/top",
+            params={"limit": int(limit)},
+            timeout=int(timeout),
+        )
+    except Exception:
         return []
-    return payload
+
+    if not ok:
+        return []
+
+    items: list[dict] = []
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        if not payload.get("ok"):
+            return []
+        raw_items = payload.get("items")
+        if isinstance(raw_items, list):
+            items = raw_items
+    else:
+        return []
+
+    normalized: list[dict] = []
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        user_value = str((row.get("user") or row.get("email") or "").strip())
+        if not user_value:
+            user_value = "no data"
+        try:
+            record_value = int(row.get("record") or 0)
+        except Exception:
+            record_value = 0
+        try:
+            rating_value = int(row.get("rating") or 0)
+        except Exception:
+            rating_value = 0
+        normalized.append(
+            {
+                "user": user_value,
+                "record": record_value,
+                "rating": rating_value,
+            }
+        )
+
+    return normalized

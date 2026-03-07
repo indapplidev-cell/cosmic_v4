@@ -3,7 +3,7 @@ RU: Представление экрана профиля.
 """
 
 from pathlib import Path
-
+from threading import Thread
 from data.gameplay.record_storage import RecordStorage
 from kivy.clock import Clock
 from kivy.core.window import Window
@@ -290,14 +290,21 @@ class ProfileScreenView(MDScreen):
         """EN: Request rating data from bridge and update UI rows.
         RU: Запросить данные рейтинга через bridge и обновить строки UI.
         """
-        try:
-            rows = auth_backend.get_top_ratings(100)
-        except Exception:
-            rows = []
-        if not rows:
-            self._set_rating_rows([{"user": t("common.no_data"), "record": 0, "rating": 0}])
-            return
-        self._set_rating_rows(rows)
+        def _worker() -> None:
+            try:
+                rows = auth_backend.get_top_ratings(100, timeout=8)
+            except Exception:
+                rows = []
+
+            def _apply(_dt) -> None:
+                if not rows:
+                    self._set_rating_rows([{"user": t("common.no_data"), "record": 0, "rating": 0}])
+                    return
+                self._set_rating_rows(rows)
+
+            Clock.schedule_once(_apply, 0)
+
+        Thread(target=_worker, daemon=True).start()
 
     def _close_rating_dialog(self) -> None:
         """EN: Close and clear rating dialog resources.

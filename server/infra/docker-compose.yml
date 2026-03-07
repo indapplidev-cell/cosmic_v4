@@ -25,6 +25,8 @@ services:
       postgres:
         condition: service_healthy
     command: bash /app/server/infra/entrypoint.sh
+    ports:
+      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
       interval: 5s
