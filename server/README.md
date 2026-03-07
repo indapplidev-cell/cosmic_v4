@@ -89,3 +89,17 @@ RU:
 - `BCRYPT_ROUNDS` управляет cost bcrypt (по умолчанию `12`).
 - При увеличении `BCRYPT_ROUNDS` хеш обновляется автоматически при успешном логине (`rehash on login`).
 - Опциональный `PASSWORD_PEPPER` задаётся через окружение и не хранится в БД.
+
+## Validation/Safety Checks (EN/RU)
+
+EN:
+- Run static SQL interpolation check:
+  - `python -m server.scripts.sql_injection_check`
+- Run payload validation smoke checks:
+  - `python -m server.scripts.validation_smoke`
+
+RU:
+- Запустить статическую проверку SQL-интерполяции:
+  - `python -m server.scripts.sql_injection_check`
+- Запустить smoke-проверки валидации payload:
+  - `python -m server.scripts.validation_smoke`

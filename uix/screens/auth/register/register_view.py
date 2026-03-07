@@ -5,6 +5,7 @@ RU: Представление экрана регистрации.
 from pathlib import Path
 
 from manager import auth_backend
+from manager.input_validation import validate_register
 from data.user_cache.user_cache_writer import save_user
 from kivy.lang import Builder
 from kivy.metrics import dp
@@ -84,6 +85,15 @@ class RegisterScreenView(MDScreen):
         ok, message, focus_field = LogupManager.validate(email, password, password2)
         if not ok:
             self._show_error_popup(message, focus_field)
+            return
+        ok_input, error_code, input_field = validate_register(email, password)
+        if not ok_input:
+            msg_map = {
+                "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
+                "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
+                "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
+            }
+            self._show_error_popup(msg_map.get(error_code, "Invalid input / Некорректный ввод"), input_field)
             return
 
         ok_register, payload = auth_backend.register(email, password)

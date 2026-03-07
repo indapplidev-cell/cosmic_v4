@@ -5,6 +5,7 @@ RU: Менеджер изменения профиля для обновлени
 from __future__ import annotations
 
 from manager import auth_backend
+from manager.input_validation import validate_profile_user
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_cache_writer import update_user_cache_fields
 from data.user_cache.user_session import UserSession
@@ -31,16 +32,23 @@ class ProfileChangeManager:
         }
 
     def apply_patch(self, patch: dict) -> dict:
-        """EN: Apply patch to user cache and return merged data.
-        RU: Применить patch к user_cache и вернуть итоговые данные.
+        """EN: Apply patch to user cache and return operation status with merged data.
+        RU: Применить patch к user_cache и вернуть статус операции с итоговыми данными.
         """
+        login_value = patch.get("login") if "login" in patch else None
+        phone_value = patch.get("phone") if "phone" in patch else None
+        tg_value = patch.get("tg") if "tg" in patch else None
+        ok_validate, error_code, error_field = validate_profile_user(login_value, phone_value, tg_value)
+        if not ok_validate:
+            return {"ok": False, "error": error_code, "field": error_field}
+
         self._sync_profile_user_db(patch or {})
         if patch:
             update_user_cache_fields(patch)
             if "email" in patch:
                 UserSession().set_email(patch.get("email", ""))
         merged = get_user_cache() or {}
-        return merged
+        return {"ok": True, "data": merged}
 
     def _resolve_user_id(self) -> int | None:
         """EN: Resolve current user id from cache or session-email fallback.

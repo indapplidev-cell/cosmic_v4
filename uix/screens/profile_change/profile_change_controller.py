@@ -90,7 +90,17 @@ class ProfileChangeController:
             changes["password"] = view.ids.inp_password.text.strip()
         if not changes:
             return
-        self._manager.apply_patch(changes)
+        result = self._manager.apply_patch(changes)
+        if not result.get("ok"):
+            field = str(result.get("field") or "field")
+            error = str(result.get("error") or "FORMAT")
+            msg_map = {
+                "CONTROL_CHARS": f"Forbidden control characters in {field} / Запрещённые символы в поле {field}",
+                "CODE_LIKE": f"Code-like payload in {field} is forbidden / Code-like payload в поле {field} запрещён",
+                "FORMAT": f"Invalid format for {field} / Неверный формат поля {field}",
+            }
+            self._show_popup(msg_map.get(error, f"Invalid input for {field} / Некорректный ввод в поле {field}"))
+            return
         self._refresh_right_login()
         self._show_changed_popup()
 

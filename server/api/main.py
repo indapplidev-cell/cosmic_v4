@@ -4,8 +4,6 @@ RU: Точка входа FastAPI, публикующая HTTP-эндпоинт�
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
@@ -72,26 +70,14 @@ async def ensure_db_schema_is_current(request: Request, call_next):
     return await call_next(request)
 
 
-def _error(error_code: str, status_code: int = 400) -> JSONResponse:
-    """EN: Build standard API error payload.
-    RU: Сформировать стандартный формат ошибки API.
-    """
-
-    return JSONResponse(status_code=status_code, content={"ok": False, "error": error_code})
-
-
-def _service_result_to_response(result: dict) -> Any:
-    """EN: Convert service result dict into HTTP response payload.
-    RU: Преобразовать ответ сервиса в HTTP-ответ с корректным кодом.
+def _service_result_to_response(result: dict) -> dict:
+    """EN: Return service result as business payload with stable HTTP 200 style.
+    RU: Вернуть результат сервиса как business-payload со стабильным стилем HTTP 200.
     """
 
     if result.get("ok"):
         return result
-
-    error_code = str(result.get("error", "DB_ERROR"))
-    if error_code in {"NOT_FOUND"}:
-        return _error(error_code, status_code=404)
-    return _error(error_code, status_code=400)
+    return {"ok": False, "error": str(result.get("error", "DB_ERROR"))}
 
 
 @app.get("/healthz")
@@ -113,8 +99,8 @@ def meta_compat() -> dict:
     return {"ok": bool(status.get("ok")), "db": status}
 
 
-@app.post("/auth/register", response_model=None)
-def auth_register(payload: RegisterRequest) -> Any:
+@app.post("/auth/register")
+def auth_register(payload: RegisterRequest) -> dict:
     """EN: Register user using existing auth service.
     RU: Зарегистрировать пользователя через существующий auth-сервис.
     """
@@ -123,8 +109,8 @@ def auth_register(payload: RegisterRequest) -> Any:
     return _service_result_to_response(result)
 
 
-@app.post("/auth/login", response_model=None)
-def auth_login(payload: LoginRequest) -> Any:
+@app.post("/auth/login")
+def auth_login(payload: LoginRequest) -> dict:
     """EN: Login user using existing auth service.
     RU: Выполнить вход через существующий auth-сервис.
     """
@@ -133,8 +119,8 @@ def auth_login(payload: LoginRequest) -> Any:
     return _service_result_to_response(result)
 
 
-@app.post("/auth/delete", response_model=None)
-def auth_delete(payload: DeleteUserRequest) -> Any:
+@app.post("/auth/delete")
+def auth_delete(payload: DeleteUserRequest) -> dict:
     """EN: Delete user by id via auth service.
     RU: Удалить пользователя по id через auth-сервис.
     """
@@ -143,8 +129,8 @@ def auth_delete(payload: DeleteUserRequest) -> Any:
     return _service_result_to_response(result)
 
 
-@app.post("/profile/user/update", response_model=None)
-def profile_user_update(payload: ProfileUserUpdateRequest) -> Any:
+@app.post("/profile/user/update")
+def profile_user_update(payload: ProfileUserUpdateRequest) -> dict:
     """EN: Update profile_users fields for selected user.
     RU: Обновить поля profile_users для выбранного пользователя.
     """
@@ -158,8 +144,8 @@ def profile_user_update(payload: ProfileUserUpdateRequest) -> Any:
     return _service_result_to_response(result)
 
 
-@app.post("/profile/user/clear", response_model=None)
-def profile_user_clear(payload: ProfileUserClearRequest) -> Any:
+@app.post("/profile/user/clear")
+def profile_user_clear(payload: ProfileUserClearRequest) -> dict:
     """EN: Reset selected profile_users fields to defaults.
     RU: Сбросить выбранные поля profile_users к значениям по умолчанию.
     """
@@ -168,8 +154,8 @@ def profile_user_clear(payload: ProfileUserClearRequest) -> Any:
     return _service_result_to_response(result)
 
 
-@app.post("/profile/game/update", response_model=None)
-def profile_game_update(payload: ProfileGameUpdateRequest) -> Any:
+@app.post("/profile/game/update")
+def profile_game_update(payload: ProfileGameUpdateRequest) -> dict:
     """EN: Update profile_games numeric fields for selected user.
     RU: Обновить числовые поля profile_games для выбранного пользователя.
     """
@@ -183,8 +169,8 @@ def profile_game_update(payload: ProfileGameUpdateRequest) -> Any:
     return _service_result_to_response(result)
 
 
-@app.post("/profile/game/clear", response_model=None)
-def profile_game_clear(payload: ProfileGameClearRequest) -> Any:
+@app.post("/profile/game/clear")
+def profile_game_clear(payload: ProfileGameClearRequest) -> dict:
     """EN: Reset selected profile_games fields to defaults.
     RU: Сбросить выбранные поля profile_games к значениям по умолчанию.
     """

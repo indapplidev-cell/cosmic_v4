@@ -5,6 +5,7 @@ RU: Представление экрана входа.
 from pathlib import Path
 
 from manager import auth_backend
+from manager.input_validation import validate_login
 from data.user_cache.user_cache_writer import update_user_cache_fields
 from data.user_cache.user_session import UserSession
 from kivy.clock import Clock
@@ -86,6 +87,15 @@ class LoginScreenView(MDScreen):
         """
         email = (self.ids.email_field.text or "").strip()
         password = self.ids.password_field.text or ""
+        ok_input, error_code, _field = validate_login(email, password)
+        if not ok_input:
+            msg_map = {
+                "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
+                "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
+                "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
+            }
+            self.set_error(msg_map.get(error_code, "Invalid input / Некорректный ввод"))
+            return
         ok_login, payload = auth_backend.login(email, password)
         if not ok_login:
             self.set_error(t("login.error.invalid_credentials"))
