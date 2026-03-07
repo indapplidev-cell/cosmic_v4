@@ -23,34 +23,41 @@
                 id: content_center
                 MDCard:
                     id: card
-                    MDBoxLayout:
-                        id: content_stack
-                        orientation: "vertical"
-                        MDTextField:
-                            id: email_field
-                            MDTextFieldHintText:
-                                id: email_hint
-                                text: ""
+                    ScrollView:
+                        id: content_scroll
+                        do_scroll_x: False
+                        do_scroll_y: True
+                        bar_width: dp(4)
                         MDBoxLayout:
-                            orientation: "horizontal"
-                            spacing: dp(8)
-                            size_hint_x: 1
+                            id: content_stack
+                            orientation: "vertical"
                             size_hint_y: None
-                            height: password_field.height
+                            height: self.minimum_height
                             MDTextField:
-                                id: password_field
-                                password: True
-                                password_mask: "*"
-                                size_hint_x: 1
+                                id: email_field
                                 MDTextFieldHintText:
-                                    id: password_hint
+                                    id: email_hint
                                     text: ""
-                            MDIconButton:
-                                id: password_eye_btn
-                                icon: "eye-off"
-                                pos_hint: {"center_y": 0.5}
-                        MDLabel:
-                            id: error_lbl
+                            MDBoxLayout:
+                                orientation: "horizontal"
+                                spacing: dp(8)
+                                size_hint_x: 1
+                                size_hint_y: None
+                                height: password_field.height
+                                MDTextField:
+                                    id: password_field
+                                    password: True
+                                    password_mask: "*"
+                                    size_hint_x: 1
+                                    MDTextFieldHintText:
+                                        id: password_hint
+                                        text: ""
+                                MDIconButton:
+                                    id: password_eye_btn
+                                    icon: "eye-off"
+                                    pos_hint: {"center_y": 0.5}
+                            MDLabel:
+                                id: error_lbl
         MDBoxLayout:
             id: bottombar
             AnchorLayout:

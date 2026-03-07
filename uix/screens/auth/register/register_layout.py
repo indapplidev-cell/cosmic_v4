@@ -79,7 +79,8 @@ def apply_register_layout(view) -> None:
         if hasattr(ids.card, "adaptive_width"):
             ids.card.adaptive_width = False
 
-        ids.content_stack.size_hint = (1, 1)
+        ids.content_stack.size_hint_x = 1
+        ids.content_stack.size_hint_y = None
         # EN: Extra top padding keeps floating MDTextField labels inside the content card.
         # RU: Дополнительный верхний отступ удерживает плавающие подписи MDTextField внутри карточки.
         ids.content_stack.padding = (
