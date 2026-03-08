@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Tuple
 
 from manager import api_client
-from manager.session_manager import sync_user_snapshot_from_payload
+from manager.session_manager import clear_cached_session, sync_user_snapshot_from_payload
 from manager.user_snapshot_store import UserSnapshotStore
 
 _HEALTHCHECK_DONE = False
@@ -286,3 +286,33 @@ def finish_session_metrics(payload: dict, timeout: int = 10) -> Tuple[bool, dict
         UserSnapshotStore().patch_game(record=0, rating=0, balance=0.0)
 
     return True, response
+
+
+def password_reset_request(email: str) -> Tuple[bool, str]:
+    """EN: Request password reset code by email without exposing account existence.
+    RU: Запросить код восстановления пароля по email без раскрытия существования аккаунта.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload = api_client.request("POST", "/auth/password/reset/request", json={"email": email}, timeout=10)
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, ""
+    return False, _error_code(payload, "API_ERROR")
+
+
+def password_reset_confirm(email: str, code: str, new_psw: str) -> Tuple[bool, str]:
+    """EN: Confirm reset code and set new password, clearing local cache on success.
+    RU: Подтвердить reset-код и задать новый пароль, очищая локальный кэш при успехе.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload = api_client.request(
+        "POST",
+        "/auth/password/reset/confirm",
+        json={"email": email, "code": code, "new_psw": new_psw},
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        clear_cached_session()
+        return True, ""
+    return False, _error_code(payload, "INVALID_CODE")

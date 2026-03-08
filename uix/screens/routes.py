@@ -4,6 +4,7 @@ RU: Константы имён маршрутов экранов.
 
 LOGIN = "login"
 REGISTER = "register"
+PASSWORD_RESET = "password_reset"
 START = "start"
 PROFILE = "profile"
 PROFILE_CHANGE = "profile_change"

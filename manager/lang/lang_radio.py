@@ -81,6 +81,7 @@ def _refresh_all_screens(old_no_data: str) -> None:
     game = get_screen_safe(routes.GAME)
     login = get_screen_safe(routes.LOGIN)
     register = get_screen_safe(routes.REGISTER)
+    password_reset = get_screen_safe(routes.PASSWORD_RESET)
 
     # --- START ---
     if start and hasattr(start, "ids"):
@@ -259,9 +260,33 @@ def _refresh_all_screens(old_no_data: str) -> None:
 
         _refresh_banner_slot(game)
 
+    # --- PASSWORD RESET ---
+    if password_reset and hasattr(password_reset, "ids"):
+        if "title_lbl" in password_reset.ids:
+            password_reset.ids.title_lbl.text = t("reset.title")
+        if "email_hint" in password_reset.ids:
+            password_reset.ids.email_hint.text = t("reset.hint_email")
+            if "email_field" in password_reset.ids:
+                _sync_hint_to_textinput(password_reset.ids.email_field, password_reset.ids.email_hint)
+        if "code_hint" in password_reset.ids:
+            password_reset.ids.code_hint.text = t("reset.hint_code")
+            if "code_field" in password_reset.ids:
+                _sync_hint_to_textinput(password_reset.ids.code_field, password_reset.ids.code_hint)
+        if "new_password_hint" in password_reset.ids:
+            password_reset.ids.new_password_hint.text = t("reset.hint_new_password")
+            if "new_password_field" in password_reset.ids:
+                _sync_hint_to_textinput(password_reset.ids.new_password_field, password_reset.ids.new_password_hint)
+        if "send_btn_text" in password_reset.ids:
+            password_reset.ids.send_btn_text.text = caps(t("reset.btn_send_code"))
+        if "confirm_btn_text" in password_reset.ids:
+            password_reset.ids.confirm_btn_text.text = caps(t("reset.btn_confirm"))
+        if "back_btn_text" in password_reset.ids:
+            password_reset.ids.back_btn_text.text = caps(t("common.back"))
+        _force_refresh_screen_hints(password_reset)
+
     # --- FORCE HINT REFRESH VIA FOCUS-WALK ---
     try:
-        screens = [start, settings, profile, profile_change, game, login, register]
+        screens = [start, settings, profile, profile_change, game, login, register, password_reset]
         _force_focus_walk_mdtextfields(screens)
     except Exception:
         pass

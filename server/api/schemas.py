@@ -62,6 +62,44 @@ class LoginRequest(StrictBaseModel):
         return reject_control_chars(value)
 
 
+class PasswordResetRequest(StrictBaseModel):
+    """EN: Password reset request payload with email only.
+    RU: Payload запроса восстановления пароля только с email.
+    """
+
+    email: EmailStr
+
+
+class PasswordResetConfirm(StrictBaseModel):
+    """EN: Password reset confirmation payload with code and new password.
+    RU: Payload подтверждения восстановления с кодом и новым паролем.
+    """
+
+    email: EmailStr
+    code: Annotated[str, MinLen(6), MaxLen(6)]
+    new_psw: Annotated[str, MinLen(8), MaxLen(72)]
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        """EN: Accept only 6-digit numeric reset code.
+        RU: Принимать только 6-значный цифровой reset-код.
+        """
+
+        if not value.isdigit():
+            raise ValueError("FORMAT")
+        return value
+
+    @field_validator("new_psw")
+    @classmethod
+    def validate_new_psw(cls, value: str) -> str:
+        """EN: Reject control characters in new password input.
+        RU: Запретить управляющие символы во входном новом пароле.
+        """
+
+        return reject_control_chars(value)
+
+
 class DeleteUserRequest(StrictBaseModel):
     """EN: Account deletion payload by positive user identifier.
     RU: Payload удаления аккаунта по положительному идентификатору пользователя.

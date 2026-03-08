@@ -11,6 +11,8 @@ from server.api.schemas import (
     DeleteUserRequest,
     GameSessionFinishRequest,
     LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     ProfileGameClearRequest,
     ProfileGameUpdateRequest,
     ProfileUserClearRequest,
@@ -30,6 +32,10 @@ from server.services.profile_service import (
     clear_profile_user_fields,
     update_profile_game,
     update_profile_user,
+)
+from server.services.password_reset_service import (
+    confirm_password_reset,
+    request_password_reset,
 )
 from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
@@ -125,6 +131,36 @@ def auth_login(payload: LoginRequest) -> dict:
     """
 
     result = login_user(payload.email, payload.psw)
+    return _service_result_to_response(result)
+
+
+@app.post("/auth/password/reset/request")
+def auth_password_reset_request(payload: PasswordResetRequest, request: Request) -> dict:
+    """EN: Request one-time password reset code by email with non-enumerating response.
+    RU: Запросить одноразовый код восстановления по email с ответом без раскрытия существования аккаунта.
+    """
+
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    result = request_password_reset(payload.email, client_ip, user_agent)
+    return _service_result_to_response(result)
+
+
+@app.post("/auth/password/reset/confirm")
+def auth_password_reset_confirm(payload: PasswordResetConfirm, request: Request) -> dict:
+    """EN: Confirm one-time reset code and set new password hash.
+    RU: Подтвердить одноразовый код и установить новый хеш пароля.
+    """
+
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    result = confirm_password_reset(
+        payload.email,
+        payload.code,
+        payload.new_psw,
+        client_ip,
+        user_agent,
+    )
     return _service_result_to_response(result)
 
 

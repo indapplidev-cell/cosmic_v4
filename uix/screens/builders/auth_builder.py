@@ -7,6 +7,9 @@ from uix.screens import routes
 from uix.screens.auth.login.login_controller import LoginController
 from uix.screens.auth.login.login_vm import LoginVM
 from uix.screens.auth.login.login_view import LoginScreenView
+from uix.screens.auth.password_reset.password_reset_controller import PasswordResetController
+from uix.screens.auth.password_reset.password_reset_vm import PasswordResetVM
+from uix.screens.auth.password_reset.password_reset_view import PasswordResetScreenView
 from uix.screens.auth.register.register_controller import RegisterController
 from uix.screens.auth.register.register_vm import RegisterVM
 from uix.screens.auth.register.register_view import RegisterScreenView
@@ -20,7 +23,17 @@ from uix.screens.profile_change.profile_change_controller import ProfileChangeCo
 from uix.screens.profile_change.profile_change_vm import ProfileChangeVM
 from uix.screens.profile_change.profile_change_view import ProfileChangeView
 from uix.screens.load_app.load_app_view import LoadAppScreenView
-from uix.screens.routes import GAME, LOAD_APP, LOGIN, PROFILE, PROFILE_CHANGE, REGISTER, SETTINGS, START
+from uix.screens.routes import (
+    GAME,
+    LOAD_APP,
+    LOGIN,
+    PASSWORD_RESET,
+    PROFILE,
+    PROFILE_CHANGE,
+    REGISTER,
+    SETTINGS,
+    START,
+)
 from uix.screens.screen_manager import AppScreenManager
 from uix.screens.settings.settings_controller import SettingsScreenController
 from uix.screens.settings.settings_vm import SettingsScreenVM
@@ -99,11 +112,24 @@ def build_auth_flow(manager: AppScreenManager) -> None:
     )
     login_controller = LoginController(
         on_login=lambda: manager.go(routes.START),
-        on_forgot=lambda: None,
+        on_forgot=lambda: manager.go(PASSWORD_RESET),
         on_register=lambda: manager.go(REGISTER),
     )
     login_view = LoginScreenView(name=LOGIN)
     login_view.configure(login_vm, login_controller)
+
+    password_reset_vm = PasswordResetVM(
+        title=t("reset.title"),
+        email_hint=t("reset.hint_email"),
+        code_hint=t("reset.hint_code"),
+        new_password_hint=t("reset.hint_new_password"),
+        send_code_text=t("reset.btn_send_code"),
+        confirm_text=t("reset.btn_confirm"),
+        back_text=t("common.back"),
+    )
+    password_reset_controller = PasswordResetController(on_back=lambda: manager.go(LOGIN))
+    password_reset_view = PasswordResetScreenView(name=PASSWORD_RESET)
+    password_reset_view.configure(password_reset_vm, password_reset_controller)
 
     register_vm = RegisterVM(
         title_text=t("register.title"),
@@ -134,6 +160,7 @@ def build_auth_flow(manager: AppScreenManager) -> None:
     game_view.configure(game_vm, game_controller)
     manager.register(start_view)
     manager.register(login_view)
+    manager.register(password_reset_view)
     manager.register(register_view)
     manager.register(settings_view)
     manager.register(profile_view)
