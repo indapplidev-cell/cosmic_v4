@@ -5,6 +5,7 @@ RU: Сервис восстановления пароля по одноразо
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import smtplib
@@ -17,6 +18,26 @@ from server.db import get_session
 from server.models.password_reset import PasswordResetToken
 from server.models.user import User
 from server.security.passwords import hash_password
+
+logger = logging.getLogger(__name__)
+
+
+def _mask_email(email: str) -> str:
+    """EN: Mask email local-part for safe logs while keeping domain visible.
+    RU: Замаскировать локальную часть email для безопасных логов, сохранив домен.
+    """
+
+    value = (email or "").strip()
+    if "@" not in value:
+        return "***"
+    local, domain = value.split("@", 1)
+    if not local:
+        local_masked = "***"
+    elif len(local) == 1:
+        local_masked = f"{local[0]}***"
+    else:
+        local_masked = f"{local[0]}***"
+    return f"{local_masked}@{domain}"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -88,6 +109,14 @@ def _send_reset_email(to_email: str, code: str, ttl_min: int) -> bool:
     msg["To"] = to_email
     msg.set_content(f"Your code: {code}. It expires in {ttl_min} minutes.")
 
+    logger.info(
+        "SMTP_RESET_ATTEMPT recipient=%s host=%s port=%s tls=%s",
+        _mask_email(to_email),
+        host,
+        port,
+        int(use_tls),
+    )
+
     try:
         with smtplib.SMTP(host, port, timeout=15) as client:
             client.ehlo()
@@ -97,8 +126,10 @@ def _send_reset_email(to_email: str, code: str, ttl_min: int) -> bool:
             if user:
                 client.login(user, password)
             client.send_message(msg)
+        logger.info("SMTP_RESET_SUCCESS recipient=%s", _mask_email(to_email))
         return True
-    except Exception:
+    except Exception as exc:
+        logger.warning("SMTP_RESET_FAILED type=%s", exc.__class__.__name__)
         return False
 
 
