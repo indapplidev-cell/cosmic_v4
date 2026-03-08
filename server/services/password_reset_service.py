@@ -117,6 +117,10 @@ def _send_reset_email(to_email: str, code: str, ttl_min: int) -> bool:
         port,
         int(use_tls),
     )
+    print(
+        f"SMTP_RESET_ATTEMPT recipient={_mask_email(to_email)} host={host} port={port} tls={int(use_tls)}",
+        flush=True,
+    )
 
     try:
         with smtplib.SMTP(host, port, timeout=15) as client:
@@ -128,9 +132,11 @@ def _send_reset_email(to_email: str, code: str, ttl_min: int) -> bool:
                 client.login(user, password)
             client.send_message(msg)
         logger.info("SMTP_RESET_SUCCESS recipient=%s", _mask_email(to_email))
+        print(f"SMTP_RESET_SUCCESS recipient={_mask_email(to_email)}", flush=True)
         return True
     except Exception as exc:
         logger.warning("SMTP_RESET_FAILED type=%s", exc.__class__.__name__)
+        print(f"SMTP_RESET_FAILED type={exc.__class__.__name__}", flush=True)
         return False
 
 
