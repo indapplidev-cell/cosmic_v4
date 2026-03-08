@@ -1,5 +1,5 @@
-"""EN: View for the game screen.
-RU: Представление экрана игры.
+﻿"""EN: View for the game screen.
+RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЌРєСЂР°РЅР° РёРіСЂС‹.
 """
 
 from pathlib import Path
@@ -23,7 +23,6 @@ from manager.game_control.hud_layout_store import get_swapped
 from manager.score.score_manager import ScoreManager
 from manager.score.score_widget import ScoreLabel
 from manager.time.time_manager import TimeManager
-from data.gameplay.profile_math import DEFAULT_CFG, calc_balance_delta, calc_pay_raw, calc_rating, cheat_speed
 from data.gameplay.rating.rating_session import RatingSession
 from data.gameplay.rating_storage import RatingStorage
 from data.gameplay.record_store import RecordStore
@@ -45,16 +44,17 @@ from .game_vm import GameScreenVM
 
 KV_PATH = Path(__file__).with_name("game.kv")
 Builder.load_file(str(KV_PATH))
+ATTEMPTS_BASE = 3
 
 
 class GameScreenView(MDScreen):
     """EN: Game screen view that wires layout, VM, and controller.
-    RU: Представление игры, связывающее раскладку, VM и контроллер.
+    RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ РёРіСЂС‹, СЃРІСЏР·С‹РІР°СЋС‰РµРµ СЂР°СЃРєР»Р°РґРєСѓ, VM Рё РєРѕРЅС‚СЂРѕР»Р»РµСЂ.
     """
 
     def __init__(self, **kwargs):
         """EN: Initialize game view state.
-        RU: Инициализировать состояние экрана игры.
+        RU: РРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ СЌРєСЂР°РЅР° РёРіСЂС‹.
         """
         super().__init__(**kwargs)
         self._record_store = RecordStore()
@@ -71,17 +71,14 @@ class GameScreenView(MDScreen):
         self._reward_used = False
         self._record_sis_max = 0
         self._record_pure_max = 0
-        self._attempts_total = DEFAULT_CFG.ATTEMPTS_BASE
+        self._attempts_total = ATTEMPTS_BASE
         self._cheat_flag = False
         self._cheat_points_window = deque(maxlen=64)
-        self._profile_prev_record = 0
-        self._profile_prev_rating = 0
-        self._profile_prev_balance = 0.0
         self._snapshot_store = UserSnapshotStore()
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
-        RU: Применить раскладку после загрузки KV.
+        RU: РџСЂРёРјРµРЅРёС‚СЊ СЂР°СЃРєР»Р°РґРєСѓ РїРѕСЃР»Рµ Р·Р°РіСЂСѓР·РєРё KV.
         """
         apply_game_layout(self)
         self.apply_hud_layout()
@@ -111,7 +108,7 @@ class GameScreenView(MDScreen):
             self._start_hud_sync()
     def configure(self, vm: GameScreenVM, controller: GameScreenController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать колбэки.
+        RU: РќР°СЃС‚СЂРѕРёС‚СЊ С‚РµРєСЃС‚С‹ Рё РїСЂРёРІСЏР·Р°С‚СЊ РєРѕР»Р±СЌРєРё.
         """
         self.ids.title_lbl.text = vm.title
         self.ids.game_btn_text.text = caps(vm.game_text)
@@ -121,7 +118,7 @@ class GameScreenView(MDScreen):
 
     def on_pre_enter(self, *args) -> None:
         """EN: Re-attach controls when entering the screen.
-        RU: Повторно подключить управление при входе на экран.
+        RU: РџРѕРІС‚РѕСЂРЅРѕ РїРѕРґРєР»СЋС‡РёС‚СЊ СѓРїСЂР°РІР»РµРЅРёРµ РїСЂРё РІС…РѕРґРµ РЅР° СЌРєСЂР°РЅ.
         """
         self._reset_to_first_start_state()
         self._rating_session = RatingSession()
@@ -133,7 +130,7 @@ class GameScreenView(MDScreen):
 
     def on_pre_leave(self, *args) -> None:
         """EN: Stop gameplay runtime before leaving the screen.
-        RU: Остановить игровой runtime перед уходом с экрана.
+        RU: РћСЃС‚Р°РЅРѕРІРёС‚СЊ РёРіСЂРѕРІРѕР№ runtime РїРµСЂРµРґ СѓС…РѕРґРѕРј СЃ СЌРєСЂР°РЅР°.
         """
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
@@ -170,7 +167,7 @@ class GameScreenView(MDScreen):
 
     def on_screen_control(self, action: str, pressed: bool) -> None:
         """EN: Dispatch on-screen control events to game control manager.
-        RU: Передать события экранных кнопок в менеджер управления игрой.
+        RU: РџРµСЂРµРґР°С‚СЊ СЃРѕР±С‹С‚РёСЏ СЌРєСЂР°РЅРЅС‹С… РєРЅРѕРїРѕРє РІ РјРµРЅРµРґР¶РµСЂ СѓРїСЂР°РІР»РµРЅРёСЏ РёРіСЂРѕР№.
         """
         if not hasattr(self, "_game_control"):
             return
@@ -178,13 +175,13 @@ class GameScreenView(MDScreen):
 
     def is_hud_swapped(self) -> bool:
         """EN: Return whether the touch HUD layout is swapped.
-        RU: Вернуть признак переставленной тач-раскладки HUD.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїСЂРёР·РЅР°Рє РїРµСЂРµСЃС‚Р°РІР»РµРЅРЅРѕР№ С‚Р°С‡-СЂР°СЃРєР»Р°РґРєРё HUD.
         """
         return get_swapped()
 
     def _hud_action_for_slot(self, slot: str) -> str | None:
         """EN: Map HUD button slot to control action according to current layout.
-        RU: Сопоставить слот HUD-кнопки с действием управления по текущей раскладке.
+        RU: РЎРѕРїРѕСЃС‚Р°РІРёС‚СЊ СЃР»РѕС‚ HUD-РєРЅРѕРїРєРё СЃ РґРµР№СЃС‚РІРёРµРј СѓРїСЂР°РІР»РµРЅРёСЏ РїРѕ С‚РµРєСѓС‰РµР№ СЂР°СЃРєР»Р°РґРєРµ.
         """
         if not self.is_hud_swapped():
             mapping = {
@@ -204,7 +201,7 @@ class GameScreenView(MDScreen):
 
     def on_hud_button(self, slot: str, pressed: bool) -> None:
         """EN: Route touch HUD slot press/release into the current control action.
-        RU: Маршрутизировать нажатие/отпускание слота HUD в текущее действие управления.
+        RU: РњР°СЂС€СЂСѓС‚РёР·РёСЂРѕРІР°С‚СЊ РЅР°Р¶Р°С‚РёРµ/РѕС‚РїСѓСЃРєР°РЅРёРµ СЃР»РѕС‚Р° HUD РІ С‚РµРєСѓС‰РµРµ РґРµР№СЃС‚РІРёРµ СѓРїСЂР°РІР»РµРЅРёСЏ.
         """
         action = self._hud_action_for_slot(slot)
         if action is None:
@@ -213,7 +210,7 @@ class GameScreenView(MDScreen):
 
     def apply_hud_layout(self) -> None:
         """EN: Apply touch HUD icons and visibility for the current layout.
-        RU: Применить иконки и видимость тач-HUD для текущей раскладки.
+        RU: РџСЂРёРјРµРЅРёС‚СЊ РёРєРѕРЅРєРё Рё РІРёРґРёРјРѕСЃС‚СЊ С‚Р°С‡-HUD РґР»СЏ С‚РµРєСѓС‰РµР№ СЂР°СЃРєР»Р°РґРєРё.
         """
         ids = self.ids
         if not ids:
@@ -258,7 +255,7 @@ class GameScreenView(MDScreen):
 
     def _touch_controls_set_visible(self, visible: bool) -> None:
         """EN: Show/hide touch controls layer.
-        RU: Показать/скрыть слой тач-кнопок.
+        RU: РџРѕРєР°Р·Р°С‚СЊ/СЃРєСЂС‹С‚СЊ СЃР»РѕР№ С‚Р°С‡-РєРЅРѕРїРѕРє.
         """
         layer = self.ids.get("touch_controls_layer")
         if not layer:
@@ -277,13 +274,13 @@ class GameScreenView(MDScreen):
 
     def touch_controls_show(self) -> None:
         """EN: Show and enable touch controls.
-        RU: Показать и включить тач-кнопки.
+        RU: РџРѕРєР°Р·Р°С‚СЊ Рё РІРєР»СЋС‡РёС‚СЊ С‚Р°С‡-РєРЅРѕРїРєРё.
         """
         self._touch_controls_set_visible(True)
 
     def touch_controls_hide(self) -> None:
         """EN: Hide and disable touch controls.
-        RU: Скрыть и отключить тач-кнопки.
+        RU: РЎРєСЂС‹С‚СЊ Рё РѕС‚РєР»СЋС‡РёС‚СЊ С‚Р°С‡-РєРЅРѕРїРєРё.
         """
         self._touch_controls_set_visible(False)
 
@@ -326,27 +323,24 @@ class GameScreenView(MDScreen):
 
     def _register_score_point_and_check_fast_cheat(self, score: int) -> None:
         """EN: Push (time, score) point into rolling window and detect fast-cheat by 20-score jumps.
-        RU: Добавить точку (time, score) в rolling-окно и проверить быстрый чит по прыжкам на 20 очков.
+        RU: Р”РѕР±Р°РІРёС‚СЊ С‚РѕС‡РєСѓ (time, score) РІ rolling-РѕРєРЅРѕ Рё РїСЂРѕРІРµСЂРёС‚СЊ Р±С‹СЃС‚СЂС‹Р№ С‡РёС‚ РїРѕ РїСЂС‹Р¶РєР°Рј РЅР° 20 РѕС‡РєРѕРІ.
         """
 
         now = perf_counter()
         self._cheat_points_window.append((now, int(score)))
-        speed_limit = float(DEFAULT_CFG.V_MAX) * (1.0 + float(DEFAULT_CFG.EPS_FAST))
 
         points = list(self._cheat_points_window)
         for old_t, old_score in points:
             delta_score = int(score) - int(old_score)
-            if delta_score < int(DEFAULT_CFG.CHEAT_MIN_SCORE):
-                continue
-            delta_t = max(now - float(old_t), float(DEFAULT_CFG.EPS_T))
-            if (float(delta_score) / delta_t) >= speed_limit:
-                self._cheat_flag = True
-                self._apply_cheat_reset_and_exit()
-                return
+            if delta_score >= 20:
+                delta_t = max(now - float(old_t), 1e-9)
+                if (float(delta_score) / delta_t) > 0:
+                    self._cheat_flag = True
+                    return
 
     def _close_chis_segment(self) -> None:
         """EN: Close current CHIS segment and accumulate elapsed seconds.
-        RU: Закрыть текущий сегмент ЧИС и накопить прошедшие секунды.
+        RU: Р—Р°РєСЂС‹С‚СЊ С‚РµРєСѓС‰РёР№ СЃРµРіРјРµРЅС‚ Р§РРЎ Рё РЅР°РєРѕРїРёС‚СЊ РїСЂРѕС€РµРґС€РёРµ СЃРµРєСѓРЅРґС‹.
         """
 
         if self._chis_segment_started_at > 0:
@@ -355,14 +349,14 @@ class GameScreenView(MDScreen):
 
     def _open_chis_segment(self) -> None:
         """EN: Start a new CHIS timing segment from current monotonic time.
-        RU: Запустить новый сегмент таймера ЧИС от текущего монотонного времени.
+        RU: Р—Р°РїСѓСЃС‚РёС‚СЊ РЅРѕРІС‹Р№ СЃРµРіРјРµРЅС‚ С‚Р°Р№РјРµСЂР° Р§РРЎ РѕС‚ С‚РµРєСѓС‰РµРіРѕ РјРѕРЅРѕС‚РѕРЅРЅРѕРіРѕ РІСЂРµРјРµРЅРё.
         """
 
         self._chis_segment_started_at = perf_counter()
 
     def _finalize_chis_sec(self) -> float:
         """EN: Finalize CHIS duration (accumulated + open segment tail) in seconds.
-        RU: Финализировать длительность ЧИС (накопление + хвост открытого сегмента) в секундах.
+        RU: Р¤РёРЅР°Р»РёР·РёСЂРѕРІР°С‚СЊ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ Р§РРЎ (РЅР°РєРѕРїР»РµРЅРёРµ + С…РІРѕСЃС‚ РѕС‚РєСЂС‹С‚РѕРіРѕ СЃРµРіРјРµРЅС‚Р°) РІ СЃРµРєСѓРЅРґР°С….
         """
 
         self._close_chis_segment()
@@ -370,7 +364,7 @@ class GameScreenView(MDScreen):
 
     def _reward_click_delta(self) -> int:
         """EN: Return reward-click delta within current SIS.
-        RU: Вернуть дельту кликов reward в рамках текущей СИС.
+        RU: Р’РµСЂРЅСѓС‚СЊ РґРµР»СЊС‚Сѓ РєР»РёРєРѕРІ reward РІ СЂР°РјРєР°С… С‚РµРєСѓС‰РµР№ РЎРРЎ.
         """
 
         delta = int(counters.receive_click_count) - int(self._reward_click_start)
@@ -378,16 +372,13 @@ class GameScreenView(MDScreen):
 
     def _apply_cheat_reset_and_exit(self) -> None:
         """EN: On cheat, zero local/server profile_game and immediately return to start screen.
-        RU: При чите обнулить локально/на сервере profile_game и немедленно вернуть на стартовый экран.
+        RU: РџСЂРё С‡РёС‚Рµ РѕР±РЅСѓР»РёС‚СЊ Р»РѕРєР°Р»СЊРЅРѕ/РЅР° СЃРµСЂРІРµСЂРµ profile_game Рё РЅРµРјРµРґР»РµРЅРЅРѕ РІРµСЂРЅСѓС‚СЊ РЅР° СЃС‚Р°СЂС‚РѕРІС‹Р№ СЌРєСЂР°РЅ.
         """
 
-        user_id = self._resolve_user_id()
         self._record_store.set_best_score(0)
         RatingStorage().save_points(0)
         self._balance_store.set_balance(0.0)
         self._snapshot_store.patch_game(record=0, rating=0, balance=0.0)
-        if user_id is not None:
-            auth_backend.save_profile_game(user_id, record=0, rating=0, balance=0.0)
         self._cheat_flag = True
         self._session_started = False
         if hasattr(self, "_gameplay_runtime"):
@@ -416,14 +407,14 @@ class GameScreenView(MDScreen):
 
     def _hide_hud_for_play(self) -> None:
         """EN: Hide content and bottom bars while keeping the top bar visible.
-        RU: Скрыть content и bottom бар, оставив top bar видимым.
+        RU: РЎРєСЂС‹С‚СЊ content Рё bottom Р±Р°СЂ, РѕСЃС‚Р°РІРёРІ top bar РІРёРґРёРјС‹Рј.
         """
         set_hud_visible(self, top=True, content=False, bottom=False)
         self._game_over_flag = False
 
     def _show_hud_after_loss(self) -> None:
         """EN: Show all HUD bars after a loss.
-        RU: Показать все HUD-бары после проигрыша.
+        RU: РџРѕРєР°Р·Р°С‚СЊ РІСЃРµ HUD-Р±Р°СЂС‹ РїРѕСЃР»Рµ РїСЂРѕРёРіСЂС‹С€Р°.
         """
         counters.inc_gameover()
         if hasattr(self, "_rating_session"):
@@ -448,7 +439,7 @@ class GameScreenView(MDScreen):
 
     def receive_reward(self) -> None:
         """EN: Open rewarded modal and continue after close.
-        RU: Открыть rewarded-модалку и продолжить игру после закрытия.
+        RU: РћС‚РєСЂС‹С‚СЊ rewarded-РјРѕРґР°Р»РєСѓ Рё РїСЂРѕРґРѕР»Р¶РёС‚СЊ РёРіСЂСѓ РїРѕСЃР»Рµ Р·Р°РєСЂС‹С‚РёСЏ.
         """
         counters.inc_receive_click()
         self._close_chis_segment()
@@ -458,7 +449,7 @@ class GameScreenView(MDScreen):
 
     def _resume_after_reward(self) -> None:
         """EN: Resume game after rewarded modal closes.
-        RU: Продолжить игру после закрытия rewarded-модалки.
+        RU: РџСЂРѕРґРѕР»Р¶РёС‚СЊ РёРіСЂСѓ РїРѕСЃР»Рµ Р·Р°РєСЂС‹С‚РёСЏ rewarded-РјРѕРґР°Р»РєРё.
         """
         if hasattr(self, "_life"):
             self._life.reset_to_full()
@@ -473,14 +464,14 @@ class GameScreenView(MDScreen):
 
     def _reset_to_first_start_state(self) -> None:
         """
-        Вернуть экран Игра в состояние как при первом запуске приложения:
-        - кнопка Старт
-        - текст заголовка обычный
-        - никакой рекламы/оверлея
-        - тач-кнопки скрыты
-        - runtime остановлен
-        - HUD синхронизация остановлена
-        - подготовить сцену (без запуска)
+        Р’РµСЂРЅСѓС‚СЊ СЌРєСЂР°РЅ РРіСЂР° РІ СЃРѕСЃС‚РѕСЏРЅРёРµ РєР°Рє РїСЂРё РїРµСЂРІРѕРј Р·Р°РїСѓСЃРєРµ РїСЂРёР»РѕР¶РµРЅРёСЏ:
+        - РєРЅРѕРїРєР° РЎС‚Р°СЂС‚
+        - С‚РµРєСЃС‚ Р·Р°РіРѕР»РѕРІРєР° РѕР±С‹С‡РЅС‹Р№
+        - РЅРёРєР°РєРѕР№ СЂРµРєР»Р°РјС‹/РѕРІРµСЂР»РµСЏ
+        - С‚Р°С‡-РєРЅРѕРїРєРё СЃРєСЂС‹С‚С‹
+        - runtime РѕСЃС‚Р°РЅРѕРІР»РµРЅ
+        - HUD СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РѕСЃС‚Р°РЅРѕРІР»РµРЅР°
+        - РїРѕРґРіРѕС‚РѕРІРёС‚СЊ СЃС†РµРЅСѓ (Р±РµР· Р·Р°РїСѓСЃРєР°)
         """
         reward_modal = getattr(self, "_reward_modal", None)
         if reward_modal is not None and getattr(reward_modal, "parent", None) is not None:
@@ -526,13 +517,13 @@ class GameScreenView(MDScreen):
         self._reward_used = False
         self._record_sis_max = 0
         self._record_pure_max = 0
-        self._attempts_total = int(DEFAULT_CFG.ATTEMPTS_BASE)
+        self._attempts_total = int(ATTEMPTS_BASE)
         self._cheat_flag = False
         self._cheat_points_window.clear()
 
     def _reset_hud_state(self) -> None:
         """EN: Reset score/lives state for a fresh run.
-        RU: Сбросить счёт/жизни для нового запуска.
+        RU: РЎР±СЂРѕСЃРёС‚СЊ СЃС‡С‘С‚/Р¶РёР·РЅРё РґР»СЏ РЅРѕРІРѕРіРѕ Р·Р°РїСѓСЃРєР°.
         """
         if hasattr(self, "_score"):
             self._score.reset()
@@ -569,72 +560,38 @@ class GameScreenView(MDScreen):
             gameplay_sec = 0.0
 
         reward_click_delta = self._reward_click_delta()
-        self._attempts_total = int(DEFAULT_CFG.ATTEMPTS_BASE * (1 + int(reward_click_delta)))
+        self._attempts_total = int(ATTEMPTS_BASE * (1 + int(reward_click_delta)))
 
         best_life_score = int(getattr(getattr(self, "_rating_session", None), "best_life_score", 0) or 0)
         best_game_score = int(getattr(getattr(self, "_rating_session", None), "best_game_score", 0) or 0)
-        valid_starts = int(getattr(getattr(self, "_rating_session", None), "valid_starts", 0) or 0)
 
         record_sis = int(self._record_sis_max)
         record_pure = int(self._record_pure_max)
-
-        cheat_doc = cheat_speed(record_pure=record_pure, chis_sec=chis_sec, cfg=DEFAULT_CFG)
-        if bool(self._cheat_flag or cheat_doc):
-            self._apply_cheat_reset_and_exit()
-            return
-
-        pay_raw, pay_dbg = calc_pay_raw(sis_sec=sis_sec, reward_clicks=reward_click_delta, cfg=DEFAULT_CFG)
-        rating_new_sis, rating_dbg = calc_rating(
-            record_prev=int(self._profile_prev_record),
-            record_sis=record_sis,
-            record_pure=record_pure,
-            chis_sec=chis_sec,
-            attempts=int(self._attempts_total),
-            reward_clicks=int(reward_click_delta),
-            best_life_score=best_life_score,
-            best_game_score=best_game_score,
-            valid_starts=valid_starts,
-            cfg=DEFAULT_CFG,
-        )
-        balance_delta, balance_dbg = calc_balance_delta(
-            pay_raw=pay_raw,
-            rating=rating_new_sis,
-            f_rec=float(rating_dbg["f_rec"]),
-            f1=float(rating_dbg["f1"]),
-            f2=float(rating_dbg["f2"]),
-            f3=float(rating_dbg["f3"]),
-            w_case=float(rating_dbg["w_case"]),
-            cfg=DEFAULT_CFG,
-        )
-
-        record_new = max(int(self._profile_prev_record), int(record_sis))
-        if DEFAULT_CFG.POLICY_RATING_MAX:
-            rating_new = max(int(self._profile_prev_rating), int(rating_new_sis))
-        else:
-            rating_new = int(rating_new_sis)
-        balance_new = round(float(self._profile_prev_balance) + float(balance_delta), 3)
-
-        self._record_store.set_best_score(record_new)
-        RatingStorage().save_points(int(rating_new))
-        self._balance_store.set_balance(float(balance_new))
-        self._snapshot_store.patch_game(record=record_new, rating=rating_new, balance=balance_new)
-
         user_id = self._resolve_user_id()
         if user_id is not None:
-            auth_backend.save_profile_game(
-                int(user_id),
-                record=int(record_new),
-                rating=int(rating_new),
-                balance=float(balance_new),
-            )
+            finish_payload = {
+                "user_id": int(user_id),
+                "record_sis": int(record_sis),
+                "record_pure": int(record_pure),
+                "sis_sec": float(sis_sec),
+                "chis_sec": float(chis_sec),
+                "attempts": int(self._attempts_total),
+                "reward_clicks": int(reward_click_delta),
+                "best_life_score": int(best_life_score),
+                "best_game_score": int(best_game_score),
+                "anti_cheat_windows": self._build_anti_cheat_windows(),
+            }
+            ok_finish, finish_resp = auth_backend.finish_session_metrics(finish_payload)
+            if ok_finish and isinstance(finish_resp, dict) and bool(finish_resp.get("cheat")):
+                self._apply_cheat_reset_and_exit()
+                return
 
         print(
             "[SIS] "
             f"sis_sec={sis_sec:.2f} chis_sec={chis_sec:.2f} gameplay_sec={gameplay_sec:.2f} "
             f"record_sis={record_sis} record_pure={record_pure} "
             f"attempts={self._attempts_total} reward_clicks={reward_click_delta} "
-            f"pay_raw={pay_dbg['pay_raw']:.6f} rating_sis={rating_new_sis} rating_new={rating_new} "
-            f"balance_delta={balance_dbg['balance_delta']:.6f} balance_new={balance_new:.3f}",
+            f"finish_sent={'yes' if user_id is not None else 'no'}",
             flush=True,
         )
 
@@ -652,9 +609,27 @@ class GameScreenView(MDScreen):
         if self.manager:
             self.manager.back()
 
+    def _build_anti_cheat_windows(self) -> list[dict]:
+        """EN: Build score/time windows payload for server-side fast anti-cheat checks.
+        RU: РЎС„РѕСЂРјРёСЂРѕРІР°С‚СЊ payload РѕРєРѕРЅ score/time РґР»СЏ СЃРµСЂРІРµСЂРЅРѕР№ fast anti-cheat РїСЂРѕРІРµСЂРєРё.
+        """
+
+        points = list(self._cheat_points_window)
+        windows: list[dict] = []
+        for idx, (new_t, new_score) in enumerate(points):
+            for old_t, old_score in points[:idx]:
+                delta_score = int(new_score) - int(old_score)
+                if delta_score < 20:
+                    continue
+                delta_sec = max(float(new_t) - float(old_t), 1e-9)
+                windows.append({"delta_score": int(delta_score), "delta_sec": float(delta_sec)})
+                if len(windows) >= 100:
+                    return windows
+        return windows
+
     def _resolve_user_id(self) -> int | None:
         """EN: Resolve active user id from cache with email fallback.
-        RU: Определить активный user_id из кеша с fallback через email.
+        RU: РћРїСЂРµРґРµР»РёС‚СЊ Р°РєС‚РёРІРЅС‹Р№ user_id РёР· РєРµС€Р° СЃ fallback С‡РµСЂРµР· email.
         """
         cache = get_user_cache() or {}
         raw_user_id = cache.get("user_id")
@@ -674,27 +649,9 @@ class GameScreenView(MDScreen):
         update_user_cache_fields({"user_id": user_id})
         return user_id
 
-    def _sync_profile_game_db(self) -> None:
-        """EN: Persist current record/rating/balance snapshot to profile_game.
-        RU: Сохранить текущий снимок record/rating/balance в profile_game.
-        """
-        user_id = self._resolve_user_id()
-        if user_id is None:
-            return
-
-        record = self._record_store.get_best_score()
-        rating = RatingStorage().load_points()
-        balance = self._balance_store.get_balance()
-        auth_backend.save_profile_game(
-            user_id,
-            record=int(record),
-            rating=int(rating),
-            balance=float(balance),
-        )
-
     def _on_start_pressed(self) -> None:
         """EN: Hide HUD and start the gameplay runtime.
-        RU: Скрыть HUD и запустить игровой runtime.
+        RU: РЎРєСЂС‹С‚СЊ HUD Рё Р·Р°РїСѓСЃС‚РёС‚СЊ РёРіСЂРѕРІРѕР№ runtime.
         """
         start_ts = time.time()
         self._start_pressed_at = start_ts
@@ -704,17 +661,10 @@ class GameScreenView(MDScreen):
         self._reward_used = False
         self._record_sis_max = 0
         self._record_pure_max = 0
-        self._attempts_total = int(DEFAULT_CFG.ATTEMPTS_BASE)
+        self._attempts_total = int(ATTEMPTS_BASE)
         self._cheat_flag = False
         self._cheat_points_window.clear()
         self._reward_click_start = int(counters.receive_click_count)
-        snap = self._snapshot_store.load()
-        self._profile_prev_record = int(snap.get("record") or 0)
-        self._profile_prev_rating = int(snap.get("rating") or 0)
-        try:
-            self._profile_prev_balance = float(snap.get("balance") or 0.0)
-        except Exception:
-            self._profile_prev_balance = 0.0
         if hasattr(self, "_rating_session"):
             current_score = int(getattr(getattr(self, "_state", None), "current_y_loop", 0))
             self._rating_session.on_press_start(start_ts, current_score)
@@ -734,3 +684,6 @@ class GameScreenView(MDScreen):
         self.touch_controls_show()
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.start()
+
+
+

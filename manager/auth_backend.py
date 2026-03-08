@@ -259,3 +259,30 @@ def get_top_ratings(limit: int = 100, timeout: int = 8) -> list[dict]:
         )
 
     return normalized
+
+
+def finish_session_metrics(payload: dict, timeout: int = 10) -> Tuple[bool, dict]:
+    """EN: Submit raw session metrics to server and sync local snapshot from /auth/me.
+    RU: Отправить сырые метрики сессии на сервер и синхронизировать локальный snapshot через /auth/me.
+    """
+
+    _ensure_healthcheck_once()
+    ok, response = api_client.request(
+        "POST",
+        "/game/session/finish",
+        json=payload,
+        timeout=int(timeout),
+    )
+    if not ok or not isinstance(response, dict) or not response.get("ok"):
+        return False, response if isinstance(response, dict) else {"error": "NETWORK"}
+
+    user_id = int(payload.get("user_id") or 0)
+    if user_id > 0:
+        me_ok, me_payload = api_client.auth_me(user_id, timeout=timeout)
+        if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
+            sync_user_snapshot_from_payload(me_payload)
+
+    if bool(response.get("cheat")):
+        UserSnapshotStore().patch_game(record=0, rating=0, balance=0.0)
+
+    return True, response

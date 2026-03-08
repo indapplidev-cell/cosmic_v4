@@ -199,3 +199,41 @@ class ProfileGameClearRequest(StrictBaseModel):
         if len(set(value)) != len(value):
             raise ValueError("FORMAT")
         return value
+
+
+class AntiCheatWindow(StrictBaseModel):
+    """EN: One score/time window item used for server-side fast anti-cheat checks.
+    RU: Один элемент окна score/time для серверной проверки быстрого античита.
+    """
+
+    delta_score: int = Field(ge=0)
+    delta_sec: float = Field(gt=0)
+
+
+class GameSessionFinishRequest(StrictBaseModel):
+    """EN: Raw gameplay metrics payload submitted at SIS finish.
+    RU: Payload сырых игровых метрик, отправляемый при завершении СИС.
+    """
+
+    user_id: int = Field(gt=0)
+    record_sis: int = Field(ge=0)
+    record_pure: int = Field(ge=0)
+    sis_sec: float = Field(gt=0)
+    chis_sec: float = Field(gt=0)
+    attempts: int = Field(ge=3)
+    reward_clicks: int = Field(ge=0)
+    best_life_score: int | None = Field(default=None, ge=0)
+    best_game_score: int | None = Field(default=None, ge=0)
+    anti_cheat_windows: list[AntiCheatWindow] = Field(default_factory=list, max_length=100)
+
+    @field_validator("record_pure")
+    @classmethod
+    def validate_record_pure(cls, value: int, info) -> int:
+        """EN: Ensure pure record does not exceed SIS record.
+        RU: Убедиться, что чистый рекорд не превышает SIS-рекорд.
+        """
+
+        record_sis = info.data.get("record_sis")
+        if record_sis is not None and int(value) > int(record_sis):
+            raise ValueError("FORMAT")
+        return int(value)

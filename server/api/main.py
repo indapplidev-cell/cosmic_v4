@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from server.api.schemas import (
     DeleteUserRequest,
+    GameSessionFinishRequest,
     LoginRequest,
     ProfileGameClearRequest,
     ProfileGameUpdateRequest,
@@ -24,6 +25,7 @@ from server.services.auth_service import (
     register_user,
 )
 from server.services.profile_service import (
+    apply_finished_session,
     clear_profile_game_fields,
     clear_profile_user_fields,
     update_profile_game,
@@ -212,6 +214,29 @@ def rating_top(limit: int = Query(default=100, ge=1, le=100)) -> dict:
 
     items = get_top_ratings(limit=limit)
     return {"ok": True, "items": items}
+
+
+@app.post("/game/session/finish")
+def game_session_finish(payload: GameSessionFinishRequest) -> dict:
+    """EN: Accept raw SIS metrics, calculate profile updates on server, and persist results.
+    RU: Принять сырые метрики СИС, рассчитать обновления профиля на сервере и сохранить результат.
+    """
+
+    result = apply_finished_session(
+        payload.user_id,
+        {
+            "record_sis": payload.record_sis,
+            "record_pure": payload.record_pure,
+            "sis_sec": payload.sis_sec,
+            "chis_sec": payload.chis_sec,
+            "attempts": payload.attempts,
+            "reward_clicks": payload.reward_clicks,
+            "best_life_score": payload.best_life_score,
+            "best_game_score": payload.best_game_score,
+            "anti_cheat_windows": [item.model_dump() for item in payload.anti_cheat_windows],
+        },
+    )
+    return _service_result_to_response(result)
 
 
 @app.get("/docs/{doc_key}")

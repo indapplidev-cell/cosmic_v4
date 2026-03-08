@@ -103,3 +103,22 @@ RU:
   - `python -m server.scripts.sql_injection_check`
 - Запустить smoke-проверки валидации payload:
   - `python -m server.scripts.validation_smoke`
+## Session Metrics Endpoint (EN/RU)
+
+EN:
+- Main gameplay profile update path is now `POST /game/session/finish`.
+- Client sends raw session metrics only (`record_sis`, `record_pure`, `sis_sec`, `chis_sec`, `attempts`, `reward_clicks`, `anti_cheat_windows`, etc.).
+- Server calculates `record/rating/balance` using server-side formulas and anti-cheat checks, persists to PostgreSQL, and returns:
+  - `ok`
+  - `cheat`
+  - `record`, `rating`, `balance`
+  - optional `debug` when `PROFILE_DEBUG=1`.
+
+RU:
+- Основной путь обновления игрового профиля теперь `POST /game/session/finish`.
+- Клиент отправляет только сырые метрики сессии (`record_sis`, `record_pure`, `sis_sec`, `chis_sec`, `attempts`, `reward_clicks`, `anti_cheat_windows` и т.д.).
+- Сервер рассчитывает `record/rating/balance` по серверным формулам и античиту, сохраняет в PostgreSQL и возвращает:
+  - `ok`
+  - `cheat`
+  - `record`, `rating`, `balance`
+  - опционально `debug` при `PROFILE_DEBUG=1`.

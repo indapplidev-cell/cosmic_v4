@@ -4,9 +4,19 @@ RU: Сервис БД профиля/игры для операций обнов
 
 from __future__ import annotations
 
+import os
+
 from server.db import get_session
 from server.models.profile_game import ProfileGame
 from server.models.profile_user import ProfileUser
+from server.services.profile_math import (
+    DEFAULT_CFG,
+    calc_balance_delta,
+    calc_pay_raw,
+    calc_rating,
+    cheat_fast_windows,
+    cheat_speed,
+)
 
 _PROFILE_USER_FIELDS = {"login", "phone", "telegram"}
 _PROFILE_GAME_FIELDS = {"record", "rating", "balance"}
@@ -144,5 +154,116 @@ def clear_profile_game_fields(user_id: int, fields: list[str]) -> dict:
                 setattr(obj, field, 0)
             session.flush()
             return {"ok": True}
+    except Exception:
+        return {"ok": False, "error": "DB_ERROR"}
+
+
+def apply_finished_session(user_id: int, metrics: dict) -> dict:
+    """EN: Apply one finished SIS by server formulas and persist resulting profile_game snapshot.
+    RU: Применить завершенную СИС по серверным формулам и сохранить итоговый snapshot profile_game.
+    """
+
+    try:
+        user_id_value = int(user_id)
+    except Exception:
+        return {"ok": False, "error": "BAD_USER_ID"}
+
+    try:
+        record_sis = int(metrics.get("record_sis") or 0)
+        record_pure = int(metrics.get("record_pure") or 0)
+        sis_sec = float(metrics.get("sis_sec") or 0.0)
+        chis_sec = float(metrics.get("chis_sec") or 0.0)
+        attempts = int(metrics.get("attempts") or DEFAULT_CFG.ATTEMPTS_BASE)
+        reward_clicks = int(metrics.get("reward_clicks") or 0)
+        best_life_score = int(metrics.get("best_life_score") or 0)
+        best_game_score = int(metrics.get("best_game_score") or 0)
+        anti_cheat_windows = list(metrics.get("anti_cheat_windows") or [])
+    except Exception:
+        return {"ok": False, "error": "FORMAT"}
+
+    try:
+        with get_session() as session:
+            obj = _ensure_profile_game(session, user_id_value)
+            record_prev = int(obj.record or 0)
+            rating_prev = int(obj.rating or 0)
+            balance_prev = float(obj.balance or 0.0)
+
+            cheat_fast = cheat_fast_windows(anti_cheat_windows=anti_cheat_windows, cfg=DEFAULT_CFG)
+            cheat_final = cheat_speed(record_pure=record_pure, chis_sec=chis_sec, cfg=DEFAULT_CFG)
+            cheat = bool(cheat_fast or cheat_final)
+
+            debug_payload: dict = {}
+            if cheat:
+                obj.record = 0
+                obj.rating = 0
+                obj.balance = 0.0
+                session.flush()
+                if os.getenv("PROFILE_DEBUG", "0") == "1":
+                    debug_payload = {
+                        "cheat_fast": cheat_fast,
+                        "cheat_final": cheat_final,
+                    }
+                return {
+                    "ok": True,
+                    "cheat": True,
+                    "record": 0,
+                    "rating": 0,
+                    "balance": 0.0,
+                    "debug": debug_payload,
+                }
+
+            pay_raw, pay_dbg = calc_pay_raw(sis_sec=sis_sec, reward_clicks=reward_clicks, cfg=DEFAULT_CFG)
+            rating_sis, rating_dbg = calc_rating(
+                record_prev=record_prev,
+                record_sis=record_sis,
+                record_pure=record_pure,
+                chis_sec=chis_sec,
+                attempts=attempts,
+                reward_clicks=reward_clicks,
+                best_life_score=best_life_score,
+                best_game_score=best_game_score,
+                valid_starts=attempts,
+                cfg=DEFAULT_CFG,
+            )
+            balance_delta, bal_dbg = calc_balance_delta(
+                pay_raw=pay_raw,
+                rating=rating_sis,
+                f_rec=float(rating_dbg["f_rec"]),
+                f1=float(rating_dbg["f1"]),
+                f2=float(rating_dbg["f2"]),
+                f3=float(rating_dbg["f3"]),
+                w_case=float(rating_dbg["w_case"]),
+                cfg=DEFAULT_CFG,
+            )
+
+            record_new = max(record_prev, record_sis)
+            if DEFAULT_CFG.POLICY_RATING_MAX:
+                rating_new = max(rating_prev, rating_sis)
+            else:
+                rating_new = int(rating_sis)
+            balance_new = round(balance_prev + float(balance_delta), 3)
+
+            obj.record = int(record_new)
+            obj.rating = int(rating_new)
+            obj.balance = float(balance_new)
+            session.flush()
+
+            if os.getenv("PROFILE_DEBUG", "0") == "1":
+                debug_payload = {
+                    "pay_raw": pay_dbg,
+                    "rating": rating_dbg,
+                    "balance": bal_dbg,
+                    "cheat_fast": cheat_fast,
+                    "cheat_final": cheat_final,
+                }
+
+            return {
+                "ok": True,
+                "cheat": False,
+                "record": int(record_new),
+                "rating": int(rating_new),
+                "balance": float(balance_new),
+                "debug": debug_payload,
+            }
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
