@@ -4,6 +4,8 @@ RU: Представление экрана игры.
 
 from pathlib import Path
 import time
+from collections import deque
+from time import perf_counter
 
 from kivy.clock import Clock
 from kivy.lang import Builder
@@ -21,18 +23,18 @@ from manager.game_control.hud_layout_store import get_swapped
 from manager.score.score_manager import ScoreManager
 from manager.score.score_widget import ScoreLabel
 from manager.time.time_manager import TimeManager
-from data.gameplay.rating.rating_math import calculate_rating_points
+from data.gameplay.profile_math import DEFAULT_CFG, calc_balance_delta, calc_pay_raw, calc_rating, cheat_speed
 from data.gameplay.rating.rating_session import RatingSession
 from data.gameplay.rating_storage import RatingStorage
 from data.gameplay.record_store import RecordStore
 from ads.payment.balance_store import BalanceStore
-from ads.payment.payment_math import calc_balance
 from manager.gameover.gameover_counters import counters
 from manager.lang.lang_manager import t
 from manager import auth_backend
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_cache_writer import update_user_cache_fields
 from data.user_cache.user_session import UserSession
+from manager.user_snapshot_store import UserSnapshotStore
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 from ads.rewarded.rewarded_modal import RewardedAdModal
@@ -61,6 +63,21 @@ class GameScreenView(MDScreen):
         self._time_manager = TimeManager()
         self._session_started = False
         self._receive_click_start = 0
+        self._start_pressed_at = 0.0
+        self._sis_started_at = 0.0
+        self._chis_segment_started_at = 0.0
+        self._chis_accum_sec = 0.0
+        self._reward_click_start = 0
+        self._reward_used = False
+        self._record_sis_max = 0
+        self._record_pure_max = 0
+        self._attempts_total = DEFAULT_CFG.ATTEMPTS_BASE
+        self._cheat_flag = False
+        self._cheat_points_window = deque(maxlen=64)
+        self._profile_prev_record = 0
+        self._profile_prev_rating = 0
+        self._profile_prev_balance = 0.0
+        self._snapshot_store = UserSnapshotStore()
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
@@ -299,9 +316,89 @@ class GameScreenView(MDScreen):
                 self._score.set_score(score)
                 if hasattr(self, "_rating_session"):
                     self._rating_session.on_score_changed(score)
+                self._record_sis_max = max(int(self._record_sis_max), int(score))
+                if not self._reward_used:
+                    self._record_pure_max = max(int(self._record_pure_max), int(score))
+                self._register_score_point_and_check_fast_cheat(int(score))
                 self._last_score = score
         if hasattr(self, "_life"):
             self._life.sync()
+
+    def _register_score_point_and_check_fast_cheat(self, score: int) -> None:
+        """EN: Push (time, score) point into rolling window and detect fast-cheat by 20-score jumps.
+        RU: Добавить точку (time, score) в rolling-окно и проверить быстрый чит по прыжкам на 20 очков.
+        """
+
+        now = perf_counter()
+        self._cheat_points_window.append((now, int(score)))
+        speed_limit = float(DEFAULT_CFG.V_MAX) * (1.0 + float(DEFAULT_CFG.EPS_FAST))
+
+        points = list(self._cheat_points_window)
+        for old_t, old_score in points:
+            delta_score = int(score) - int(old_score)
+            if delta_score < int(DEFAULT_CFG.CHEAT_MIN_SCORE):
+                continue
+            delta_t = max(now - float(old_t), float(DEFAULT_CFG.EPS_T))
+            if (float(delta_score) / delta_t) >= speed_limit:
+                self._cheat_flag = True
+                self._apply_cheat_reset_and_exit()
+                return
+
+    def _close_chis_segment(self) -> None:
+        """EN: Close current CHIS segment and accumulate elapsed seconds.
+        RU: Закрыть текущий сегмент ЧИС и накопить прошедшие секунды.
+        """
+
+        if self._chis_segment_started_at > 0:
+            self._chis_accum_sec += max(0.0, perf_counter() - float(self._chis_segment_started_at))
+            self._chis_segment_started_at = 0.0
+
+    def _open_chis_segment(self) -> None:
+        """EN: Start a new CHIS timing segment from current monotonic time.
+        RU: Запустить новый сегмент таймера ЧИС от текущего монотонного времени.
+        """
+
+        self._chis_segment_started_at = perf_counter()
+
+    def _finalize_chis_sec(self) -> float:
+        """EN: Finalize CHIS duration (accumulated + open segment tail) in seconds.
+        RU: Финализировать длительность ЧИС (накопление + хвост открытого сегмента) в секундах.
+        """
+
+        self._close_chis_segment()
+        return float(max(0.0, self._chis_accum_sec))
+
+    def _reward_click_delta(self) -> int:
+        """EN: Return reward-click delta within current SIS.
+        RU: Вернуть дельту кликов reward в рамках текущей СИС.
+        """
+
+        delta = int(counters.receive_click_count) - int(self._reward_click_start)
+        return max(0, int(delta))
+
+    def _apply_cheat_reset_and_exit(self) -> None:
+        """EN: On cheat, zero local/server profile_game and immediately return to start screen.
+        RU: При чите обнулить локально/на сервере profile_game и немедленно вернуть на стартовый экран.
+        """
+
+        user_id = self._resolve_user_id()
+        self._record_store.set_best_score(0)
+        RatingStorage().save_points(0)
+        self._balance_store.set_balance(0.0)
+        self._snapshot_store.patch_game(record=0, rating=0, balance=0.0)
+        if user_id is not None:
+            auth_backend.save_profile_game(user_id, record=0, rating=0, balance=0.0)
+        self._cheat_flag = True
+        self._session_started = False
+        if hasattr(self, "_gameplay_runtime"):
+            self._gameplay_runtime.stop()
+        if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
+            self._game_control.detach(self._gameplay_surface)
+        if hasattr(self, "_stop_hud_sync"):
+            self._stop_hud_sync()
+        self._reset_to_first_start_state()
+        if self.manager:
+            self.manager.back()
 
     def _on_runtime_loss(self) -> None:
         """EN: Update lives when the runtime registers a loss.
@@ -331,6 +428,15 @@ class GameScreenView(MDScreen):
         counters.inc_gameover()
         if hasattr(self, "_rating_session"):
             self._rating_session.on_game_over(time.time())
+        now_ts = time.time()
+        current_score = int(getattr(getattr(self, "_state", None), "current_y_loop", 0))
+        elapsed_sec = 0.0
+        if self._start_pressed_at > 0:
+            elapsed_sec = max(0.0, now_ts - float(self._start_pressed_at))
+        print(
+            f"[GameOver] score={current_score} elapsed_from_start_sec={elapsed_sec:.2f}",
+            flush=True,
+        )
         if hasattr(self, "_game_control"):
             self._game_control.hud_reset()
         self.touch_controls_hide()
@@ -345,6 +451,7 @@ class GameScreenView(MDScreen):
         RU: Открыть rewarded-модалку и продолжить игру после закрытия.
         """
         counters.inc_receive_click()
+        self._close_chis_segment()
         modal = RewardedAdModal(on_close=self._resume_after_reward)
         self._rewarded_modal = modal
         modal.open()
@@ -361,6 +468,8 @@ class GameScreenView(MDScreen):
             self._gameplay_runtime.receive_reward()
         self._time_manager.time_gameplay(reset=True)
         self._time_manager.time_gameplay(start=True)
+        self._reward_used = True
+        self._open_chis_segment()
 
     def _reset_to_first_start_state(self) -> None:
         """
@@ -410,6 +519,16 @@ class GameScreenView(MDScreen):
             Clock.schedule_once(lambda *_: self._gameplay_runtime.prepare_scene(), 0)
         self._session_started = False
         self._receive_click_start = counters.receive_click_count
+        self._reward_click_start = counters.receive_click_count
+        self._sis_started_at = 0.0
+        self._chis_segment_started_at = 0.0
+        self._chis_accum_sec = 0.0
+        self._reward_used = False
+        self._record_sis_max = 0
+        self._record_pure_max = 0
+        self._attempts_total = int(DEFAULT_CFG.ATTEMPTS_BASE)
+        self._cheat_flag = False
+        self._cheat_points_window.clear()
 
     def _reset_hud_state(self) -> None:
         """EN: Reset score/lives state for a fresh run.
@@ -422,53 +541,104 @@ class GameScreenView(MDScreen):
         self._last_score = None
 
     def _on_back_pressed(self) -> None:
-        """EN: Stop runtime, reset HUD, and navigate back.
-        RU: Остановить runtime, сбросить HUD и вернуться назад.
+        """EN: Stop runtime, finalize SIS metrics, and navigate back.
+        RU: ?????????? runtime, ?????????????? ??????? ??? ? ????????? ?????.
         """
+        if not self._session_started:
+            if hasattr(self, "_gameplay_runtime"):
+                self._gameplay_runtime.stop()
+            if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
+                self._game_control.detach(self._gameplay_surface)
+            self.touch_controls_hide()
+            self._reset_hud_state()
+            if hasattr(self, "_stop_hud_sync"):
+                self._stop_hud_sync()
+            self._reset_to_first_start_state()
+            if self.manager:
+                self.manager.back()
+            return
+
+        now = time.time()
         if hasattr(self, "_rating_session"):
-            self._rating_session.on_exit_back(time.time())
-            gameplay_sec = self._rating_session.gameplay_duration_sec or None
-            rating_points = calculate_rating_points(
-                self._rating_session.best_life_score,
-                self._rating_session.best_game_score,
-                self._rating_session.valid_starts,
-                gameplay_sec,
-            )
-            RatingStorage().save_points(rating_points)
-            print(
-                "[Rating] "
-                f"points={rating_points} "
-                f"best_life={self._rating_session.best_life_score} "
-                f"best_game={self._rating_session.best_game_score} "
-                f"valid_starts={self._rating_session.valid_starts} "
-                f"gameplay_sec={self._rating_session.gameplay_duration_sec}",
-                flush=True,
-            )
-        session_sec = self._time_manager.time_game_session(stop=True)
-        if self._session_started:
-            time_sec = float(session_sec or 0.0)
-            receive_click_delta = counters.receive_click_count - int(self._receive_click_start)
-            if receive_click_delta < 0:
-                receive_click_delta = 0
+            self._rating_session.on_exit_back(now)
 
-            delta = calc_balance(time_sec, receive_click_delta)
-            self._balance_store.add(delta)
-
-            # чтобы не было двойного начисления при повторном back
-            self._session_started = False
+        sis_sec = float(self._time_manager.time_game_session(stop=True) or 0.0)
+        chis_sec = float(self._finalize_chis_sec() or 0.0)
         gameplay_sec = self._time_manager.time_gameplay()
         if gameplay_sec is None:
             gameplay_sec = 0.0
+
+        reward_click_delta = self._reward_click_delta()
+        self._attempts_total = int(DEFAULT_CFG.ATTEMPTS_BASE * (1 + int(reward_click_delta)))
+
+        best_life_score = int(getattr(getattr(self, "_rating_session", None), "best_life_score", 0) or 0)
+        best_game_score = int(getattr(getattr(self, "_rating_session", None), "best_game_score", 0) or 0)
+        valid_starts = int(getattr(getattr(self, "_rating_session", None), "valid_starts", 0) or 0)
+
+        record_sis = int(self._record_sis_max)
+        record_pure = int(self._record_pure_max)
+
+        cheat_doc = cheat_speed(record_pure=record_pure, chis_sec=chis_sec, cfg=DEFAULT_CFG)
+        if bool(self._cheat_flag or cheat_doc):
+            self._apply_cheat_reset_and_exit()
+            return
+
+        pay_raw, pay_dbg = calc_pay_raw(sis_sec=sis_sec, reward_clicks=reward_click_delta, cfg=DEFAULT_CFG)
+        rating_new_sis, rating_dbg = calc_rating(
+            record_prev=int(self._profile_prev_record),
+            record_sis=record_sis,
+            record_pure=record_pure,
+            chis_sec=chis_sec,
+            attempts=int(self._attempts_total),
+            reward_clicks=int(reward_click_delta),
+            best_life_score=best_life_score,
+            best_game_score=best_game_score,
+            valid_starts=valid_starts,
+            cfg=DEFAULT_CFG,
+        )
+        balance_delta, balance_dbg = calc_balance_delta(
+            pay_raw=pay_raw,
+            rating=rating_new_sis,
+            f_rec=float(rating_dbg["f_rec"]),
+            f1=float(rating_dbg["f1"]),
+            f2=float(rating_dbg["f2"]),
+            f3=float(rating_dbg["f3"]),
+            w_case=float(rating_dbg["w_case"]),
+            cfg=DEFAULT_CFG,
+        )
+
+        record_new = max(int(self._profile_prev_record), int(record_sis))
+        if DEFAULT_CFG.POLICY_RATING_MAX:
+            rating_new = max(int(self._profile_prev_rating), int(rating_new_sis))
+        else:
+            rating_new = int(rating_new_sis)
+        balance_new = round(float(self._profile_prev_balance) + float(balance_delta), 3)
+
+        self._record_store.set_best_score(record_new)
+        RatingStorage().save_points(int(rating_new))
+        self._balance_store.set_balance(float(balance_new))
+        self._snapshot_store.patch_game(record=record_new, rating=rating_new, balance=balance_new)
+
+        user_id = self._resolve_user_id()
+        if user_id is not None:
+            auth_backend.save_profile_game(
+                int(user_id),
+                record=int(record_new),
+                rating=int(rating_new),
+                balance=float(balance_new),
+            )
+
         print(
-            f"[Time] game_session_sec={session_sec or 0.0:.2f} gameplay_sec={gameplay_sec:.2f}",
+            "[SIS] "
+            f"sis_sec={sis_sec:.2f} chis_sec={chis_sec:.2f} gameplay_sec={gameplay_sec:.2f} "
+            f"record_sis={record_sis} record_pure={record_pure} "
+            f"attempts={self._attempts_total} reward_clicks={reward_click_delta} "
+            f"pay_raw={pay_dbg['pay_raw']:.6f} rating_sis={rating_new_sis} rating_new={rating_new} "
+            f"balance_delta={balance_dbg['balance_delta']:.6f} balance_new={balance_new:.3f}",
             flush=True,
         )
-        if self._game_over_flag:
-            current_score = int(getattr(getattr(self, "_state", None), "current_y_loop", 0))
-            best_score = self._record_store.commit_if_higher(current_score)
-            print(f"[Record] best_score={best_score}", flush=True)
-            self._game_over_flag = False
-        self._sync_profile_game_db()
+
+        self._session_started = False
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
@@ -519,16 +689,35 @@ class GameScreenView(MDScreen):
             user_id,
             record=int(record),
             rating=int(rating),
-            balance=int(balance),
+            balance=float(balance),
         )
 
     def _on_start_pressed(self) -> None:
         """EN: Hide HUD and start the gameplay runtime.
         RU: Скрыть HUD и запустить игровой runtime.
         """
+        start_ts = time.time()
+        self._start_pressed_at = start_ts
+        self._sis_started_at = perf_counter()
+        self._chis_accum_sec = 0.0
+        self._open_chis_segment()
+        self._reward_used = False
+        self._record_sis_max = 0
+        self._record_pure_max = 0
+        self._attempts_total = int(DEFAULT_CFG.ATTEMPTS_BASE)
+        self._cheat_flag = False
+        self._cheat_points_window.clear()
+        self._reward_click_start = int(counters.receive_click_count)
+        snap = self._snapshot_store.load()
+        self._profile_prev_record = int(snap.get("record") or 0)
+        self._profile_prev_rating = int(snap.get("rating") or 0)
+        try:
+            self._profile_prev_balance = float(snap.get("balance") or 0.0)
+        except Exception:
+            self._profile_prev_balance = 0.0
         if hasattr(self, "_rating_session"):
             current_score = int(getattr(getattr(self, "_state", None), "current_y_loop", 0))
-            self._rating_session.on_press_start(time.time(), current_score)
+            self._rating_session.on_press_start(start_ts, current_score)
         self._time_manager.time_game_session(reset=True)
         self._time_manager.time_gameplay(reset=True)
         self._time_manager.time_game_session(start=True)

@@ -97,7 +97,7 @@ def update_profile_game(
     *,
     record: int | None = None,
     rating: int | None = None,
-    balance: int | None = None,
+    balance: float | None = None,
 ) -> dict:
     """EN: Update provided ProfileGame numeric fields.
     RU: Обновить переданные числовые поля ProfileGame.
@@ -116,7 +116,7 @@ def update_profile_game(
             if rating is not None:
                 obj.rating = int(rating)
             if balance is not None:
-                obj.balance = int(balance)
+                obj.balance = round(float(balance), 3)
 
             session.flush()
             return {"ok": True}
@@ -146,4 +146,3 @@ def clear_profile_game_fields(user_id: int, fields: list[str]) -> dict:
             return {"ok": True}
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
-

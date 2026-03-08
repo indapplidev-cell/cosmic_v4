@@ -129,7 +129,7 @@ class ProfileScreenController:
             self._snapshot_store.save(user)
             record = int(user.get("record") or 0)
             rating = int(user.get("rating") or 0)
-            balance = int(user.get("balance") or 0)
+            balance = round(float(user.get("balance") or 0.0), 3)
             print(
                 f"[Profile] profile_game server: r={record}, rating={rating}, bal={balance}",
                 flush=True,

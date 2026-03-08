@@ -21,6 +21,17 @@ def _as_int(value: Any, default: int = 0) -> int:
         return int(default)
 
 
+def _as_float(value: Any, default: float = 0.0) -> float:
+    """EN: Convert value to float with safe fallback.
+    RU: Безопасно преобразовать значение в float с запасным значением.
+    """
+
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
 class UserSnapshotStore:
     """EN: Read/write helpers for server-synchronized user snapshot fields.
     RU: Хелпер чтения/записи полей snapshot пользователя, синхронизированных с сервером.
@@ -40,7 +51,7 @@ class UserSnapshotStore:
             "telegram": str((cache.get("telegram") or cache.get("tg") or "").strip()),
             "record": _as_int(cache.get("record"), 0),
             "rating": _as_int(cache.get("rating"), 0),
-            "balance": _as_int(cache.get("balance"), 0),
+            "balance": _as_float(cache.get("balance"), 0.0),
         }
 
     def save(self, snapshot: dict[str, Any]) -> None:
@@ -57,7 +68,7 @@ class UserSnapshotStore:
             "tg": str((snapshot.get("telegram") or "").strip()),
             "record": _as_int(snapshot.get("record"), 0),
             "rating": _as_int(snapshot.get("rating"), 0),
-            "balance": _as_int(snapshot.get("balance"), 0),
+            "balance": _as_float(snapshot.get("balance"), 0.0),
         }
         update_user_cache_fields(patch)
 
@@ -66,7 +77,7 @@ class UserSnapshotStore:
         *,
         record: int | None = None,
         rating: int | None = None,
-        balance: int | None = None,
+        balance: float | None = None,
     ) -> None:
         """EN: Update only game-related snapshot fields in cache.
         RU: Обновить в кэше только игровые поля snapshot.
@@ -78,14 +89,14 @@ class UserSnapshotStore:
         if rating is not None:
             patch["rating"] = int(rating)
         if balance is not None:
-            patch["balance"] = int(balance)
+            patch["balance"] = float(balance)
         if patch:
             update_user_cache_fields(patch)
 
-    def get_game(self) -> tuple[int, int, int]:
+    def get_game(self) -> tuple[int, int, float]:
         """EN: Return (record, rating, balance) from cached snapshot.
         RU: Вернуть (record, rating, balance) из кэшированного snapshot.
         """
 
         data = self.load()
-        return int(data["record"]), int(data["rating"]), int(data["balance"])
+        return int(data["record"]), int(data["rating"]), float(data["balance"])

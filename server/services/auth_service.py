@@ -56,7 +56,7 @@ def _build_user_snapshot(session, user_id: int) -> dict | None:
         "telegram": _normalize_profile_text(row.get("telegram")),
         "record": int(row.get("record") or 0),
         "rating": int(row.get("rating") or 0),
-        "balance": int(row.get("balance") or 0),
+        "balance": round(float(row.get("balance") or 0.0), 3),
     }
 
 

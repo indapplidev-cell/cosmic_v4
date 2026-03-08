@@ -168,7 +168,7 @@ def save_profile_game(
     *,
     record: int | None = None,
     rating: int | None = None,
-    balance: int | None = None,
+    balance: float | None = None,
 ) -> bool:
     """EN: Persist provided profile-game fields.
     RU: Сохранить переданные поля profile_game.
@@ -181,7 +181,7 @@ def save_profile_game(
     if rating is not None:
         body["rating"] = int(rating)
     if balance is not None:
-        body["balance"] = int(balance)
+        body["balance"] = float(balance)
     ok, payload = api_client.request("POST", "/profile/game/update", json=body)
     is_ok = bool(ok and isinstance(payload, dict) and payload.get("ok"))
     if is_ok:

@@ -142,7 +142,7 @@ class ProfileGameUpdateRequest(StrictBaseModel):
     user_id: int = Field(gt=0)
     record: int | None = None
     rating: int | None = None
-    balance: int | None = None
+    balance: float | None = None
 
     @field_validator("record")
     @classmethod
@@ -168,14 +168,17 @@ class ProfileGameUpdateRequest(StrictBaseModel):
 
     @field_validator("balance")
     @classmethod
-    def validate_balance(cls, value: int | None) -> int | None:
-        """EN: Validate optional balance value bounds.
-        RU: Проверить границы опционального значения balance.
+    def validate_balance(cls, value: float | None) -> float | None:
+        """EN: Validate optional balance bounds and normalize to 3 decimals.
+        RU: Проверить границы balance и нормализовать до 3 знаков.
         """
 
         if value is None:
             return None
-        return validate_nonneg_int(value)
+        value_f = round(float(value), 3)
+        if value_f < 0 or value_f > 2_000_000_000:
+            raise ValueError("FORMAT")
+        return value_f
 
 
 class ProfileGameClearRequest(StrictBaseModel):

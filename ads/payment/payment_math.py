@@ -10,8 +10,8 @@ import math
 # Константы по ТЗ (не размазывать по проекту)
 BANNER_COIN: float = 0.10
 REWARDED_COIN: float = 0.30
-BANNER_TIME_SEC: int = 10
-BANNER_LOOK: int = 1000
+BANNER_IMP_SEC: int = 5
+PER_1000: int = 1000
 
 
 def calc_banner_times(time_game_session_sec: float) -> int:
@@ -19,7 +19,7 @@ def calc_banner_times(time_game_session_sec: float) -> int:
     sec = float(time_game_session_sec)
     if sec <= 0:
         return 0
-    return int(math.floor(sec / float(BANNER_TIME_SEC)))
+    return int(math.floor(sec / float(BANNER_IMP_SEC)))
 
 
 def calc_banner_pay(time_game_session_sec: float) -> float:
@@ -27,7 +27,7 @@ def calc_banner_pay(time_game_session_sec: float) -> float:
     banner_pay = (banner_coin * banner_times) / banner_look
     """
     banner_times = calc_banner_times(time_game_session_sec)
-    return (BANNER_COIN * float(banner_times)) / float(BANNER_LOOK)
+    return (BANNER_COIN * float(banner_times)) / float(PER_1000)
 
 
 def calc_reward_pay(receive_click: int) -> float:
@@ -48,4 +48,3 @@ def format_balance(value: float) -> str:
     s = f"{float(value):.3f}"
     s = s.rstrip("0").rstrip(".")
     return s if s else "0"
-

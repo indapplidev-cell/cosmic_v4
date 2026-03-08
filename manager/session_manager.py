@@ -59,7 +59,7 @@ def sync_user_snapshot(user: dict) -> None:
         "tg": str((user.get("telegram") or "").strip()),
         "record": int(user.get("record") or 0),
         "rating": int(user.get("rating") or 0),
-        "balance": int(user.get("balance") or 0),
+        "balance": round(float(user.get("balance") or 0.0), 3),
     }
     if patch["user_id"] > 0:
         update_user_cache_fields(patch)
