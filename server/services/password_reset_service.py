@@ -20,6 +20,7 @@ from server.models.user import User
 from server.security.passwords import hash_password
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _mask_email(email: str) -> str:
