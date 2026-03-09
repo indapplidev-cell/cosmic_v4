@@ -278,6 +278,10 @@ def _refresh_all_screens(old_no_data: str) -> None:
                 _sync_hint_to_textinput(password_reset.ids.new_password_field, password_reset.ids.new_password_hint)
         if "send_btn_text" in password_reset.ids:
             password_reset.ids.send_btn_text.text = caps(t("reset.btn_send_code"))
+        if "reset_channel_telegram_lbl" in password_reset.ids:
+            password_reset.ids.reset_channel_telegram_lbl.text = t("reset.channel.telegram")
+        if "reset_channel_email_lbl" in password_reset.ids:
+            password_reset.ids.reset_channel_email_lbl.text = t("reset.channel.email")
         if "confirm_btn_text" in password_reset.ids:
             password_reset.ids.confirm_btn_text.text = caps(t("reset.btn_confirm"))
         if "back_btn_text" in password_reset.ids:

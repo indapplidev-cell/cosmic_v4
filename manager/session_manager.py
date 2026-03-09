@@ -57,6 +57,8 @@ def sync_user_snapshot(user: dict) -> None:
         "login": str((user.get("login") or "").strip()),
         "phone": str((user.get("phone") or "").strip()),
         "tg": str((user.get("telegram") or "").strip()),
+        "telegram_linked": bool(user.get("telegram_linked")),
+        "telegram_verified": bool(user.get("telegram_verified")),
         "record": int(user.get("record") or 0),
         "rating": int(user.get("rating") or 0),
         "balance": round(float(user.get("balance") or 0.0), 3),
@@ -77,6 +79,9 @@ def sync_user_snapshot_from_payload(payload: dict) -> bool:
         return False
     try:
         sync_user_snapshot(user)
+        access_token = str((payload.get("access_token") or "").strip()) if isinstance(payload, dict) else ""
+        if access_token:
+            update_user_cache_fields({"access_token": access_token})
         return True
     except Exception:
         return False

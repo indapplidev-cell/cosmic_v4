@@ -68,6 +68,7 @@ class PasswordResetRequest(StrictBaseModel):
     """
 
     email: EmailStr
+    channel: Literal["telegram", "email"] = "telegram"
 
 
 class PasswordResetConfirm(StrictBaseModel):
@@ -98,6 +99,73 @@ class PasswordResetConfirm(StrictBaseModel):
         """
 
         return reject_control_chars(value)
+
+
+class TelegramLinkConfirmRequest(StrictBaseModel):
+    """EN: Telegram bot confirmation payload with one-time link code and telegram user id.
+    RU: Payload подтверждения от Telegram-бота с одноразовым кодом привязки и telegram user id.
+    """
+
+    code: Annotated[str, MinLen(6), MaxLen(6)]
+    telegram_user_id: int = Field(gt=0)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        """EN: Accept only 6-digit numeric link code.
+        RU: Принимать только 6-значный цифровой код привязки.
+        """
+
+        if not value.isdigit():
+            raise ValueError("FORMAT")
+        return value
+
+
+class TelegramLinkRequest(StrictBaseModel):
+    """EN: Telegram deep-link request payload with authenticated user id.
+    RU: Payload запроса deep-link для Telegram с идентификатором авторизованного пользователя.
+    """
+
+    user_id: int = Field(gt=0)
+
+
+class TelegramVerifyRequest(StrictBaseModel):
+    """EN: Telegram verification request payload initiated by app user.
+    RU: Payload запроса верификации Telegram, инициируемого пользователем приложения.
+    """
+
+    user_id: int = Field(gt=0)
+
+
+class TelegramVerifySend(StrictBaseModel):
+    """EN: Bot-to-API payload for issuing one-time verification code to Telegram user.
+    RU: Payload бота в API для выдачи одноразового кода верификации Telegram-пользователю.
+    """
+
+    request_id: Annotated[str, MinLen(10), MaxLen(32)]
+    telegram_user_id: int = Field(gt=0)
+    bot_secret: Annotated[str, MinLen(1), MaxLen(256)]
+
+
+class TelegramVerifyConfirm(StrictBaseModel):
+    """EN: Telegram verification confirmation payload with request_id and 6-digit code.
+    RU: Payload подтверждения Telegram-верификации с request_id и 6-значным кодом.
+    """
+
+    user_id: int = Field(gt=0)
+    request_id: Annotated[str, MinLen(10), MaxLen(32)]
+    code: Annotated[str, MinLen(6), MaxLen(6)]
+
+    @field_validator("code")
+    @classmethod
+    def validate_verify_code(cls, value: str) -> str:
+        """EN: Accept only numeric 6-digit verification code.
+        RU: Принимать только цифровой 6-значный код верификации.
+        """
+
+        if not value.isdigit():
+            raise ValueError("FORMAT")
+        return value
 
 
 class DeleteUserRequest(StrictBaseModel):

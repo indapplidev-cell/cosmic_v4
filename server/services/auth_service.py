@@ -10,7 +10,9 @@ from server.db import get_session
 from server.models.balance import Balance
 from server.models.profile_game import ProfileGame
 from server.models.profile_user import ProfileUser
+from server.models.telegram_account import TelegramAccount
 from server.models.user import User
+from server.security.jwt import create_access_token
 from server.security.passwords import hash_password, needs_rehash, verify_password
 
 
@@ -35,12 +37,15 @@ def _build_user_snapshot(session, user_id: int) -> dict | None:
             ProfileUser.login.label("login"),
             ProfileUser.phone.label("phone"),
             ProfileUser.telegram.label("telegram"),
+            TelegramAccount.telegram_user_id.label("telegram_user_id"),
+            TelegramAccount.verified_at.label("telegram_verified_at"),
             ProfileGame.record.label("record"),
             ProfileGame.rating.label("rating"),
             ProfileGame.balance.label("balance"),
         )
         .select_from(User)
         .outerjoin(ProfileUser, ProfileUser.user_id == User.id)
+        .outerjoin(TelegramAccount, TelegramAccount.user_id == User.id)
         .outerjoin(ProfileGame, ProfileGame.user_id == User.id)
         .where(User.id == int(user_id))
     )
@@ -54,6 +59,8 @@ def _build_user_snapshot(session, user_id: int) -> dict | None:
         "login": _normalize_profile_text(row.get("login")),
         "phone": _normalize_profile_text(row.get("phone")),
         "telegram": _normalize_profile_text(row.get("telegram")),
+        "telegram_linked": bool(row.get("telegram_user_id")),
+        "telegram_verified": bool(row.get("telegram_verified_at")),
         "record": int(row.get("record") or 0),
         "rating": int(row.get("rating") or 0),
         "balance": round(float(row.get("balance") or 0.0), 3),
@@ -85,7 +92,11 @@ def register_user(email: str, psw: str) -> dict:
             session.add(Balance(user_id=user.id))
             session.flush()
             snapshot = _build_user_snapshot(session, int(user.id))
-            return {"ok": True, "user_id": int(user.id), "user": snapshot}
+            token = create_access_token(user_id=int(user.id), email=email_value)
+            result = {"ok": True, "user_id": int(user.id), "user": snapshot}
+            if token:
+                result["access_token"] = token
+            return result
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
 
@@ -113,7 +124,11 @@ def login_user(email: str, psw: str) -> dict:
                 session.flush()
 
             snapshot = _build_user_snapshot(session, int(user.id))
-            return {"ok": True, "user_id": int(user.id), "user": snapshot}
+            token = create_access_token(user_id=int(user.id), email=email_value)
+            result = {"ok": True, "user_id": int(user.id), "user": snapshot}
+            if token:
+                result["access_token"] = token
+            return result
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
 

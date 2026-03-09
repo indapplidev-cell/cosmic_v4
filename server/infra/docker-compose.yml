@@ -33,6 +33,19 @@ services:
       timeout: 2s
       retries: 20
 
+  bot:
+    image: cosmic-api:local
+    build:
+      context: ../..
+      dockerfile: server/infra/Dockerfile
+    env_file:
+      - ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m server.bot.main
+    restart: unless-stopped
+
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -46,15 +59,6 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_started
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    profiles: ["tunnel"]
 
 volumes:
   postgres_data:

@@ -18,13 +18,14 @@ def test_password_reset_request_always_ok(monkeypatch) -> None:
     RU: Endpoint запроса должен возвращать обобщённый успешный payload.
     """
 
-    def _fake_request(email: str, request_ip: str | None, user_agent: str | None) -> dict:
+    def _fake_request(email: str, channel: str, request_ip: str | None, user_agent: str | None) -> dict:
         assert email == "u@test.com"
+        assert channel == "telegram"
         return {"ok": True}
 
-    monkeypatch.setattr("server.api.main.request_password_reset", _fake_request)
+    monkeypatch.setattr("server.api.main.request_password_reset_telegram", _fake_request)
     client = TestClient(app)
-    response = client.post("/auth/password/reset/request", json={"email": "u@test.com"})
+    response = client.post("/auth/password/reset/request", json={"email": "u@test.com", "channel": "telegram"})
     assert response.status_code == 200
     assert response.json() == {"ok": True}
 
@@ -34,13 +35,13 @@ def test_password_reset_confirm_invalid_code(monkeypatch) -> None:
     RU: Endpoint подтверждения должен возвращать бизнес-ошибку INVALID_CODE.
     """
 
-    def _fake_confirm(email: str, code: str, new_password: str, request_ip: str | None, user_agent: str | None) -> dict:
+    def _fake_confirm(email: str, code: str, new_password: str) -> dict:
         assert email == "u@test.com"
         assert code == "123456"
         assert new_password == "Qwerty12345!"
         return {"ok": False, "error": "INVALID_CODE"}
 
-    monkeypatch.setattr("server.api.main.confirm_password_reset", _fake_confirm)
+    monkeypatch.setattr("server.api.main.confirm_password_reset_telegram", _fake_confirm)
     client = TestClient(app)
     response = client.post(
         "/auth/password/reset/confirm",

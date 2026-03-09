@@ -4,6 +4,8 @@ RU: Точка входа FastAPI, публикующая HTTP-эндпоинт�
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
@@ -13,6 +15,11 @@ from server.api.schemas import (
     LoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    TelegramLinkRequest,
+    TelegramLinkConfirmRequest,
+    TelegramVerifyConfirm,
+    TelegramVerifyRequest,
+    TelegramVerifySend,
     ProfileGameClearRequest,
     ProfileGameUpdateRequest,
     ProfileUserClearRequest,
@@ -33,10 +40,14 @@ from server.services.profile_service import (
     update_profile_game,
     update_profile_user,
 )
-from server.services.password_reset_service import (
-    confirm_password_reset,
-    request_password_reset,
+from server.security.jwt import decode_access_token, extract_bearer_token
+from server.services.telegram_service import (
+    confirm_link_code,
+    confirm_password_reset as confirm_password_reset_telegram,
+    request_link_code,
+    request_password_reset as request_password_reset_telegram,
 )
+from server.services.telegram_verify_service import bot_send_code, confirm_verify, request_verify
 from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
 from server.services.docs_service import get_doc_content
@@ -95,6 +106,24 @@ def _service_result_to_response(result: dict) -> dict:
     return {"ok": False, "error": str(result.get("error", "DB_ERROR"))}
 
 
+def _resolve_user_id_from_bearer(request: Request) -> int | None:
+    """EN: Resolve user_id from Authorization Bearer token payload.
+    RU: Извлечь user_id из payload токена Authorization Bearer.
+    """
+
+    token = extract_bearer_token(request.headers.get("authorization"))
+    if not token:
+        return None
+    payload = decode_access_token(token)
+    if not isinstance(payload, dict):
+        return None
+    raw_sub = payload.get("sub")
+    try:
+        return int(raw_sub)
+    except Exception:
+        return None
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     """EN: Liveness endpoint for local deployment checks.
@@ -142,7 +171,7 @@ def auth_password_reset_request(payload: PasswordResetRequest, request: Request)
 
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
-    result = request_password_reset(payload.email, client_ip, user_agent)
+    result = request_password_reset_telegram(payload.email, payload.channel, client_ip, user_agent)
     return _service_result_to_response(result)
 
 
@@ -152,15 +181,81 @@ def auth_password_reset_confirm(payload: PasswordResetConfirm, request: Request)
     RU: Подтвердить одноразовый код и установить новый хеш пароля.
     """
 
-    client_ip = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    result = confirm_password_reset(
+    del request
+    result = confirm_password_reset_telegram(
         payload.email,
         payload.code,
         payload.new_psw,
-        client_ip,
-        user_agent,
     )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/link/request")
+def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dict:
+    """EN: Create one-time Telegram deep-link start token for authenticated user.
+    RU: Создать одноразовый Telegram deep-link start token для авторизованного пользователя.
+    """
+
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "FORBIDDEN"}
+    result = request_link_code(payload.user_id)
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/link/confirm")
+def telegram_link_confirm(payload: TelegramLinkConfirmRequest) -> dict:
+    """EN: Confirm Telegram link code from bot and bind telegram_user_id to app user.
+    RU: Подтвердить Telegram-код от бота и привязать telegram_user_id к пользователю приложения.
+    """
+
+    result = confirm_link_code(payload.code, payload.telegram_user_id)
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/verify/request")
+def telegram_verify_request(payload: TelegramVerifyRequest, request: Request) -> dict:
+    """EN: Create Telegram verification challenge for provided user_id and return request_id.
+    RU: Создать challenge верификации Telegram для переданного user_id и вернуть request_id.
+    """
+
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    result = request_verify(
+        user_id=payload.user_id,
+        user_agent=user_agent,
+        request_ip=client_ip,
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/verify/send")
+def telegram_verify_send(payload: TelegramVerifySend) -> dict:
+    """EN: Accept bot request and send 6-digit code for verification challenge.
+    RU: Принять запрос от бота и отправить 6-значный код для challenge верификации.
+    """
+
+    expected_secret = os.getenv("BOT_SHARED_SECRET", "").strip()
+    provided_secret = str(payload.bot_secret or "").strip()
+    if not expected_secret or provided_secret != expected_secret:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "FORBIDDEN"})
+    result = bot_send_code(
+        request_id=payload.request_id,
+        telegram_user_id=payload.telegram_user_id,
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/verify/confirm")
+def telegram_verify_confirm(payload: TelegramVerifyConfirm, request: Request) -> dict:
+    """EN: Confirm Telegram verification challenge code for provided user_id.
+    RU: Подтвердить код challenge верификации Telegram для переданного user_id.
+    """
+
+    del request
+    result = confirm_verify(user_id=payload.user_id, request_id=payload.request_id, code=payload.code)
     return _service_result_to_response(result)
 
 

@@ -217,24 +217,30 @@
                                 anchor_y: "center"
 
                                 MDBoxLayout:
-                                    orientation: "horizontal"
+                                    orientation: "vertical"
                                     size_hint: 1, None
-                                    height: dp(56)
-                                    padding: dp(16), 0, dp(16), 0
-                                    spacing: dp(12)
+                                    height: dp(120)
+                                    padding: dp(16), dp(8), dp(16), dp(8)
+                                    spacing: dp(8)
 
-                                    MDIconButton:
-                                        id: delete_account_icon
-                                        icon: "account-minus-outline"
-                                        on_release: root.on_delete_account_pressed()
-                                        pos_hint: {"center_y": 0.5}
+                                    MDBoxLayout:
+                                        orientation: "horizontal"
+                                        size_hint: 1, None
+                                        height: dp(52)
+                                        spacing: dp(12)
 
-                                    MDLabel:
-                                        id: delete_account_lbl
-                                        text: t("settings.delete_account")
-                                        halign: "left"
-                                        valign: "middle"
-                                        text_size: self.size
+                                        MDIconButton:
+                                            id: delete_account_icon
+                                            icon: "account-minus-outline"
+                                            on_release: root.on_delete_account_pressed()
+                                            pos_hint: {"center_y": 0.5}
+
+                                        MDLabel:
+                                            id: delete_account_lbl
+                                            text: t("settings.delete_account")
+                                            halign: "left"
+                                            valign: "middle"
+                                            text_size: self.size
         MDBoxLayout:
             id: bottombar
             AnchorLayout:

@@ -17,6 +17,7 @@ def request(
     json: dict | None = None,
     timeout: int = 10,
     params: dict | None = None,
+    headers: dict | None = None,
 ) -> Tuple[bool, Any]:
     """EN: Send HTTP request and return (ok, payload_or_error).
     RU: Отправить HTTP-запрос и вернуть (ok, payload_или_ошибка).
@@ -28,6 +29,7 @@ def request(
             url=url,
             json=json,
             params=params,
+            headers=headers,
             timeout=timeout,
         )
     except requests.RequestException:

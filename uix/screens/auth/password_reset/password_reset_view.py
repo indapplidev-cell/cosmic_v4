@@ -39,6 +39,7 @@ class PasswordResetScreenView(MDScreen):
             self,
             [self.ids.send_btn_text, self.ids.confirm_btn_text, self.ids.back_btn_text],
         )
+        self.ids.reset_channel_telegram.active = True
         apply_debug_borders_to_ids(self, PASSWORD_RESET_DEBUG_IDS)
 
     def configure(self, vm: PasswordResetVM, controller: PasswordResetController) -> None:
@@ -54,6 +55,8 @@ class PasswordResetScreenView(MDScreen):
         self.ids.send_btn_text.text = caps(vm.send_code_text)
         self.ids.confirm_btn_text.text = caps(vm.confirm_text)
         self.ids.back_btn_text.text = caps(vm.back_text)
+        self.ids.reset_channel_telegram_lbl.text = t("reset.channel.telegram")
+        self.ids.reset_channel_email_lbl.text = t("reset.channel.email")
         self.set_error(vm.error_text)
 
         self.ids.send_btn.on_release = self._on_send_code_pressed
@@ -70,7 +73,8 @@ class PasswordResetScreenView(MDScreen):
             self.set_error(t("reset.error.email_required"))
             return
 
-        ok, _error = auth_backend.password_reset_request(email)
+        channel = "telegram" if self.ids.reset_channel_telegram.active else "email"
+        ok, _error = auth_backend.password_reset_request(email, channel=channel)
         if not ok:
             self.set_error(t("reset.error.request_failed"))
             return

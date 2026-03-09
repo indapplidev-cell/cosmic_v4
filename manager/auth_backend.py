@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
+from data.user_cache.user_cache_reader import get_user_cache
 from manager import api_client
 from manager.session_manager import clear_cached_session, sync_user_snapshot_from_payload
 from manager.user_snapshot_store import UserSnapshotStore
@@ -61,6 +62,18 @@ def _error_code(payload: object, default: str) -> str:
     if isinstance(payload, dict):
         return str(payload.get("error", default))
     return default
+
+
+def _auth_headers() -> dict | None:
+    """EN: Build Authorization header from cached access token when present.
+    RU: Сформировать заголовок Authorization из кэшированного access token при наличии.
+    """
+
+    cache = get_user_cache() or {}
+    token = str((cache.get("access_token") or "").strip())
+    if not token:
+        return None
+    return {"Authorization": f"Bearer {token}"}
 
 
 def register(email: str, psw: str) -> Tuple[bool, str | int]:
@@ -288,13 +301,18 @@ def finish_session_metrics(payload: dict, timeout: int = 10) -> Tuple[bool, dict
     return True, response
 
 
-def password_reset_request(email: str) -> Tuple[bool, str]:
+def password_reset_request(email: str, channel: str = "telegram") -> Tuple[bool, str]:
     """EN: Request password reset code by email without exposing account existence.
     RU: Запросить код восстановления пароля по email без раскрытия существования аккаунта.
     """
 
     _ensure_healthcheck_once()
-    ok, payload = api_client.request("POST", "/auth/password/reset/request", json={"email": email}, timeout=10)
+    ok, payload = api_client.request(
+        "POST",
+        "/auth/password/reset/request",
+        json={"email": email, "channel": str(channel or "telegram").strip().lower()},
+        timeout=10,
+    )
     if ok and isinstance(payload, dict) and payload.get("ok"):
         return True, ""
     return False, _error_code(payload, "API_ERROR")
@@ -314,5 +332,64 @@ def password_reset_confirm(email: str, code: str, new_psw: str) -> Tuple[bool, s
     )
     if ok and isinstance(payload, dict) and payload.get("ok"):
         clear_cached_session()
+        return True, ""
+    return False, _error_code(payload, "INVALID_CODE")
+
+
+def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
+    """EN: Request one-time Telegram deep-link start token for authenticated user.
+    RU: Запросить одноразовый Telegram deep-link start token для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload = api_client.request(
+        "POST",
+        "/telegram/link/request",
+        json={"user_id": int(user_id)},
+        headers=_auth_headers(),
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def telegram_verify_request(user_id: int) -> Tuple[bool, dict]:
+    """EN: Request Telegram verification challenge for given user and return request_id/ttl.
+    RU: Запросить challenge верификации Telegram для указанного пользователя и вернуть request_id/ttl.
+    """
+
+    _ensure_healthcheck_once()
+    body: dict = {"user_id": int(user_id)}
+    ok, payload = api_client.request(
+        "POST",
+        "/telegram/verify/request",
+        json=body,
+        headers=_auth_headers(),
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def telegram_verify_confirm(user_id: int, request_id: str, code: str) -> Tuple[bool, str]:
+    """EN: Confirm Telegram verification challenge code for given user.
+    RU: Подтвердить код challenge верификации Telegram для указанного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload = api_client.request(
+        "POST",
+        "/telegram/verify/confirm",
+        json={"user_id": int(user_id), "request_id": request_id, "code": code},
+        headers=_auth_headers(),
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
         return True, ""
     return False, _error_code(payload, "INVALID_CODE")

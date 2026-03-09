@@ -11,6 +11,7 @@ import os
 import shlex
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -227,6 +228,7 @@ def _remote_collect(args: argparse.Namespace) -> dict[str, Any]:
     script = r'''
 import json
 import os
+from decimal import Decimal
 from sqlalchemy import create_engine, inspect, text
 
 schema = os.environ.get("INSPECT_SCHEMA") or None
@@ -259,6 +261,8 @@ result = {"ok": True, "tables": []}
 def to_jsonable(value):
     if value is None:
         return None
+    if isinstance(value, Decimal):
+        return float(value)
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return value
@@ -355,6 +359,7 @@ def _run_embedded_collect_via_command(
     script = r'''
 import json
 import os
+from decimal import Decimal
 from sqlalchemy import create_engine, inspect, text
 
 schema = os.environ.get("INSPECT_SCHEMA") or None
@@ -387,6 +392,8 @@ result = {"ok": True, "tables": []}
 def to_jsonable(value):
     if value is None:
         return None
+    if isinstance(value, Decimal):
+        return float(value)
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return value
