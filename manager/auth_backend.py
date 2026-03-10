@@ -7,8 +7,16 @@ from __future__ import annotations
 from typing import Tuple
 
 from data.user_cache.user_cache_reader import get_user_cache
+from data.user_cache.user_cache_writer import update_user_cache_fields
 from manager import api_client
-from manager.session_manager import clear_cached_session, sync_user_snapshot_from_payload
+from manager.session_manager import (
+    clear_cached_session,
+    force_logout as session_force_logout,
+    has_valid_session,
+    sync_user_snapshot_from_payload,
+)
+from manager.trace import trace_log
+from manager.tg_debug_log import tglog
 from manager.user_snapshot_store import UserSnapshotStore
 
 _HEALTHCHECK_DONE = False
@@ -76,6 +84,203 @@ def _auth_headers() -> dict | None:
     return {"Authorization": f"Bearer {token}"}
 
 
+def mask_token(token: str) -> str:
+    """EN: Return safe token representation with only edges and length for diagnostics.
+    RU: Вернуть безопасное представление токена только с краями и длиной для диагностики.
+    """
+
+    value = str((token or "").strip())
+    if not value:
+        return "<empty>"
+    if len(value) <= 8:
+        return f"{value}(len={len(value)})"
+    return f"{value[:4]}...{value[-4:]}(len={len(value)})"
+
+
+def get_access_token() -> str:
+    """EN: Return cached access token string or empty value.
+    RU: Вернуть access-токен из кэша строкой или пустое значение.
+    """
+
+    cache = get_user_cache() or {}
+    return str((cache.get("access_token") or "").strip())
+
+
+def get_refresh_token() -> str:
+    """EN: Return cached refresh token string or empty value.
+    RU: Вернуть refresh-токен из кэша строкой или пустое значение.
+    """
+
+    cache = get_user_cache() or {}
+    return str((cache.get("refresh_token") or "").strip())
+
+
+def set_tokens(access_token: str | None, refresh_token: str | None) -> None:
+    """EN: Persist access/refresh tokens in cache when provided.
+    RU: Сохранить access/refresh токены в кэш, если они переданы.
+    """
+
+    patch: dict = {}
+    if access_token is not None:
+        patch["access_token"] = str((access_token or "").strip())
+    if refresh_token is not None:
+        patch["refresh_token"] = str((refresh_token or "").strip())
+    if patch:
+        update_user_cache_fields(patch)
+
+
+def clear_tokens() -> None:
+    """EN: Remove local auth tokens from cache on session-expired flows.
+    RU: Удалить локальные auth-токены из кэша при истечении сессии.
+    """
+
+    set_tokens("", "")
+
+
+def force_logout(reason: str = "UNKNOWN") -> None:
+    """EN: Centralized client-side logout for expired/invalid session cases.
+    RU: Единый клиентский logout для случаев истекшей/некорректной сессии.
+    """
+
+    trace_log("SESSION", "SESSION.FORCE_LOGOUT", reason=str(reason))
+    session_force_logout(reason=reason)
+
+
+def refresh_access_token() -> bool:
+    """EN: Refresh access token using refresh token with mandatory server-side rotation.
+    RU: Обновить access-токен через refresh-токен с обязательной серверной ротацией.
+    """
+
+    refresh_token = get_refresh_token()
+    tglog(f"[TGDBG] refresh attempt: refresh={mask_token(refresh_token)}")
+    trace_log(
+        "SESSION",
+        "SESSION.REFRESH_ATTEMPT",
+        refresh_present=bool(refresh_token),
+        refresh_token=refresh_token,
+    )
+    if not refresh_token:
+        tglog("[SESSION] blocked authorized request: no refresh_token path=/auth/refresh")
+        tglog("[TGDBG] refresh result: ok=False")
+        trace_log("SESSION", "SESSION.REFRESH_RESULT", ok=False, reason="NO_REFRESH_TOKEN")
+        return False
+    ok, payload = api_client.request(
+        "POST",
+        "/auth/refresh",
+        json={"refresh_token": refresh_token},
+        timeout=10,
+    )
+    is_ok = bool(ok and isinstance(payload, dict) and payload.get("ok"))
+    if is_ok:
+        access_token = str((payload.get("access_token") or "").strip())
+        new_refresh_token = str((payload.get("refresh_token") or "").strip())
+        if not access_token or not new_refresh_token:
+            is_ok = False
+        else:
+            set_tokens(access_token, new_refresh_token)
+    tglog(f"[TGDBG] refresh result: ok={is_ok}")
+    trace_log(
+        "SESSION",
+        "SESSION.REFRESH_RESULT",
+        ok=bool(is_ok),
+        new_access_present=bool(str((payload.get("access_token") if isinstance(payload, dict) else "") or "").strip()),
+        new_refresh_present=bool(str((payload.get("refresh_token") if isinstance(payload, dict) else "") or "").strip()),
+    )
+    return is_ok
+
+
+def ensure_access_token(force_refresh: bool = False) -> str | None:
+    """EN: Return access token from cache; optionally force refresh via refresh token.
+    RU: Вернуть access-токен из кэша; при необходимости принудительно обновить через refresh-токен.
+    """
+
+    if not has_valid_session():
+        tglog("[SESSION] blocked authorized request: no refresh_token path=ensure_access_token")
+        trace_log("SESSION", "SESSION.NO_VALID_SESSION", path="ensure_access_token")
+        return None
+
+    cached_token = get_access_token()
+    tglog(
+        f"[TGDBG] token ensure: have={bool(cached_token)} force={bool(force_refresh)} "
+        f"token={mask_token(cached_token)}"
+    )
+    if cached_token and not force_refresh:
+        return cached_token
+    if refresh_access_token():
+        return get_access_token()
+    return None
+
+
+def _authorized_request_with_retry(
+    method: str,
+    path: str,
+    *,
+    json: dict | None = None,
+    timeout: int = 10,
+    params: dict | None = None,
+) -> tuple[bool, object, int]:
+    """EN: Execute authorized request and perform exactly one retry after refresh on UNAUTHORIZED.
+    RU: Выполнить авторизованный запрос и сделать ровно один retry после refresh при UNAUTHORIZED.
+    """
+
+    if not has_valid_session():
+        tglog(f"[SESSION] blocked authorized request: no refresh_token path={path}")
+        trace_log("SESSION", "SESSION.BLOCKED_REQUEST", path=path, reason="NO_REFRESH_TOKEN")
+        return False, {"ok": False, "error": "NO_SESSION"}, 0
+
+    token = ensure_access_token(force_refresh=False)
+    if not token:
+        tglog(f"[SESSION] blocked authorized request: no refresh_token path={path}")
+        trace_log("SESSION", "SESSION.BLOCKED_REQUEST", path=path, reason="NO_ACCESS_TOKEN")
+        return False, {"ok": False, "error": "NO_SESSION"}, 0
+    headers = {"Authorization": f"Bearer {token}"}
+    ok, payload, status_code = api_client.request_with_meta(
+        method,
+        path,
+        json=json,
+        params=params,
+        headers=headers,
+        timeout=timeout,
+    )
+    unauthorized = bool(
+        status_code == 401
+        or (isinstance(payload, dict) and str(payload.get("error") or "") == "UNAUTHORIZED")
+    )
+    if not unauthorized:
+        return ok, payload, status_code
+
+    tglog(f"[TGDBG] authorized retry: path={path} reason=UNAUTHORIZED")
+    if not refresh_access_token():
+        tglog(f"[TGDBG] authorized retry: path={path} refresh_ok=False")
+        force_logout(reason=f"UNAUTHORIZED_REFRESH_FAILED:{path}")
+        trace_log("SESSION", "SESSION.UNAUTHORIZED_RETRY_FAILED", path=path)
+        return False, {"ok": False, "error": "NO_SESSION"}, status_code
+    token2 = get_access_token()
+    if not token2:
+        tglog(f"[TGDBG] authorized retry: path={path} token_after_refresh=<empty>")
+        force_logout(reason=f"UNAUTHORIZED_EMPTY_ACCESS:{path}")
+        trace_log("SESSION", "SESSION.UNAUTHORIZED_EMPTY_ACCESS", path=path)
+        return False, {"ok": False, "error": "NO_SESSION"}, status_code
+    tglog(f"[TGDBG] authorized retry: path={path} refresh_ok=True auth={mask_token(token2)}")
+    headers2 = {"Authorization": f"Bearer {token2}"}
+    return api_client.request_with_meta(
+        method,
+        path,
+        json=json,
+        params=params,
+        headers=headers2,
+        timeout=timeout,
+    )
+
+
+def has_access_token() -> bool:
+    """EN: Return True when local cache contains non-empty access token.
+    RU: Вернуть True, если в локальном кэше есть непустой access token.
+    """
+
+    return bool(get_access_token())
+
+
 def register(email: str, psw: str) -> Tuple[bool, str | int]:
     """EN: Register and return (ok, user_id|error_code).
     RU: Регистрация с ответом в формате (ok, user_id|код_ошибки).
@@ -88,6 +293,13 @@ def register(email: str, psw: str) -> Tuple[bool, str | int]:
         return False, _error_code(payload, "NETWORK")
     if isinstance(payload, dict) and payload.get("ok"):
         sync_user_snapshot_from_payload(payload)
+        access_token = str((payload.get("access_token") or "").strip())
+        refresh_token = str((payload.get("refresh_token") or "").strip())
+        if not refresh_token:
+            force_logout(reason="REGISTER_MISSING_REFRESH_TOKEN")
+            return False, "API_ERROR"
+        set_tokens(access_token, refresh_token)
+        tglog(f"[TGDBG] login tokens: access={mask_token(access_token)} refresh={mask_token(refresh_token)}")
         return True, int(payload["user_id"])
     return False, _error_code(payload, "API_ERROR")
 
@@ -104,6 +316,13 @@ def login(email: str, psw: str) -> Tuple[bool, str | int]:
         return False, _error_code(payload, "NETWORK")
     if isinstance(payload, dict) and payload.get("ok"):
         sync_user_snapshot_from_payload(payload)
+        access_token = str((payload.get("access_token") or "").strip())
+        refresh_token = str((payload.get("refresh_token") or "").strip())
+        if not refresh_token:
+            force_logout(reason="LOGIN_MISSING_REFRESH_TOKEN")
+            return False, "API_ERROR"
+        set_tokens(access_token, refresh_token)
+        tglog(f"[TGDBG] login tokens: access={mask_token(access_token)} refresh={mask_token(refresh_token)}")
         return True, int(payload["user_id"])
     return False, _error_code(payload, "API_ERROR")
 
@@ -158,7 +377,12 @@ def save_profile_user(
         body["phone"] = phone
     if telegram is not None:
         body["telegram"] = telegram
-    ok, payload = api_client.request("POST", "/profile/user/update", json=body)
+    ok, payload, _status = _authorized_request_with_retry(
+        "POST",
+        "/profile/user/update",
+        json=body,
+        timeout=10,
+    )
     return bool(ok and isinstance(payload, dict) and payload.get("ok"))
 
 
@@ -168,10 +392,11 @@ def delete_profile_user_fields(user_id: int, fields: list[str]) -> bool:
     """
     if not _backend_ready():
         return False
-    ok, payload = api_client.request(
+    ok, payload, _status = _authorized_request_with_retry(
         "POST",
         "/profile/user/clear",
         json={"user_id": int(user_id), "fields": list(fields)},
+        timeout=10,
     )
     return bool(ok and isinstance(payload, dict) and payload.get("ok"))
 
@@ -195,7 +420,12 @@ def save_profile_game(
         body["rating"] = int(rating)
     if balance is not None:
         body["balance"] = float(balance)
-    ok, payload = api_client.request("POST", "/profile/game/update", json=body)
+    ok, payload, _status = _authorized_request_with_retry(
+        "POST",
+        "/profile/game/update",
+        json=body,
+        timeout=10,
+    )
     is_ok = bool(ok and isinstance(payload, dict) and payload.get("ok"))
     if is_ok:
         UserSnapshotStore().patch_game(record=record, rating=rating, balance=balance)
@@ -208,10 +438,11 @@ def delete_profile_game_fields(user_id: int, fields: list[str]) -> bool:
     """
     if not _backend_ready():
         return False
-    ok, payload = api_client.request(
+    ok, payload, _status = _authorized_request_with_retry(
         "POST",
         "/profile/game/clear",
         json={"user_id": int(user_id), "fields": list(fields)},
+        timeout=10,
     )
     return bool(ok and isinstance(payload, dict) and payload.get("ok"))
 
@@ -337,21 +568,36 @@ def password_reset_confirm(email: str, code: str, new_psw: str) -> Tuple[bool, s
 
 
 def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
-    """EN: Request one-time Telegram deep-link start token for authenticated user.
-    RU: Запросить одноразовый Telegram deep-link start token для авторизованного пользователя.
+    """EN: Request one-time Telegram deep-link code for authenticated user.
+    RU: Запросить одноразовый Telegram deep-link code для авторизованного пользователя.
     """
 
     _ensure_healthcheck_once()
-    ok, payload = api_client.request(
+
+    token = ensure_access_token(force_refresh=False)
+    if not token:
+        tglog("[TGDBG] step8 response status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
+        return False, {"ok": False, "error": "NO_SESSION"}
+
+    tglog(f"[TGDBG] link_request send: user_id={int(user_id)} auth={mask_token(token)}")
+    ok, payload, status_code = _authorized_request_with_retry(
         "POST",
         "/telegram/link/request",
         json={"user_id": int(user_id)},
-        headers=_auth_headers(),
         timeout=10,
     )
-    if ok and isinstance(payload, dict) and payload.get("ok"):
+    body_short = str(payload)[:200]
+    tglog(f"[TGDBG] step8 response status={status_code} ok={ok} body={body_short}")
+
+    code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
+    payload_ok = bool(isinstance(payload, dict) and payload.get("ok"))
+    if ok and payload_ok and code:
+        tglog(f"[TGDBG] step9 code={mask_token(code)}")
         return True, payload
+
     if isinstance(payload, dict):
+        if payload_ok and not code:
+            return False, {"ok": False, "error": "API_ERROR"}
         return False, payload
     return False, {"ok": False, "error": "API_ERROR"}
 
@@ -363,11 +609,10 @@ def telegram_verify_request(user_id: int) -> Tuple[bool, dict]:
 
     _ensure_healthcheck_once()
     body: dict = {"user_id": int(user_id)}
-    ok, payload = api_client.request(
+    ok, payload, _status = _authorized_request_with_retry(
         "POST",
         "/telegram/verify/request",
         json=body,
-        headers=_auth_headers(),
         timeout=10,
     )
     if ok and isinstance(payload, dict) and payload.get("ok"):
@@ -383,11 +628,10 @@ def telegram_verify_confirm(user_id: int, request_id: str, code: str) -> Tuple[b
     """
 
     _ensure_healthcheck_once()
-    ok, payload = api_client.request(
+    ok, payload, _status = _authorized_request_with_retry(
         "POST",
         "/telegram/verify/confirm",
         json={"user_id": int(user_id), "request_id": request_id, "code": code},
-        headers=_auth_headers(),
         timeout=10,
     )
     if ok and isinstance(payload, dict) and payload.get("ok"):

@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from data.user_cache.user_cache_reader import get_user_cache
-from data.user_cache.user_cache_writer import update_user_cache_fields
+from data.user_cache.user_cache_writer import remove_user_cache_fields, update_user_cache_fields
 from data.user_cache.user_session import UserSession
 from manager import api_client
+from manager.trace import trace_log
+from manager.tg_debug_log import tglog
 
 
 def _safe_int(value: Any) -> int | None:
@@ -43,6 +45,43 @@ def clear_cached_session() -> None:
             cache_file.unlink()
     except Exception:
         pass
+    UserSession().clear()
+
+
+def has_valid_session(cache: dict | None = None) -> bool:
+    """EN: Return True only when cache has positive user_id and non-empty refresh_token.
+    RU: Вернуть True только если в кэше есть положительный user_id и непустой refresh_token.
+    """
+
+    src = cache if isinstance(cache, dict) else (get_user_cache() or {})
+    user_id = _safe_int(src.get("user_id")) or 0
+    refresh_token = str((src.get("refresh_token") or "").strip())
+    return bool(user_id > 0 and refresh_token)
+
+
+def force_logout(reason: str = "UNKNOWN") -> None:
+    """EN: Clear auth/session identifiers while preserving non-auth profile fields in cache.
+    RU: Очистить auth/session идентификаторы, сохранив неавторизационные поля профиля в кэше.
+    """
+
+    tglog(f"[SESSION] force_logout reason={reason}")
+    trace_log("SESSION", "SESSION.FORCE_LOGOUT", reason=str(reason))
+    update_user_cache_fields(
+        {
+            "user_id": 0,
+            "access_token": "",
+            "refresh_token": "",
+        }
+    )
+    remove_user_cache_fields(
+        [
+            "token",
+            "authorization",
+            "is_authorized",
+            "authorized",
+            "session_user_id",
+        ]
+    )
     UserSession().clear()
 
 
@@ -79,9 +118,23 @@ def sync_user_snapshot_from_payload(payload: dict) -> bool:
         return False
     try:
         sync_user_snapshot(user)
-        access_token = str((payload.get("access_token") or "").strip()) if isinstance(payload, dict) else ""
+        access_token = (
+            str((payload.get("access_token") or payload.get("token") or "").strip())
+            if isinstance(payload, dict)
+            else ""
+        )
+        refresh_token = (
+            str((payload.get("refresh_token") or "").strip())
+            if isinstance(payload, dict)
+            else ""
+        )
         if access_token:
             update_user_cache_fields({"access_token": access_token})
+        if refresh_token:
+            update_user_cache_fields({"refresh_token": refresh_token})
+        # EN: Ensure password never persists in local cache.
+        # RU: Гарантировать, что пароль не сохраняется в локальном кэше.
+        remove_user_cache_fields(["password", "psw"])
         return True
     except Exception:
         return False
@@ -95,6 +148,22 @@ def validate_cached_session(timeout: int = 8, allow_offline: bool = True) -> dic
     cache = get_user_cache() or {}
     if not cache:
         return {"ok": False, "reason": "NO_CACHE"}
+
+    user_id_boot = _safe_int(cache.get("user_id")) or 0
+    refresh_present = bool(str((cache.get("refresh_token") or "").strip()))
+    tglog(f"[SESSION] boot user_id={user_id_boot} refresh_present={refresh_present}")
+    trace_log(
+        "SESSION",
+        "SESSION.BOOT",
+        user_id=int(user_id_boot),
+        refresh_present=bool(refresh_present),
+        access_present=bool(str((cache.get("access_token") or "").strip())),
+    )
+    if user_id_boot > 0 and not refresh_present:
+        tglog("[SESSION] no refresh_token -> force_logout")
+        trace_log("SESSION", "SESSION.BOOT_FAIL", reason="NO_REFRESH_TOKEN")
+        force_logout("NO_REFRESH_TOKEN_BOOT")
+        return {"ok": False, "reason": "NO_SESSION"}
 
     user_id = _safe_int(cache.get("user_id"))
     email = str((cache.get("email") or "").strip())

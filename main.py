@@ -17,6 +17,9 @@ from kivy.lang import Builder
 from kivy.properties import BooleanProperty, StringProperty
 from kivymd.app import MDApp
 
+from manager import app_focus_tracker
+from manager.trace import TraceManager, trace_log
+from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import enable_debug_borders
 from uix.debug.debug_config import DEBUG_UI_BORDERS
 from uix.screens.routes import LOAD_APP
@@ -42,6 +45,8 @@ class CosmicApp(MDApp):
         RU: Создать и вернуть корневое представление.
         """
         apply_window_config()
+        TraceManager.instance()
+        trace_log("SESSION", "APP_BUILD_START")
         enable_debug_borders(DEBUG_UI_BORDERS)
         self.theme_cls.theme_style = "Dark"
         manager = AppScreenManager()
@@ -50,6 +55,8 @@ class CosmicApp(MDApp):
         Builder.load_file(str(root / "ads" / "banner" / "banner_slot.kv"))
         build_auth_flow(manager)
         manager.go(LOAD_APP, push_history=False)
+        Window.bind(on_focus=self._on_window_focus)
+        trace_log("SESSION", "APP_BUILD_DONE")
         return RootView(manager)
 
     def on_start(self) -> None:
@@ -57,6 +64,7 @@ class CosmicApp(MDApp):
         RU: Применить подсказку ориентации для Android после запуска приложения.
         """
         from kivy.utils import platform as kivy_platform
+        trace_log("SESSION", "APP_START", platform=kivy_platform)
 
         if kivy_platform == "android":
             try:
@@ -68,6 +76,37 @@ class CosmicApp(MDApp):
             Clock.schedule_once(lambda _dt: Window.release_all_keyboards(), 0)
         elif kivy_platform == "ios":
             Clock.schedule_once(lambda _dt: Window.release_all_keyboards(), 0)
+
+    def on_pause(self) -> bool:
+        """EN: Track blur on mobile pause and keep app state.
+        RU: Отслеживать blur при mobile pause и сохранять состояние приложения.
+        """
+
+        ts = app_focus_tracker.mark_blur()
+        tglog(f"[TGDBG] focus blur via on_pause ts={ts}")
+        trace_log("SESSION", "APP_PAUSE", ts=ts)
+        return True
+
+    def on_resume(self) -> None:
+        """EN: Track focus on mobile resume.
+        RU: Отслеживать фокус при возврате приложения на mobile.
+        """
+
+        ts = app_focus_tracker.mark_focus()
+        tglog(f"[TGDBG] focus focus via on_resume ts={ts}")
+        trace_log("SESSION", "APP_RESUME", ts=ts)
+
+    def _on_window_focus(self, _window, focused: bool) -> None:
+        """EN: Track desktop focus/blur transitions from window events.
+        RU: Отслеживать desktop focus/blur по событиям окна.
+        """
+
+        if focused:
+            ts = app_focus_tracker.mark_focus()
+        else:
+            ts = app_focus_tracker.mark_blur()
+        tglog(f"[TGDBG] focus desktop focus={bool(focused)} ts={ts}")
+        trace_log("SESSION", "WINDOW_FOCUS", focused=bool(focused), ts=ts)
 
     def set_logged_in(self, email: str) -> None:
         """EN: Mark user as logged in and store email.
