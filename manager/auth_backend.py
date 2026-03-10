@@ -153,6 +153,7 @@ def refresh_access_token() -> bool:
 
     refresh_token = get_refresh_token()
     tglog(f"[TGDBG] refresh attempt: refresh={mask_token(refresh_token)}")
+    tglog(f"[AUTH] refresh attempt refresh_present={bool(refresh_token)} refresh={mask_token(refresh_token)}")
     trace_log(
         "SESSION",
         "SESSION.REFRESH_ATTEMPT",
@@ -179,6 +180,7 @@ def refresh_access_token() -> bool:
         else:
             set_tokens(access_token, new_refresh_token)
     tglog(f"[TGDBG] refresh result: ok={is_ok}")
+    tglog(f"[AUTH] refresh ok={bool(is_ok)}")
     trace_log(
         "SESSION",
         "SESSION.REFRESH_RESULT",
@@ -223,6 +225,10 @@ def _authorized_request_with_retry(
     RU: Выполнить авторизованный запрос и сделать ровно один retry после refresh при UNAUTHORIZED.
     """
 
+    tglog(
+        f"[AUTH] request path={path} method={method.upper()} "
+        f"auth_present={bool(get_access_token())} refresh_present={bool(get_refresh_token())}"
+    )
     if not has_valid_session():
         tglog(f"[SESSION] blocked authorized request: no refresh_token path={path}")
         trace_log("SESSION", "SESSION.BLOCKED_REQUEST", path=path, reason="NO_REFRESH_TOKEN")
@@ -247,11 +253,14 @@ def _authorized_request_with_retry(
         or (isinstance(payload, dict) and str(payload.get("error") or "") == "UNAUTHORIZED")
     )
     if not unauthorized:
+        tglog(f"[AUTH] retry ok=False path={path} status={status_code} unauthorized=False")
         return ok, payload, status_code
 
     tglog(f"[TGDBG] authorized retry: path={path} reason=UNAUTHORIZED")
+    tglog(f"[AUTH] unauthorized -> refresh path={path}")
     if not refresh_access_token():
         tglog(f"[TGDBG] authorized retry: path={path} refresh_ok=False")
+        tglog(f"[AUTH] refresh ok=False path={path}")
         force_logout(reason=f"UNAUTHORIZED_REFRESH_FAILED:{path}")
         trace_log("SESSION", "SESSION.UNAUTHORIZED_RETRY_FAILED", path=path)
         return False, {"ok": False, "error": "NO_SESSION"}, status_code
@@ -262,8 +271,9 @@ def _authorized_request_with_retry(
         trace_log("SESSION", "SESSION.UNAUTHORIZED_EMPTY_ACCESS", path=path)
         return False, {"ok": False, "error": "NO_SESSION"}, status_code
     tglog(f"[TGDBG] authorized retry: path={path} refresh_ok=True auth={mask_token(token2)}")
+    tglog(f"[AUTH] refresh ok=True path={path}")
     headers2 = {"Authorization": f"Bearer {token2}"}
-    return api_client.request_with_meta(
+    ok2, payload2, status2 = api_client.request_with_meta(
         method,
         path,
         json=json,
@@ -271,6 +281,8 @@ def _authorized_request_with_retry(
         headers=headers2,
         timeout=timeout,
     )
+    tglog(f"[AUTH] retry ok={bool(ok2)} path={path} status={status2}")
+    return ok2, payload2, status2
 
 
 def has_access_token() -> bool:

@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+jwt_secret="${JWT_SECRET:-}"
+reset_secret="${RESET_SECRET:-}"
+jwt_len="${#jwt_secret}"
+reset_len="${#reset_secret}"
+echo "[BOOT] JWT_SECRET_LEN=${jwt_len}"
+echo "[BOOT] RESET_SECRET_LEN=${reset_len}"
+if [[ "$jwt_len" -le 0 || "$reset_len" -le 0 ]]; then
+  echo "ERROR: JWT_SECRET/RESET_SECRET must be non-empty" >&2
+  exit 1
+fi
+
 echo "Waiting for PostgreSQL (max 30 attempts)..."
 python - <<'PY'
 import os

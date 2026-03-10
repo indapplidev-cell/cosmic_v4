@@ -62,6 +62,22 @@ class LoginRequest(StrictBaseModel):
         return reject_control_chars(value)
 
 
+class RefreshRequest(StrictBaseModel):
+    """EN: Refresh endpoint payload with one refresh token string.
+    RU: Payload эндпоинта refresh с одной строкой refresh-токена.
+    """
+
+    refresh_token: Annotated[str, MinLen(16), MaxLen(4096)]
+
+
+class LogoutRequest(StrictBaseModel):
+    """EN: Logout payload with refresh token to revoke.
+    RU: Payload logout с refresh-токеном для отзыва.
+    """
+
+    refresh_token: Annotated[str, MinLen(16), MaxLen(4096)]
+
+
 class PasswordResetRequest(StrictBaseModel):
     """EN: Password reset request payload with email only.
     RU: Payload запроса восстановления пароля только с email.
@@ -127,6 +143,16 @@ class TelegramLinkRequest(StrictBaseModel):
     """
 
     user_id: int = Field(gt=0)
+
+
+class TelegramLinkConfirmByCodeRequest(StrictBaseModel):
+    """EN: Bot payload to convert pending link_code into one-time confirm_code.
+    RU: Payload бота для преобразования pending link_code в одноразовый confirm_code.
+    """
+
+    telegram_user_id: int = Field(gt=0)
+    link_code: Annotated[str, MinLen(1), MaxLen(128)]
+    tg_username: Annotated[str, MaxLen(64)] | None = None
 
 
 class TelegramVerifyRequest(StrictBaseModel):

@@ -5,17 +5,22 @@ RU: Точка входа FastAPI, публикующая HTTP-эндпоинт�
 from __future__ import annotations
 
 import os
+import logging
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from server.api.schemas import (
     DeleteUserRequest,
     GameSessionFinishRequest,
     LoginRequest,
+    LogoutRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    RefreshRequest,
     TelegramLinkRequest,
+    TelegramLinkConfirmByCodeRequest,
     TelegramLinkConfirmRequest,
     TelegramVerifyConfirm,
     TelegramVerifyRequest,
@@ -31,6 +36,8 @@ from server.services.auth_service import (
     get_user_snapshot,
     get_user_snapshot_by_email,
     login_user,
+    logout_user,
+    refresh_auth,
     register_user,
 )
 from server.services.profile_service import (
@@ -42,6 +49,7 @@ from server.services.profile_service import (
 )
 from server.security.jwt import decode_access_token, extract_bearer_token
 from server.services.telegram_service import (
+    confirm_link_by_code,
     confirm_link_code,
     confirm_password_reset as confirm_password_reset_telegram,
     request_link_code,
@@ -51,9 +59,26 @@ from server.services.telegram_verify_service import bot_send_code, confirm_verif
 from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
 from server.services.docs_service import get_doc_content
+from server.config import get_jwt_secret, get_reset_secret
+from server.db import get_session
 
 
 app = FastAPI(title="Cosmic API")
+_LOG = logging.getLogger("cosmic.api")
+_BOOT_CONFIG_OK = False
+
+
+def _mask_code(code: str) -> str:
+    """EN: Mask one-time code for logs without exposing full value.
+    RU: Маскировать одноразовый код в логах без раскрытия полного значения.
+    """
+
+    value = str((code or "").strip())
+    if not value:
+        return "-"
+    if len(value) <= 8:
+        return f"{value[:1]}...{value[-1:]}(len={len(value)})"
+    return f"{value[:4]}...{value[-4:]}(len={len(value)})"
 
 
 @app.middleware("http")
@@ -96,6 +121,38 @@ async def ensure_db_schema_is_current(request: Request, call_next):
     return await call_next(request)
 
 
+def _config_secret_lengths() -> tuple[int, int]:
+    """EN: Return lengths of JWT/RESET secrets without exposing values.
+    RU: Вернуть длины JWT/RESET секретов без раскрытия самих значений.
+    """
+
+    jwt_len = len(os.getenv("JWT_SECRET", "").strip())
+    reset_len = len(os.getenv("RESET_SECRET", "").strip())
+    return int(jwt_len), int(reset_len)
+
+
+def _validate_runtime_config() -> None:
+    """EN: Validate required runtime secrets and raise on invalid config.
+    RU: Проверить обязательные runtime-секреты и поднять ошибку при невалидной конфигурации.
+    """
+
+    jwt_secret = get_jwt_secret()
+    reset_secret = get_reset_secret()
+    _LOG.info("[BOOT] JWT_SECRET_LEN=%s", len(jwt_secret))
+    _LOG.info("[BOOT] RESET_SECRET_LEN=%s", len(reset_secret))
+
+
+@app.on_event("startup")
+def on_startup_validate_config() -> None:
+    """EN: Fail-fast startup hook: refuse to run API with missing secrets.
+    RU: Fail-fast хук старта: запретить запуск API при отсутствии секретов.
+    """
+
+    global _BOOT_CONFIG_OK
+    _validate_runtime_config()
+    _BOOT_CONFIG_OK = True
+
+
 def _service_result_to_response(result: dict) -> dict:
     """EN: Return service result as business payload with stable HTTP 200 style.
     RU: Вернуть результат сервиса как business-payload со стабильным стилем HTTP 200.
@@ -125,12 +182,29 @@ def _resolve_user_id_from_bearer(request: Request) -> int | None:
 
 
 @app.get("/healthz")
-def healthz() -> dict:
+def healthz() -> JSONResponse:
     """EN: Liveness endpoint for local deployment checks.
     RU: Эндпоинт проверки живости для локального развёртывания.
     """
 
-    return {"ok": True}
+    if not _BOOT_CONFIG_OK:
+        return JSONResponse(status_code=503, content={"ok": False, "error": "CONFIG_INVALID"})
+
+    jwt_len, reset_len = _config_secret_lengths()
+    if jwt_len <= 0 or reset_len <= 0:
+        return JSONResponse(status_code=503, content={"ok": False, "error": "CONFIG_INVALID"})
+
+    try:
+        with get_session() as session:
+            session.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"ok": False, "error": "DB_UNAVAILABLE"})
+
+    schema_status = get_db_schema_status(force_refresh=True)
+    if not schema_status.get("ok") or not schema_status.get("is_current"):
+        return JSONResponse(status_code=503, content={"ok": False, "error": "DB_SCHEMA_OUTDATED"})
+
+    return JSONResponse(status_code=200, content={"ok": True})
 
 
 @app.get("/meta/compat")
@@ -144,23 +218,53 @@ def meta_compat() -> dict:
 
 
 @app.post("/auth/register")
-def auth_register(payload: RegisterRequest) -> dict:
+def auth_register(payload: RegisterRequest, request: Request) -> dict:
     """EN: Register user using existing auth service.
     RU: Зарегистрировать пользователя через существующий auth-сервис.
     """
 
-    result = register_user(payload.email, payload.psw)
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    result = register_user(payload.email, payload.psw, user_agent=user_agent, ip=client_ip)
     return _service_result_to_response(result)
 
 
 @app.post("/auth/login")
-def auth_login(payload: LoginRequest) -> dict:
+def auth_login(payload: LoginRequest, request: Request) -> dict:
     """EN: Login user using existing auth service.
     RU: Выполнить вход через существующий auth-сервис.
     """
 
-    result = login_user(payload.email, payload.psw)
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    result = login_user(payload.email, payload.psw, user_agent=user_agent, ip=client_ip)
     return _service_result_to_response(result)
+
+
+@app.post("/auth/refresh")
+def auth_refresh(payload: RefreshRequest, request: Request) -> JSONResponse:
+    """EN: Rotate refresh token and issue fresh access/refresh pair.
+    RU: Ротировать refresh-токен и выдать свежую пару access/refresh.
+    """
+
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    result = refresh_auth(payload.refresh_token, user_agent=user_agent, ip=client_ip)
+    if result.get("ok"):
+        return JSONResponse(status_code=200, content=result)
+    return JSONResponse(status_code=401, content={"ok": False, "error": "UNAUTHORIZED"})
+
+
+@app.post("/auth/logout")
+def auth_logout(payload: LogoutRequest) -> JSONResponse:
+    """EN: Revoke provided refresh token.
+    RU: Отозвать переданный refresh-токен.
+    """
+
+    result = logout_user(payload.refresh_token)
+    if result.get("ok"):
+        return JSONResponse(status_code=200, content={"ok": True})
+    return JSONResponse(status_code=401, content={"ok": False, "error": "UNAUTHORIZED"})
 
 
 @app.post("/auth/password/reset/request")
@@ -212,6 +316,38 @@ def telegram_link_confirm(payload: TelegramLinkConfirmRequest) -> dict:
     """
 
     result = confirm_link_code(payload.code, payload.telegram_user_id)
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/link/confirm_by_code")
+def telegram_link_confirm_by_code(payload: TelegramLinkConfirmByCodeRequest, request: Request) -> dict:
+    """EN: Convert pending link_code into a separate one-time confirm_code and return debug info for bot chat.
+    RU: Преобразовать pending link_code в отдельный одноразовый confirm_code и вернуть debug-данные для чата бота.
+    """
+
+    client_ip = request.client.host if request.client else "-"
+    user_agent = str(request.headers.get("user-agent") or "-")
+    _LOG.info(
+        "event=TG_CONFIRM_BY_CODE_IN ip=%s ua=%s tg_uid=%s tg_username=%s link_code=%s",
+        client_ip,
+        user_agent,
+        int(payload.telegram_user_id),
+        str(payload.tg_username or "-"),
+        _mask_code(payload.link_code),
+    )
+    result = confirm_link_by_code(
+        telegram_user_id=payload.telegram_user_id,
+        link_code=payload.link_code,
+        tg_username=payload.tg_username,
+    )
+    _LOG.info(
+        "event=TG_CONFIRM_BY_CODE_API_RETURN ok=%s error=%s tg_uid=%s tg_username=%s link_code=%s",
+        str(bool(result.get("ok"))).lower(),
+        str(result.get("error") or "-"),
+        int(payload.telegram_user_id),
+        str(payload.tg_username or "-"),
+        _mask_code(payload.link_code),
+    )
     return _service_result_to_response(result)
 
 

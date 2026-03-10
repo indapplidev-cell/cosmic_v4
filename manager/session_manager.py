@@ -168,6 +168,11 @@ def validate_cached_session(timeout: int = 8, allow_offline: bool = True) -> dic
     user_id = _safe_int(cache.get("user_id"))
     email = str((cache.get("email") or "").strip())
 
+    if user_id is not None and int(user_id) <= 0:
+        tglog("[SESSION] skip /auth/me (no user_id)")
+        trace_log("SESSION", "SESSION.SKIP_AUTH_ME", user_id=int(user_id))
+        return {"ok": False, "reason": "NO_CACHE"}
+
     if user_id is None and not email:
         return {"ok": False, "reason": "NO_CACHE"}
 

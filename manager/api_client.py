@@ -253,7 +253,16 @@ def auth_me(user_id: int, timeout: int = 8) -> Tuple[bool, dict]:
     RU: Запросить snapshot текущего пользователя по user_id для синхронизации кэша при старте.
     """
 
-    ok, payload = request("GET", "/auth/me", timeout=timeout, params={"user_id": int(user_id)})
+    try:
+        user_id_value = int(user_id)
+    except Exception:
+        user_id_value = 0
+    if user_id_value <= 0:
+        tglog("[SESSION] skip /auth/me (no user_id)")
+        trace_log("SESSION", "SESSION.SKIP_AUTH_ME", user_id=int(user_id_value))
+        return False, {"error": "NO_SESSION"}
+
+    ok, payload = request("GET", "/auth/me", timeout=timeout, params={"user_id": int(user_id_value)})
     if ok and isinstance(payload, dict):
         return True, payload
     if isinstance(payload, dict):

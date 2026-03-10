@@ -4,20 +4,27 @@ RU: Сервисы привязки/reset через Telegram с хеширов�
 
 from __future__ import annotations
 
+import base64
+import logging
 import os
-import secrets
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 
 from server.db import get_session
 from server.models.password_reset import PasswordResetToken
+from server.models.profile_user import ProfileUser
 from server.models.telegram_account import TelegramAccount
 from server.models.telegram_link_token import TelegramLinkToken
 from server.models.telegram_outbox import TelegramOutbox
+from server.models.telegram_verify_challenge import TelegramVerifyChallenge
 from server.models.user import User
 from server.security.passwords import hash_password
 from server.security.tokens import gen_6digit_code, hash_code
+
+_LOG = logging.getLogger("cosmic.telegram_service")
+_TOKEN_ALLOWED = re.compile(r"^[A-Za-z0-9_-]{1,48}$")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -40,6 +47,62 @@ def _reset_secret() -> str:
     return os.getenv("RESET_SECRET", "").strip()
 
 
+def _mask_token(token: str) -> str:
+    """EN: Mask token value for logs without exposing full secret.
+    RU: Замаскировать токен в логах без раскрытия полного секрета.
+    """
+
+    value = str((token or "").strip())
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:4]}...{value[-4:]}"
+
+
+def _mask_code(code: str) -> str:
+    """EN: Mask one-time code/token for diagnostics without revealing full value.
+    RU: Маскировать одноразовый код/токен для диагностики без раскрытия полного значения.
+    """
+
+    value = str((code or "").strip())
+    if not value:
+        return "-"
+    if len(value) <= 8:
+        return f"{value[:1]}...{value[-1:]}(len={len(value)})"
+    return f"{value[:4]}...{value[-4:]}(len={len(value)})"
+
+
+def _normalize_telegram_username(raw_value: str | None) -> str:
+    """EN: Normalize Telegram username for safe comparisons/logs.
+    RU: Нормализовать Telegram username для безопасных сравнений/логов.
+    """
+
+    value = str((raw_value or "")).strip().lower()
+    if value.startswith("@"):
+        value = value[1:]
+    return value
+
+
+def _generate_start_token() -> str:
+    """EN: Generate URL-safe Telegram deep-link token with strict allowed charset and max length 48.
+    RU: Сгенерировать URL-safe токен deep-link Telegram со строгим набором символов и длиной до 48.
+    """
+
+    for _ in range(8):
+        raw = base64.urlsafe_b64encode(os.urandom(24)).decode("ascii").rstrip("=")[:48]
+        if _TOKEN_ALLOWED.fullmatch(raw):
+            return raw
+    raise RuntimeError("TOKEN_GEN_FAILED")
+
+
+def _generate_request_id() -> str:
+    """EN: Generate short request id for confirm-code storage rows.
+    RU: Сгенерировать короткий request id для строк хранения confirm-кода.
+    """
+
+    raw = base64.b32encode(os.urandom(10)).decode("ascii").rstrip("=").lower()
+    return raw[:16]
+
+
 def request_link_code(user_id: int) -> dict:
     """EN: Create one-time Telegram deep-link start token for authenticated user.
     RU: Создать одноразовый deep-link start token для привязки Telegram авторизованного пользователя.
@@ -50,7 +113,10 @@ def request_link_code(user_id: int) -> dict:
         return {"ok": False, "error": "RESET_SECRET_MISSING"}
 
     ttl_sec = max(60, _env_int("TG_LINK_TTL_SEC", 600))
-    start_token = secrets.token_urlsafe(36)
+    try:
+        start_token = _generate_start_token()
+    except Exception:
+        return {"ok": False, "error": "TOKEN_GEN_FAILED"}
     code_hash = hash_code(start_token, secret)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_sec)
     now_utc = datetime.now(timezone.utc)
@@ -79,7 +145,13 @@ def request_link_code(user_id: int) -> dict:
             )
             session.add(token)
             session.flush()
-            return {"ok": True, "start_token": start_token, "ttl_sec": ttl_sec}
+            _LOG.info(
+                "LINK_TOKEN_ISSUED user_id=%s token_mask=%s ttl=%s",
+                int(user_id),
+                _mask_token(start_token),
+                int(ttl_sec),
+            )
+            return {"ok": True, "code": start_token, "start_token": start_token, "ttl_sec": ttl_sec}
     except Exception:
         return {"ok": False, "error": "DB_ERROR"}
 
@@ -282,6 +354,177 @@ def confirm_link_code(code: str, telegram_user_id: int) -> dict:
             session.flush()
             return {"ok": True}
     except Exception:
+        return {"ok": False, "error": "DB_ERROR"}
+
+
+def confirm_link_by_code(telegram_user_id: int, link_code: str, tg_username: str | None = None) -> dict:
+    """EN: Confirm pending link_code for telegram_user_id, bind account, and issue separate 6-digit confirm_code.
+    RU: Подтвердить pending link_code для telegram_user_id, привязать аккаунт и выдать отдельный 6-значный confirm_code.
+    """
+
+    secret = _reset_secret()
+    link_code_value = str((link_code or "").strip())
+    incoming_username_norm = _normalize_telegram_username(tg_username)
+    if not secret or not link_code_value:
+        _LOG.info(
+            "event=TG_CONFIRM_BY_CODE_OUT ok=false error=NO_PENDING user_id=0 tg_uid=%s tg_username=%s link_code=%s detail=missing_secret_or_code",
+            int(telegram_user_id or 0),
+            incoming_username_norm or "-",
+            _mask_code(link_code_value),
+        )
+        return {"ok": False, "error": "NO_PENDING"}
+
+    now_utc = datetime.now(timezone.utc)
+    link_hash = hash_code(link_code_value, secret)
+    confirm_ttl_sec = max(60, _env_int("TG_CONFIRM_TTL_SEC", 600))
+    tg_user_id_value = int(telegram_user_id)
+    tg_username_value = str((tg_username or "").strip())
+
+    try:
+        with get_session() as session:
+            token_row_any = session.scalar(
+                select(TelegramLinkToken)
+                .where(
+                    TelegramLinkToken.code_hash == link_hash,
+                )
+                .order_by(TelegramLinkToken.created_at.desc())
+                .limit(1)
+            )
+            if token_row_any is None:
+                _LOG.info(
+                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=NO_PENDING user_id=0 tg_uid=%s tg_username=%s link_code=%s detail=code_not_found found=false expired=false used=false ttl_left_sec=-1",
+                    tg_user_id_value,
+                    incoming_username_norm or "-",
+                    _mask_code(link_code_value),
+                )
+                return {"ok": False, "error": "NO_PENDING"}
+
+            ttl_left_sec = int((token_row_any.expires_at - now_utc).total_seconds())
+            token_expired = bool(token_row_any.expires_at <= now_utc)
+            token_used = bool(token_row_any.used_at is not None)
+            if token_expired or token_used:
+                detail = "expired" if token_expired else "used"
+                _LOG.info(
+                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=NO_PENDING user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=%s found=true expired=%s used=%s ttl_left_sec=%s",
+                    int(token_row_any.user_id),
+                    tg_user_id_value,
+                    incoming_username_norm or "-",
+                    _mask_code(link_code_value),
+                    detail,
+                    str(token_expired).lower(),
+                    str(token_used).lower(),
+                    int(ttl_left_sec),
+                )
+                return {"ok": False, "error": "NO_PENDING"}
+
+            token_row = token_row_any
+
+            if int(token_row.telegram_user_id or 0) != tg_user_id_value:
+                _LOG.info(
+                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=MISMATCH user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=mismatch_telegram_user_id expected_tg_uid=%s incoming_tg_uid=%s",
+                    int(token_row.user_id),
+                    tg_user_id_value,
+                    incoming_username_norm or "-",
+                    _mask_code(link_code_value),
+                    int(token_row.telegram_user_id or 0),
+                    tg_user_id_value,
+                )
+                return {"ok": False, "error": "MISMATCH"}
+
+            profile_row = session.scalar(
+                select(ProfileUser).where(ProfileUser.user_id == int(token_row.user_id)).limit(1)
+            )
+            profile_tg_norm = _normalize_telegram_username(profile_row.telegram if profile_row else "")
+            if profile_tg_norm and profile_tg_norm != "no data" and incoming_username_norm and profile_tg_norm != incoming_username_norm:
+                _LOG.info(
+                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=MISMATCH user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=mismatch_profile_username profile_tg=%s incoming_tg=%s",
+                    int(token_row.user_id),
+                    tg_user_id_value,
+                    incoming_username_norm or "-",
+                    _mask_code(link_code_value),
+                    profile_tg_norm,
+                    incoming_username_norm,
+                )
+                return {"ok": False, "error": "MISMATCH"}
+
+            existing_by_tg = session.scalar(
+                select(TelegramAccount).where(TelegramAccount.telegram_user_id == tg_user_id_value)
+            )
+            if existing_by_tg is not None and int(existing_by_tg.user_id) != int(token_row.user_id):
+                _LOG.info(
+                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=ALREADY_LINKED user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=telegram_user_already_linked expected_user_id=%s actual_user_id=%s",
+                    int(token_row.user_id),
+                    tg_user_id_value,
+                    incoming_username_norm or "-",
+                    _mask_code(link_code_value),
+                    int(token_row.user_id),
+                    int(existing_by_tg.user_id),
+                )
+                return {"ok": False, "error": "ALREADY_LINKED"}
+
+            existing_by_user = session.scalar(
+                select(TelegramAccount).where(TelegramAccount.user_id == int(token_row.user_id))
+            )
+            if existing_by_user is None:
+                session.add(
+                    TelegramAccount(
+                        user_id=int(token_row.user_id),
+                        telegram_user_id=tg_user_id_value,
+                        verified_at=now_utc,
+                    )
+                )
+            else:
+                existing_by_user.telegram_user_id = tg_user_id_value
+                existing_by_user.verified_at = now_utc
+
+            token_row.used_at = now_utc
+
+            confirm_code = gen_6digit_code()
+            while confirm_code == link_code_value:
+                confirm_code = gen_6digit_code()
+            confirm_hash = hash_code(confirm_code, secret)
+            expires_at = now_utc + timedelta(seconds=confirm_ttl_sec)
+
+            request_id = _generate_request_id()
+            while session.scalar(
+                select(TelegramVerifyChallenge.id).where(TelegramVerifyChallenge.request_id == request_id)
+            ) is not None:
+                request_id = _generate_request_id()
+
+            session.add(
+                TelegramVerifyChallenge(
+                    user_id=int(token_row.user_id),
+                    request_id=request_id,
+                    code_hash=confirm_hash,
+                    telegram_user_id=tg_user_id_value,
+                    expires_at=expires_at,
+                    sent_at=now_utc,
+                    used_at=None,
+                    attempts=0,
+                )
+            )
+            session.flush()
+            _LOG.info(
+                "event=TG_CONFIRM_BY_CODE_OUT ok=true error=- user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=confirmed",
+                int(token_row.user_id),
+                tg_user_id_value,
+                incoming_username_norm or "-",
+                _mask_code(link_code_value),
+            )
+            return {
+                "ok": True,
+                "confirm_code": confirm_code,
+                "user_id": int(token_row.user_id),
+                "tg_username": tg_username_value,
+            }
+    except Exception as exc:
+        _LOG.exception(
+            "event=TG_CONFIRM_BY_CODE_OUT ok=false error=DB_ERROR user_id=0 tg_uid=%s tg_username=%s link_code=%s detail=exception exc=%s",
+            tg_user_id_value,
+            incoming_username_norm or "-",
+            _mask_code(link_code_value),
+            exc.__class__.__name__,
+        )
         return {"ok": False, "error": "DB_ERROR"}
 
 

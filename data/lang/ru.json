@@ -119,7 +119,11 @@
   "ads.banner.placeholder": "РЕКЛАМА",
   "ads.rewarded.placeholder": "ВИДЕО РЕКЛАМА",
   "tg.verify.ask": "Подтвердить Telegram?",
+  "tg.verify.instruction": "В Telegram нажмите Start, затем «Подтвердить аккаунт».",
   "tg.opening": "Открываем Telegram...",
   "tg.instruction": "В Telegram откроется чат с ботом. Нажмите кнопку подтверждения.",
-  "tg.open_fail": "Не удалось открыть Telegram. Проверьте, что Telegram установлен, и попробуйте позже."
+  "tg.open.fail": "Не удалось открыть Telegram. Проверьте, что Telegram установлен, и попробуйте позже.",
+  "tg.session.expired": "Сессия истекла. Войдите заново.",
+  "tg.open_fail": "Не удалось открыть Telegram. Проверьте, что Telegram установлен, и попробуйте позже.",
+  "tg.session_expired": "Сессия истекла. Войдите заново."
 }

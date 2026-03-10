@@ -139,13 +139,63 @@ sub_sync_dir() {
     exit 1
   fi
 
-  echo "[run] sync-dir $local_dir -> $remote_dir" | tee "$outpath"
-  if tar -C "$local_dir" -cf - . | ssh $SSH_OPTS "${SERVER_USER}@${SERVER_IP}" "mkdir -p $(printf '%q' "$remote_dir") && tar -C $(printf '%q' "$remote_dir") -xf -" >>"$outpath" 2>&1; then
+  echo "[run] sync-dir $local_dir -> $remote_dir (exclude: .env, app.db, __pycache__, .pytest_cache)" | tee "$outpath"
+  if tar -C "$local_dir" \
+      --exclude='.env' \
+      --exclude='app.db' \
+      --exclude='__pycache__' \
+      --exclude='.pytest_cache' \
+      -cf - . | ssh $SSH_OPTS "${SERVER_USER}@${SERVER_IP}" "mkdir -p $(printf '%q' "$remote_dir") && tar -C $(printf '%q' "$remote_dir") -xf -" >>"$outpath" 2>&1; then
     echo "[ok]  $outpath" | tee -a "$outpath"
   else
     echo "[err] $outpath" | tee -a "$outpath"
     return 1
   fi
+}
+
+sub_smoke_auth() {
+  local outpath="$RUN_DIR/smoke_auth.txt"
+  run_remote_to_file "smoke_auth_compose_up.txt" "cd /opt/cosmic_api && sudo docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build api"
+  run_remote_allow_fail "smoke_auth_healthz.txt" "curl -sS -i http://127.0.0.1:8000/healthz"
+  run_remote_to_file "smoke_auth_flow.txt" "python3 - <<'PY'
+import json, time, urllib.request, urllib.error
+base='http://127.0.0.1:8000'
+email=f'smoke_auth_{int(time.time())}@test.com'
+psw='Bog3891dan!'
+def post(path, data):
+    b=json.dumps(data).encode('utf-8')
+    req=urllib.request.Request(base+path, data=b, method='POST')
+    req.add_header('Content-Type','application/json')
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.getcode(), json.loads(r.read().decode('utf-8','replace'))
+    except urllib.error.HTTPError as e:
+        raw=e.read().decode('utf-8','replace')
+        try:
+            payload=json.loads(raw)
+        except Exception:
+            payload={'raw':raw}
+        return e.code, payload
+def mask(t):
+    t=str((t or '').strip())
+    if not t:
+        return '<empty>'
+    if len(t)<=8:
+        return f'{t}(len={len(t)})'
+    return f'{t[:4]}...{t[-4:]}(len={len(t)})'
+s1,p1=post('/auth/register', {'email':email,'psw':psw})
+print('register_status=',s1,'ok=',bool(isinstance(p1,dict) and p1.get('ok')),'err=',(p1 or {}).get('error'))
+access=(p1 or {}).get('access_token') if isinstance(p1,dict) else ''
+refresh=(p1 or {}).get('refresh_token') if isinstance(p1,dict) else ''
+print('register_access=',mask(access),'register_refresh=',mask(refresh))
+s2,p2=post('/auth/login', {'email':email,'psw':psw})
+print('login_status=',s2,'ok=',bool(isinstance(p2,dict) and p2.get('ok')),'err=',(p2 or {}).get('error'))
+refresh2=(p2 or {}).get('refresh_token') if isinstance(p2,dict) else ''
+s3,p3=post('/auth/refresh', {'refresh_token':refresh2})
+print('refresh_status=',s3,'ok=',bool(isinstance(p3,dict) and p3.get('ok')),'err=',(p3 or {}).get('error'))
+print('refresh_access=',mask((p3 or {}).get('access_token') if isinstance(p3,dict) else ''),'refresh_refresh=',mask((p3 or {}).get('refresh_token') if isinstance(p3,dict) else ''))
+PY"
+  echo "[ok]  $RUN_DIR/smoke_auth_flow.txt" > "$outpath"
 }
 
 usage() {
@@ -158,6 +208,7 @@ Usage:
   bash tools/vps.sh engine-crash
   bash tools/vps.sh push-file <local_file> <remote_file>
   bash tools/vps.sh sync-dir <local_dir> <remote_dir>
+  bash tools/vps.sh smoke-auth
 EOF
 }
 
@@ -179,6 +230,7 @@ main() {
     engine-crash) sub_engine_crash ;;
     push-file) sub_push_file "$@" ;;
     sync-dir) sub_sync_dir "$@" ;;
+    smoke-auth) sub_smoke_auth ;;
     *) usage; exit 1 ;;
   esac
 
