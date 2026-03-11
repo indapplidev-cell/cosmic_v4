@@ -17,6 +17,7 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.utils import platform as kivy_platform
+from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
 from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
@@ -182,8 +183,27 @@ class LoginScreenView(MDScreen):
         info = Label(text=t("reset.popup_instruction"), halign="center", valign="middle", size_hint=(1, None), height=70)
         info.bind(size=lambda inst, _: setattr(inst, "text_size", inst.size))
         code_inp = TextInput(hint_text=t("reset.hint_code"), multiline=False, input_filter="int")
+        psw_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
         psw_inp = TextInput(hint_text=t("reset.hint_new_password"), multiline=False, password=True)
+        psw_eye_btn = MDIconButton(
+            icon="eye-off",
+            size_hint=(None, None),
+            size=(44, 44),
+            pos_hint={"center_y": 0.5},
+        )
+        psw_row.add_widget(psw_inp)
+        psw_row.add_widget(psw_eye_btn)
+
+        psw2_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
         psw2_inp = TextInput(hint_text=t("reset.hint_new_password_repeat"), multiline=False, password=True)
+        psw2_eye_btn = MDIconButton(
+            icon="eye-off",
+            size_hint=(None, None),
+            size=(44, 44),
+            pos_hint={"center_y": 0.5},
+        )
+        psw2_row.add_widget(psw2_inp)
+        psw2_row.add_widget(psw2_eye_btn)
         row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
         ok_btn = Button(text=t("common.ok"))
         back_btn = Button(text=t("common.back"))
@@ -191,10 +211,13 @@ class LoginScreenView(MDScreen):
         row.add_widget(back_btn)
         content.add_widget(info)
         content.add_widget(code_inp)
-        content.add_widget(psw_inp)
-        content.add_widget(psw2_inp)
+        content.add_widget(psw_row)
+        content.add_widget(psw2_row)
         content.add_widget(row)
         popup = Popup(title="", content=content, size_hint=(0.9, 0.55), auto_dismiss=False)
+
+        wire_password_eye(psw_inp, psw_eye_btn, start_hidden=True)
+        wire_password_eye(psw2_inp, psw2_eye_btn, start_hidden=True)
 
         def _submit(*_args) -> None:
             code_value = str((code_inp.text or "").strip())
