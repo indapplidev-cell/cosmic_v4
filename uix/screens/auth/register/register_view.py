@@ -6,6 +6,7 @@ from pathlib import Path
 
 from manager import auth_backend
 from manager.input_validation import validate_register
+from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -16,6 +17,7 @@ from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
 from manager.auth.logup_manager import LogupManager
 from manager.lang.lang_manager import t
+from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 from uix.screens.common.password_eye import wire_password_eye
@@ -32,6 +34,17 @@ class RegisterScreenView(MDScreen):
     """EN: Register screen view that wires layout, VM, and controller.
     RU: Представление регистрации, связывающее раскладку, VM и контроллер.
     """
+
+    def __init__(self, **kwargs) -> None:
+        """EN: Initialize register view state for duplicate-click protection.
+        RU: Инициализировать состояние экрана регистрации для защиты от двойных кликов.
+
+        EN: The in-flight flag blocks repeated taps while the register request is being processed.
+        RU: Флаг in-flight блокирует повторные нажатия, пока обрабатывается запрос регистрации.
+        """
+        super().__init__(**kwargs)
+        self._auth_inflight = False
+        self._auth_inflight_reset_ev = None
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
@@ -78,37 +91,64 @@ class RegisterScreenView(MDScreen):
         """EN: Validate registration data, save cache, and dispatch create action.
         RU: Проверить данные регистрации, сохранить кэш и перейти к созданию.
         """
+        if self._auth_inflight:
+            tglog("[AUTH] drop duplicate click action=register")
+            return
+        self._auth_inflight = True
+        self._auth_inflight_reset_ev = Clock.schedule_once(self._reset_auth_inflight_safety, 3)
+
         email = (self.email_field.text or "").strip()
         password = (self.password_field.text or "").strip()
         password2 = (self.password2_field.text or "").strip()
-        ok, message, focus_field = LogupManager.validate(email, password, password2)
-        if not ok:
-            self._show_error_popup(message, focus_field)
-            return
-        ok_input, error_code, input_field = validate_register(email, password)
-        if not ok_input:
-            msg_map = {
-                "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
-                "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
-                "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
-            }
-            self._show_error_popup(msg_map.get(error_code, "Invalid input / Некорректный ввод"), input_field)
-            return
+        try:
+            ok, message, focus_field = LogupManager.validate(email, password, password2)
+            if not ok:
+                self._show_error_popup(message, focus_field)
+                return
+            ok_input, error_code, input_field = validate_register(email, password)
+            if not ok_input:
+                msg_map = {
+                    "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
+                    "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
+                    "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
+                }
+                self._show_error_popup(msg_map.get(error_code, "Invalid input / Некорректный ввод"), input_field)
+                return
 
-        ok_register, payload = auth_backend.register(email, password)
-        if not ok_register:
-            if payload == "EMAIL_EXISTS":
-                self._show_error_popup("Email already exists / Такой email уже зарегистрирован", "email")
-            elif payload == "DB_SCHEMA_OUTDATED":
-                self._show_error_popup("Server DB migration required / Нужна миграция БД на сервере", "email")
-            elif payload == "NETWORK":
-                self._show_error_popup("Network error / Ошибка сети", "email")
-            else:
-                self._show_error_popup("Registration failed / Ошибка регистрации", "email")
-            return
+            ok_register, payload = auth_backend.register(email, password)
+            if not ok_register:
+                if payload == "EMAIL_EXISTS":
+                    self._show_error_popup("Email already exists / Такой email уже зарегистрирован", "email")
+                elif payload == "DB_SCHEMA_OUTDATED":
+                    self._show_error_popup("Server DB migration required / Нужна миграция БД на сервере", "email")
+                elif payload == "NETWORK":
+                    self._show_error_popup("Network error / Ошибка сети", "email")
+                else:
+                    self._show_error_popup("Registration failed / Ошибка регистрации", "email")
+                return
 
-        self._clear_fields()
-        self.controller.create()
+            self._clear_fields()
+            self.controller.create()
+        finally:
+            self._clear_auth_inflight()
+
+    def _reset_auth_inflight_safety(self, _dt: float) -> None:
+        """EN: Safety reset for in-flight register flag in case callback chain is interrupted.
+        RU: Защитный сброс флага in-flight регистрации, если цепочка колбэков была прервана.
+        """
+        if self._auth_inflight:
+            tglog("[AUTH] inflight safety reset action=register")
+            self._auth_inflight = False
+        self._auth_inflight_reset_ev = None
+
+    def _clear_auth_inflight(self) -> None:
+        """EN: Clear in-flight state after register request completion.
+        RU: Сбросить состояние in-flight после завершения запроса регистрации.
+        """
+        if self._auth_inflight_reset_ev is not None:
+            self._auth_inflight_reset_ev.cancel()
+            self._auth_inflight_reset_ev = None
+        self._auth_inflight = False
 
     def _show_error_popup(self, message: str, focus_field: str) -> None:
         """EN: Show validation error popup and set focus after closing.

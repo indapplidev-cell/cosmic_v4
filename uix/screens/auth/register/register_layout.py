@@ -85,9 +85,9 @@ def apply_register_layout(view) -> None:
         # RU: Дополнительный верхний отступ удерживает плавающие подписи MDTextField внутри карточки.
         ids.content_stack.padding = (
             dp(ZONE_PADDING),
-            dp(ZONE_PADDING),
-            dp(ZONE_PADDING),
             dp(ZONE_PADDING + 20),
+            dp(ZONE_PADDING),
+            dp(ZONE_PADDING),
         )
         ids.content_stack.spacing = dp(ZONE_SPACING)
 

@@ -21,6 +21,7 @@ from server.api.schemas import (
     RefreshRequest,
     TelegramLinkRequest,
     TelegramLinkConfirmByCodeRequest,
+    TelegramLinkConfirmLatestRequest,
     TelegramLinkConfirmRequest,
     TelegramVerifyConfirm,
     TelegramVerifyRequest,
@@ -50,6 +51,7 @@ from server.services.profile_service import (
 from server.security.jwt import decode_access_token, extract_bearer_token
 from server.services.telegram_service import (
     confirm_link_by_code,
+    confirm_link_latest,
     confirm_link_code,
     confirm_password_reset as confirm_password_reset_telegram,
     request_link_code,
@@ -347,6 +349,36 @@ def telegram_link_confirm_by_code(payload: TelegramLinkConfirmByCodeRequest, req
         int(payload.telegram_user_id),
         str(payload.tg_username or "-"),
         _mask_code(payload.link_code),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/link/confirm_latest")
+def telegram_link_confirm_latest(payload: TelegramLinkConfirmLatestRequest, request: Request) -> dict:
+    """EN: Confirm latest pending Telegram link by runtime Telegram identity (no link_code from bot state required).
+    RU: Подтвердить последний pending Telegram link по текущей Telegram-идентичности (без link_code из состояния бота).
+    """
+
+    client_ip = request.client.host if request.client else "-"
+    user_agent = str(request.headers.get("user-agent") or "-")
+    _LOG.info(
+        "event=TG_CONFIRM_LATEST_IN ip=%s ua=%s tg_uid=%s tg_username=%s",
+        client_ip,
+        user_agent,
+        int(payload.telegram_user_id),
+        str(payload.tg_username or "-"),
+    )
+    result = confirm_link_latest(
+        telegram_user_id=payload.telegram_user_id,
+        tg_username=payload.tg_username,
+    )
+    _LOG.info(
+        "event=TG_CONFIRM_LATEST_OUT ok=%s error=%s tg_uid=%s tg_username=%s confirm_code_present=%s",
+        str(bool(result.get("ok"))).lower(),
+        str(result.get("error") or "-"),
+        int(payload.telegram_user_id),
+        str(payload.tg_username or "-"),
+        str(bool(result.get("confirm_code"))).lower(),
     )
     return _service_result_to_response(result)
 

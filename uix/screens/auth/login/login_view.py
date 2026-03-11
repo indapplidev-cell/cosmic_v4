@@ -11,6 +11,7 @@ from kivy.lang import Builder
 from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
 from manager.lang.lang_manager import t
+from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 from uix.screens.common.password_eye import wire_password_eye
@@ -27,6 +28,17 @@ class LoginScreenView(MDScreen):
     """EN: Login screen view that wires layout, VM, and controller.
     RU: Представление входа, связывающее раскладку, VM и контроллер.
     """
+
+    def __init__(self, **kwargs) -> None:
+        """EN: Initialize login view state for duplicate-click protection.
+        RU: Инициализировать состояние экрана входа для защиты от двойных кликов.
+
+        EN: The in-flight flag blocks repeated taps while the auth request is being processed.
+        RU: Флаг in-flight блокирует повторные нажатия, пока обрабатывается auth-запрос.
+        """
+        super().__init__(**kwargs)
+        self._auth_inflight = False
+        self._auth_inflight_reset_ev = None
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
@@ -83,24 +95,51 @@ class LoginScreenView(MDScreen):
         """EN: Validate credentials before dispatching login.
         RU: Проверить учетные данные перед диспетчеризацией входа.
         """
+        if self._auth_inflight:
+            tglog("[AUTH] drop duplicate click action=login")
+            return
+        self._auth_inflight = True
+        self._auth_inflight_reset_ev = Clock.schedule_once(self._reset_auth_inflight_safety, 3)
+
         email = (self.ids.email_field.text or "").strip()
         password = self.ids.password_field.text or ""
-        ok_input, error_code, _field = validate_login(email, password)
-        if not ok_input:
-            msg_map = {
-                "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
-                "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
-                "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
-            }
-            self.set_error(msg_map.get(error_code, "Invalid input / Некорректный ввод"))
-            return
-        ok_login, payload = auth_backend.login(email, password)
-        if not ok_login:
-            self.set_error(t("login.error.invalid_credentials"))
-            return
-        self.set_error("")
-        self.controller.login()
-        self._clear_fields()
+        try:
+            ok_input, error_code, _field = validate_login(email, password)
+            if not ok_input:
+                msg_map = {
+                    "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
+                    "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
+                    "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
+                }
+                self.set_error(msg_map.get(error_code, "Invalid input / Некорректный ввод"))
+                return
+            ok_login, payload = auth_backend.login(email, password)
+            if not ok_login:
+                self.set_error(t("login.error.invalid_credentials"))
+                return
+            self.set_error("")
+            self.controller.login()
+            self._clear_fields()
+        finally:
+            self._clear_auth_inflight()
+
+    def _reset_auth_inflight_safety(self, _dt: float) -> None:
+        """EN: Safety reset for in-flight auth flag in case callback chain is interrupted.
+        RU: Защитный сброс флага in-flight для auth, если цепочка колбэков была прервана.
+        """
+        if self._auth_inflight:
+            tglog("[AUTH] inflight safety reset action=login")
+            self._auth_inflight = False
+        self._auth_inflight_reset_ev = None
+
+    def _clear_auth_inflight(self) -> None:
+        """EN: Clear in-flight state after auth request completion.
+        RU: Сбросить состояние in-flight после завершения auth-запроса.
+        """
+        if self._auth_inflight_reset_ev is not None:
+            self._auth_inflight_reset_ev.cancel()
+            self._auth_inflight_reset_ev = None
+        self._auth_inflight = False
 
     def set_error(self, text: str) -> None:
         """EN: Set error text visibility.

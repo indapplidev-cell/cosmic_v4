@@ -23,6 +23,21 @@ _HEALTHCHECK_DONE = False
 _BACKEND_READY = False
 
 
+def _auth_log(event: str, **fields: object) -> None:
+    """EN: Emit unified AUTH log line with stable key=value fields.
+    RU: Вывести унифицированную строку AUTH-лога со стабильным форматом key=value.
+
+    EN: This helper keeps diagnostics consistent across initial response and retry response
+    events, so transport and payload states are not mixed in ad-hoc messages.
+    RU: Этот helper поддерживает единый формат диагностики для первичного ответа и retry,
+    чтобы не смешивать transport/payload состояния в разрозненных сообщениях.
+    """
+
+    parts = [f"{key}={value}" for key, value in fields.items()]
+    suffix = f" {' '.join(parts)}" if parts else ""
+    tglog(f"[AUTH] {event}{suffix}")
+
+
 def _ensure_healthcheck_once() -> None:
     """EN: Run one lightweight API health probe and log result.
     RU: Выполнить один легкий health-пинг API и залогировать результат.
@@ -225,9 +240,12 @@ def _authorized_request_with_retry(
     RU: Выполнить авторизованный запрос и сделать ровно один retry после refresh при UNAUTHORIZED.
     """
 
-    tglog(
-        f"[AUTH] request path={path} method={method.upper()} "
-        f"auth_present={bool(get_access_token())} refresh_present={bool(get_refresh_token())}"
+    _auth_log(
+        "request",
+        path=path,
+        method=method.upper(),
+        auth_present=bool(get_access_token()),
+        refresh_present=bool(get_refresh_token()),
     )
     if not has_valid_session():
         tglog(f"[SESSION] blocked authorized request: no refresh_token path={path}")
@@ -249,18 +267,28 @@ def _authorized_request_with_retry(
         timeout=timeout,
     )
     unauthorized = bool(
-        status_code == 401
+        status_code in (401, 403)
         or (isinstance(payload, dict) and str(payload.get("error") or "") == "UNAUTHORIZED")
     )
+    transport_ok = bool(ok)
+    payload_ok = bool(isinstance(payload, dict) and payload.get("ok") is True)
+    _auth_log(
+        "resp",
+        path=path,
+        status=status_code,
+        transport_ok=transport_ok,
+        payload_ok=payload_ok,
+        unauthorized=unauthorized,
+        did_retry=False,
+    )
     if not unauthorized:
-        tglog(f"[AUTH] retry ok=False path={path} status={status_code} unauthorized=False")
-        return ok, payload, status_code
+        return payload_ok, payload, status_code
 
     tglog(f"[TGDBG] authorized retry: path={path} reason=UNAUTHORIZED")
-    tglog(f"[AUTH] unauthorized -> refresh path={path}")
+    _auth_log("unauthorized_refresh", path=path)
     if not refresh_access_token():
         tglog(f"[TGDBG] authorized retry: path={path} refresh_ok=False")
-        tglog(f"[AUTH] refresh ok=False path={path}")
+        _auth_log("refresh", path=path, ok=False)
         force_logout(reason=f"UNAUTHORIZED_REFRESH_FAILED:{path}")
         trace_log("SESSION", "SESSION.UNAUTHORIZED_RETRY_FAILED", path=path)
         return False, {"ok": False, "error": "NO_SESSION"}, status_code
@@ -271,7 +299,7 @@ def _authorized_request_with_retry(
         trace_log("SESSION", "SESSION.UNAUTHORIZED_EMPTY_ACCESS", path=path)
         return False, {"ok": False, "error": "NO_SESSION"}, status_code
     tglog(f"[TGDBG] authorized retry: path={path} refresh_ok=True auth={mask_token(token2)}")
-    tglog(f"[AUTH] refresh ok=True path={path}")
+    _auth_log("refresh", path=path, ok=True)
     headers2 = {"Authorization": f"Bearer {token2}"}
     ok2, payload2, status2 = api_client.request_with_meta(
         method,
@@ -281,8 +309,22 @@ def _authorized_request_with_retry(
         headers=headers2,
         timeout=timeout,
     )
-    tglog(f"[AUTH] retry ok={bool(ok2)} path={path} status={status2}")
-    return ok2, payload2, status2
+    transport_ok2 = bool(ok2)
+    payload_ok2 = bool(isinstance(payload2, dict) and payload2.get("ok") is True)
+    unauthorized2 = bool(
+        status2 in (401, 403)
+        or (isinstance(payload2, dict) and str(payload2.get("error") or "") == "UNAUTHORIZED")
+    )
+    _auth_log(
+        "retry",
+        path=path,
+        status=status2,
+        transport_ok=transport_ok2,
+        payload_ok=payload_ok2,
+        unauthorized=unauthorized2,
+        did_retry=True,
+    )
+    return payload_ok2, payload2, status2
 
 
 def has_access_token() -> bool:

@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from server.db import get_session
 from server.models.password_reset import PasswordResetToken
@@ -82,6 +83,73 @@ def _normalize_telegram_username(raw_value: str | None) -> str:
     return value
 
 
+def link_or_update_telegram_account(
+    session,
+    user_id: int,
+    telegram_user_id: int,
+    telegram_username: str | None,
+) -> tuple[bool, str | None]:
+    """EN: Create or update Telegram account binding for user with conflict-safe checks.
+    RU: Создать или обновить Telegram-привязку пользователя с безопасной проверкой конфликтов.
+
+    EN: Returns `(True, None)` on success, or `(False, \"TG_ALREADY_LINKED\")` when the same
+    Telegram account is already linked to another application user.
+    RU: Возвращает `(True, None)` при успехе или `(False, \"TG_ALREADY_LINKED\")`, если этот
+    Telegram-аккаунт уже привязан к другому пользователю приложения.
+    """
+
+    now_utc = datetime.now(timezone.utc)
+    user_id_value = int(user_id)
+    tg_user_id_value = int(telegram_user_id)
+    tg_username_value = str((telegram_username or "")).strip() or None
+
+    existing_by_tg = session.scalar(
+        select(TelegramAccount).where(TelegramAccount.telegram_user_id == tg_user_id_value)
+    )
+    if existing_by_tg is not None and int(existing_by_tg.user_id) != user_id_value:
+        _LOG.info(
+            "event=TG_ACCOUNT_LINK_CONFLICT user_id=%s telegram_user_id=%s owner_user_id=%s",
+            user_id_value,
+            tg_user_id_value,
+            int(existing_by_tg.user_id),
+        )
+        return False, "TG_ALREADY_LINKED"
+
+    account = session.scalar(select(TelegramAccount).where(TelegramAccount.user_id == user_id_value))
+    if account is None:
+        session.add(
+            TelegramAccount(
+                user_id=user_id_value,
+                telegram_user_id=tg_user_id_value,
+                telegram_username=tg_username_value,
+                verified_at=now_utc,
+            )
+        )
+    else:
+        account.telegram_user_id = tg_user_id_value
+        if tg_username_value is not None:
+            account.telegram_username = tg_username_value
+        account.verified_at = now_utc
+
+    try:
+        session.flush()
+    except IntegrityError:
+        _LOG.info(
+            "event=TG_ACCOUNT_LINK_CONFLICT_DB user_id=%s telegram_user_id=%s",
+            user_id_value,
+            tg_user_id_value,
+        )
+        return False, "TG_ALREADY_LINKED"
+
+    _LOG.info(
+        "event=TG_ACCOUNT_LINK_SAVED user_id=%s telegram_user_id=%s telegram_username=%s",
+        user_id_value,
+        tg_user_id_value,
+        tg_username_value or "-",
+    )
+    return True, None
+
+
 def _generate_start_token() -> str:
     """EN: Generate URL-safe Telegram deep-link token with strict allowed charset and max length 48.
     RU: Сгенерировать URL-safe токен deep-link Telegram со строгим набором символов и длиной до 48.
@@ -120,12 +188,19 @@ def request_link_code(user_id: int) -> dict:
     code_hash = hash_code(start_token, secret)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_sec)
     now_utc = datetime.now(timezone.utc)
+    expected_tg_username = ""
 
     try:
         with get_session() as session:
             user = session.get(User, int(user_id))
             if user is None:
                 return {"ok": False, "error": "NOT_FOUND"}
+            profile_user = session.scalar(
+                select(ProfileUser).where(ProfileUser.user_id == int(user_id)).limit(1)
+            )
+            expected_tg_username = _normalize_telegram_username(profile_user.telegram if profile_user else "")
+            if not expected_tg_username or expected_tg_username == "no data":
+                return {"ok": False, "error": "TELEGRAM_NOT_SET"}
 
             session.execute(
                 update(TelegramLinkToken)
@@ -133,13 +208,15 @@ def request_link_code(user_id: int) -> dict:
                 TelegramLinkToken.user_id == int(user_id),
                 TelegramLinkToken.used_at.is_(None),
             )
-            .values(used_at=now_utc)
+            .values(used_at=now_utc, used=True)
             )
             token = TelegramLinkToken(
                 user_id=int(user_id),
                 code_hash=code_hash,
+                expected_tg_username=expected_tg_username,
                 telegram_user_id=None,
                 expires_at=expires_at,
+                used=False,
                 used_at=None,
                 attempts=0,
             )
@@ -153,6 +230,95 @@ def request_link_code(user_id: int) -> dict:
             )
             return {"ok": True, "code": start_token, "start_token": start_token, "ttl_sec": ttl_sec}
     except Exception:
+        return {"ok": False, "error": "DB_ERROR"}
+
+
+def confirm_link_latest(telegram_user_id: int, tg_username: str) -> dict:
+    """EN: Confirm latest active pending link for Telegram username and issue separate 6-digit confirm_code.
+    RU: Подтвердить последний активный pending link по Telegram username и выдать отдельный 6-значный confirm_code.
+    """
+
+    secret = _reset_secret()
+    incoming_username = str((tg_username or "").strip())
+    incoming_username_norm = _normalize_telegram_username(incoming_username)
+    tg_user_id_value = int(telegram_user_id or 0)
+    now_utc = datetime.now(timezone.utc)
+    confirm_ttl_sec = max(60, _env_int("TG_CONFIRM_TTL_SEC", 600))
+
+    if not secret:
+        return {"ok": False, "error": "DB_ERROR"}
+    if tg_user_id_value <= 0 or not incoming_username_norm:
+        return {"ok": False, "error": "NO_PENDING"}
+
+    try:
+        with get_session() as session:
+            latest_for_username = session.scalar(
+                select(TelegramLinkToken)
+                .where(TelegramLinkToken.expected_tg_username == incoming_username_norm)
+                .order_by(TelegramLinkToken.created_at.desc())
+                .limit(1)
+            )
+            if latest_for_username is None:
+                return {"ok": False, "error": "NO_PENDING"}
+            if bool(latest_for_username.used) or latest_for_username.used_at is not None:
+                return {"ok": False, "error": "ALREADY_USED"}
+            if latest_for_username.expires_at <= now_utc:
+                return {"ok": False, "error": "NO_PENDING"}
+
+            expected_norm = _normalize_telegram_username(latest_for_username.expected_tg_username)
+            if expected_norm != incoming_username_norm:
+                return {"ok": False, "error": "MISMATCH"}
+
+            user_id_value = int(latest_for_username.user_id)
+            linked_ok, linked_error = link_or_update_telegram_account(
+                session=session,
+                user_id=user_id_value,
+                telegram_user_id=tg_user_id_value,
+                telegram_username=incoming_username,
+            )
+            if not linked_ok:
+                return {"ok": False, "error": str(linked_error or "TG_ALREADY_LINKED")}
+
+            latest_for_username.telegram_user_id = tg_user_id_value
+            latest_for_username.used = True
+            latest_for_username.used_at = now_utc
+
+            confirm_code = gen_6digit_code()
+            confirm_hash = hash_code(confirm_code, secret)
+            expires_at = now_utc + timedelta(seconds=confirm_ttl_sec)
+
+            request_id = _generate_request_id()
+            while session.scalar(
+                select(TelegramVerifyChallenge.id).where(TelegramVerifyChallenge.request_id == request_id)
+            ) is not None:
+                request_id = _generate_request_id()
+
+            session.add(
+                TelegramVerifyChallenge(
+                    user_id=user_id_value,
+                    request_id=request_id,
+                    code_hash=confirm_hash,
+                    telegram_user_id=tg_user_id_value,
+                    expires_at=expires_at,
+                    sent_at=now_utc,
+                    used_at=None,
+                    attempts=0,
+                )
+            )
+            session.flush()
+            return {
+                "ok": True,
+                "confirm_code": confirm_code,
+                "user_id": user_id_value,
+                "tg_username": incoming_username or "no_data",
+                "telegram_user_id": tg_user_id_value,
+            }
+    except Exception:
+        _LOG.exception(
+            "event=TG_CONFIRM_LATEST_EXCEPTION tg_uid=%s tg_username=%s",
+            tg_user_id_value,
+            incoming_username_norm or "-",
+        )
         return {"ok": False, "error": "DB_ERROR"}
 
 
@@ -210,32 +376,16 @@ def confirm_link_token(token_id: int, telegram_user_id: int) -> dict:
             if int(token_row.telegram_user_id or 0) != int(telegram_user_id):
                 return {"ok": False, "error": "INVALID_TOKEN"}
 
-            existing_by_tg = session.scalar(
-                select(TelegramAccount).where(TelegramAccount.telegram_user_id == int(telegram_user_id))
+            linked_ok, linked_error = link_or_update_telegram_account(
+                session=session,
+                user_id=int(token_row.user_id),
+                telegram_user_id=int(telegram_user_id),
+                telegram_username=None,
             )
-            if existing_by_tg is not None and int(existing_by_tg.user_id) != int(token_row.user_id):
-                return {"ok": False, "error": "ALREADY_LINKED"}
+            if not linked_ok:
+                return {"ok": False, "error": str(linked_error or "TG_ALREADY_LINKED")}
 
-            existing_by_user = session.scalar(
-                select(TelegramAccount).where(TelegramAccount.user_id == int(token_row.user_id))
-            )
-            if (
-                existing_by_user is not None
-                and int(existing_by_user.telegram_user_id) != int(telegram_user_id)
-            ):
-                return {"ok": False, "error": "USER_ALREADY_HAS_OTHER_TELEGRAM"}
-
-            if existing_by_user is None:
-                session.add(
-                    TelegramAccount(
-                        user_id=int(token_row.user_id),
-                        telegram_user_id=int(telegram_user_id),
-                        verified_at=now_utc,
-                    )
-                )
-            else:
-                existing_by_user.verified_at = now_utc
-
+            token_row.used = True
             token_row.used_at = now_utc
             session.flush()
             return {"ok": True}
@@ -333,24 +483,15 @@ def confirm_link_code(code: str, telegram_user_id: int) -> dict:
             if token is None:
                 return {"ok": False, "error": "INVALID_CODE"}
 
-            existing_by_tg = session.scalar(
-                select(TelegramAccount).where(TelegramAccount.telegram_user_id == int(telegram_user_id))
-            )
-            if existing_by_tg is not None and int(existing_by_tg.user_id) != int(token.user_id):
-                return {"ok": False, "error": "ALREADY_LINKED"}
-
             token.used_at = now_utc
-            account = session.scalar(select(TelegramAccount).where(TelegramAccount.user_id == int(token.user_id)))
-            if account is None:
-                account = TelegramAccount(
-                    user_id=int(token.user_id),
-                    telegram_user_id=int(telegram_user_id),
-                    verified_at=now_utc,
-                )
-                session.add(account)
-            else:
-                account.telegram_user_id = int(telegram_user_id)
-                account.verified_at = now_utc
+            linked_ok, linked_error = link_or_update_telegram_account(
+                session=session,
+                user_id=int(token.user_id),
+                telegram_user_id=int(telegram_user_id),
+                telegram_username=None,
+            )
+            if not linked_ok:
+                return {"ok": False, "error": str(linked_error or "TG_ALREADY_LINKED")}
             session.flush()
             return {"ok": True}
     except Exception:
@@ -402,7 +543,7 @@ def confirm_link_by_code(telegram_user_id: int, link_code: str, tg_username: str
             ttl_left_sec = int((token_row_any.expires_at - now_utc).total_seconds())
             token_expired = bool(token_row_any.expires_at <= now_utc)
             token_used = bool(token_row_any.used_at is not None)
-            if token_expired or token_used:
+            if token_expired or token_used or bool(token_row_any.used):
                 detail = "expired" if token_expired else "used"
                 _LOG.info(
                     "event=TG_CONFIRM_BY_CODE_OUT ok=false error=NO_PENDING user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=%s found=true expired=%s used=%s ttl_left_sec=%s",
@@ -447,36 +588,23 @@ def confirm_link_by_code(telegram_user_id: int, link_code: str, tg_username: str
                 )
                 return {"ok": False, "error": "MISMATCH"}
 
-            existing_by_tg = session.scalar(
-                select(TelegramAccount).where(TelegramAccount.telegram_user_id == tg_user_id_value)
+            linked_ok, linked_error = link_or_update_telegram_account(
+                session=session,
+                user_id=int(token_row.user_id),
+                telegram_user_id=tg_user_id_value,
+                telegram_username=tg_username_value,
             )
-            if existing_by_tg is not None and int(existing_by_tg.user_id) != int(token_row.user_id):
+            if not linked_ok:
                 _LOG.info(
-                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=ALREADY_LINKED user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=telegram_user_already_linked expected_user_id=%s actual_user_id=%s",
+                    "event=TG_CONFIRM_BY_CODE_OUT ok=false error=TG_ALREADY_LINKED user_id=%s tg_uid=%s tg_username=%s link_code=%s detail=telegram_user_already_linked",
                     int(token_row.user_id),
                     tg_user_id_value,
                     incoming_username_norm or "-",
                     _mask_code(link_code_value),
-                    int(token_row.user_id),
-                    int(existing_by_tg.user_id),
                 )
-                return {"ok": False, "error": "ALREADY_LINKED"}
+                return {"ok": False, "error": "TG_ALREADY_LINKED"}
 
-            existing_by_user = session.scalar(
-                select(TelegramAccount).where(TelegramAccount.user_id == int(token_row.user_id))
-            )
-            if existing_by_user is None:
-                session.add(
-                    TelegramAccount(
-                        user_id=int(token_row.user_id),
-                        telegram_user_id=tg_user_id_value,
-                        verified_at=now_utc,
-                    )
-                )
-            else:
-                existing_by_user.telegram_user_id = tg_user_id_value
-                existing_by_user.verified_at = now_utc
-
+            token_row.used = True
             token_row.used_at = now_utc
 
             confirm_code = gen_6digit_code()

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from server.db import Base
@@ -27,8 +27,10 @@ class TelegramLinkToken(Base):
         index=True,
     )
     code_hash: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    expected_tg_username: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    used: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(

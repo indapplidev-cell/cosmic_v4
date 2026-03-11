@@ -155,6 +155,15 @@ class TelegramLinkConfirmByCodeRequest(StrictBaseModel):
     tg_username: Annotated[str, MaxLen(64)] | None = None
 
 
+class TelegramLinkConfirmLatestRequest(StrictBaseModel):
+    """EN: Bot payload for latest pending link confirmation by Telegram identity.
+    RU: Payload бота для подтверждения последнего pending link по Telegram-идентичности.
+    """
+
+    telegram_user_id: int = Field(gt=0)
+    tg_username: Annotated[str, MinLen(1), MaxLen(64)]
+
+
 class TelegramVerifyRequest(StrictBaseModel):
     """EN: Telegram verification request payload initiated by app user.
     RU: Payload запроса верификации Telegram, инициируемого пользователем приложения.
