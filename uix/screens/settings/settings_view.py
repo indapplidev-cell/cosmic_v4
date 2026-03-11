@@ -3,10 +3,13 @@ RU: Представление экрана настроек.
 """
 
 from pathlib import Path
+from threading import Thread
+from time import monotonic
 
 import requests
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_session import UserSession
+from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.properties import BooleanProperty, StringProperty
@@ -19,12 +22,17 @@ from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
 from manager.auth.account_delete import confirm_delete_account
-from manager.config import API_BASE_URL
+from manager import auth_backend
+from manager.config import API_BASE_URL, PAYOUT_TELEGRAM_BOT_USERNAME, TG_LINK_STATUS_POLL_SEC, VERIFY_OPEN_TIMEOUT_SEC
 from manager.docs.doc_locale import get_lang_code
 from manager.game_control.hud_layout_store import get_swapped, toggle_swapped
 from manager.lang.lang_manager import t
+from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
+from manager.trace import trace_log
+from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
+from uix.screens.routes import LOGIN
 
 from .settings_controller import SettingsScreenController
 from .settings_layout import SETTINGS_DEBUG_IDS, apply_settings_layout
@@ -114,6 +122,9 @@ class SettingsScreenView(MDScreen):
             ],
         )
         apply_debug_borders_to_ids(self, SETTINGS_DEBUG_IDS)
+        self._pay_open_started_at = 0.0
+        self._pay_status_poll_event = None
+        self._pay_flow_active = False
 
     def on_pre_enter(self, *args) -> None:
         """EN: Update login button text based on auth state.
@@ -263,3 +274,131 @@ class SettingsScreenView(MDScreen):
         self.ids.login_btn.on_release = controller.payout
         self.ids.action_btn.on_release = controller.logout
         self.ids.back_btn.on_release = controller.back
+
+    def start_payout_flow(self) -> None:
+        """EN: Start payout bot open flow from Settings button.
+        RU: Запустить flow открытия payout-бота по кнопке из Настроек.
+        """
+
+        tglog("[PAY] step1 click PAYOUT")
+        trace_log("OPEN", "PAYOUT.CLICK")
+        if not auth_backend.get_refresh_token():
+            self._show_session_expired_popup()
+            return
+
+        cache = get_user_cache() or {}
+        try:
+            user_id = int(cache.get("user_id") or 0)
+        except Exception:
+            user_id = 0
+        if user_id <= 0:
+            self._show_session_expired_popup()
+            return
+
+        def _worker() -> None:
+            ok, payload = auth_backend.payout_link_request(user_id)
+            error_code = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
+            code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
+            if not ok or not code:
+                if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
+                    Clock.schedule_once(lambda _dt: self._show_session_expired_popup(), 0)
+                else:
+                    Clock.schedule_once(lambda _dt: self._show_info_popup(t("pay.request_fail")), 0)
+                return
+
+            tglog(f"[PAY] step4 open scheduled code={auth_backend.mask_token(code)}")
+            self._pay_flow_active = True
+            self._pay_open_started_at = float(monotonic())
+
+            def _open_and_poll(_dt: float) -> None:
+                open_bot_two_stage(
+                    PAYOUT_TELEGRAM_BOT_USERNAME,
+                    code,
+                    "PAY",
+                    warmup=True,
+                    retry_always=True,
+                )
+                self._start_payout_status_polling(user_id=int(user_id))
+
+            Clock.schedule_once(_open_and_poll, 0)
+
+        Thread(target=_worker, daemon=True).start()
+
+    def _start_payout_status_polling(self, user_id: int) -> None:
+        """EN: Poll `/payout/link/status` until bot ack marks code used or timeout is reached.
+        RU: Опрашивать `/payout/link/status`, пока bot ack не пометит код used или не выйдет timeout.
+        """
+
+        if self._pay_status_poll_event is not None:
+            try:
+                self._pay_status_poll_event.cancel()
+            except Exception:
+                pass
+            self._pay_status_poll_event = None
+
+        def _poll(_dt: float) -> bool:
+            if not self._pay_flow_active:
+                return False
+            elapsed = float(monotonic() - float(self._pay_open_started_at or 0.0))
+            ok, payload = auth_backend.payout_link_status(int(user_id))
+            used = bool(isinstance(payload, dict) and payload.get("used"))
+            ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
+            tglog(f"[PAY] status used={used} ttl={ttl_sec} elapsed={elapsed:.1f}")
+            if used:
+                self._pay_flow_active = False
+                cancel_open_flow("PAY")
+                if self._pay_status_poll_event is not None:
+                    try:
+                        self._pay_status_poll_event.cancel()
+                    except Exception:
+                        pass
+                    self._pay_status_poll_event = None
+                return False
+            if elapsed >= float(VERIFY_OPEN_TIMEOUT_SEC):
+                self._pay_flow_active = False
+                cancel_open_flow("PAY")
+                if self._pay_status_poll_event is not None:
+                    try:
+                        self._pay_status_poll_event.cancel()
+                    except Exception:
+                        pass
+                    self._pay_status_poll_event = None
+                tglog("[PAY] timeout popup shown")
+                self._show_info_popup(t("pay.open_timeout"))
+                return False
+            return True
+
+        self._pay_status_poll_event = Clock.schedule_interval(_poll, float(TG_LINK_STATUS_POLL_SEC))
+
+    def _show_session_expired_popup(self) -> None:
+        """EN: Show session-expired popup, force logout, and route to Login.
+        RU: Показать popup об истечении сессии, выполнить logout и перейти на Login.
+        """
+
+        def _go_login(_instance) -> None:
+            auth_backend.force_logout(reason="PAYOUT_NO_SESSION")
+            app = MDApp.get_running_app()
+            if app is not None:
+                app.change_screen(LOGIN)
+            popup.dismiss()
+
+        content = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        content.add_widget(Label(text=t("pay.session_expired")))
+        btn = Button(text=t("common.ok"), size_hint_y=None, height=dp(40))
+        content.add_widget(btn)
+        popup = Popup(title="", content=content, size_hint=(0.8, 0.35), auto_dismiss=False)
+        btn.bind(on_release=_go_login)
+        popup.open()
+
+    def _show_info_popup(self, message: str) -> None:
+        """EN: Show compact informational popup for payout flow messages.
+        RU: Показать компактный информационный popup для сообщений payout flow.
+        """
+
+        content = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        content.add_widget(Label(text=message))
+        btn = Button(text=t("common.ok"), size_hint_y=None, height=dp(40))
+        content.add_widget(btn)
+        popup = Popup(title="", content=content, size_hint=(0.82, 0.35), auto_dismiss=False)
+        btn.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()

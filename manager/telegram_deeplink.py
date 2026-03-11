@@ -83,18 +83,41 @@ def cancel_open_flow(flow_tag: str) -> None:
             continue
 
 
-def open_bot_two_stage(bot_username: str, code: str, flow_tag: str) -> float:
-    """EN: Open Telegram with `start=code`, retry once only on failed attempt, then optional web fallback.
-    RU: Открыть Telegram с `start=code`, сделать один retry только при неудачной попытке и затем опциональный web fallback.
+def _build_chat_url(bot: str | None) -> str:
+    """EN: Build tg:// URL without payload for Telegram warm-up stage.
+    RU: Собрать tg:// URL без payload для warm-up этапа Telegram.
+    """
+
+    bot_name = str((bot or TELEGRAM_BOT_USERNAME or "").strip().lstrip("@"))
+    return f"tg://resolve?domain={quote_plus(bot_name)}"
+
+
+def open_bot_two_stage(
+    bot_username: str,
+    code: str,
+    flow_tag: str,
+    warmup: bool = False,
+    retry_always: bool = False,
+) -> float:
+    """EN: Open Telegram bot chat with optional warm-up, retry, and focus-aware web fallback.
+    RU: Открыть чат Telegram-бота с опциональным warm-up, retry и web fallback с учётом фокуса.
+
+    EN: `retry_always=True` is intended for payout cold-start only, where Stage1 retry
+    must run even after a successful initial Stage1 attempt to force Telegram into the
+    target bot chat after process startup.
+    RU: `retry_always=True` предназначен только для payout cold-start, где Stage1 retry
+    должен выполняться даже после успешной первой попытки Stage1, чтобы принудительно
+    довести Telegram до чата нужного бота после запуска процесса.
     """
 
     cancel_open_flow(flow_tag)
     start_ts = float(time())
+    stage0_url = _build_chat_url(bot_username)
     start_url, web_url = build_urls(bot_username, code)
     masked_code = _masked_code(code)
     state: dict[str, object] = {
         "events": [],
-        "initial_failed": False,
+        "open_failed": False,
         "start_ts": start_ts,
         "web_fallback_attempted": False,
     }
@@ -102,30 +125,52 @@ def open_bot_two_stage(bot_username: str, code: str, flow_tag: str) -> float:
     def _append_event(event) -> None:
         state.setdefault("events", []).append(event)
 
-    def _run_initial(_dt: float) -> None:
-        tglog(f"[{flow_tag}] step10 open attempt url={_mask_url(start_url)} code={masked_code} ts={start_ts}")
-        attempted, err = open_tg_scheme(start_url)
-        state["initial_failed"] = not bool(attempted)
-        tglog(f"[{flow_tag}] open result attempted={bool(attempted)} err={err or '-'}")
-        trace_log("OPEN", "OPEN.RESULT", flow=flow_tag, stage="initial", attempted=bool(attempted), error=err or "")
-        if bool(attempted):
-            return
+    def _schedule_retry_and_fallback() -> None:
         retry_ev = Clock.schedule_once(_run_retry, float(DELAY_RETRY_MS) / 1000.0)
         _append_event(retry_ev)
         tglog(f"[{flow_tag}] fallback scheduled reason=tg_open_failed timeout={float(TG_OPEN_TIMEOUT_SEC)}")
         fallback_ev = Clock.schedule_once(_run_web_fallback, float(TG_OPEN_TIMEOUT_SEC))
         _append_event(fallback_ev)
 
-    def _run_retry(_dt: float) -> None:
-        if not bool(state.get("initial_failed")):
-            return
-        tglog(f"[{flow_tag}] retry attempt url={_mask_url(start_url)} code={masked_code}")
+    def _run_stage0(_dt: float) -> None:
+        tglog(f"[{flow_tag}] open Stage0 url={_mask_url(stage0_url)}")
+        attempted, err = open_tg_scheme(stage0_url)
+        tglog(f"[{flow_tag}] open Stage0 attempted={bool(attempted)} err={err or '-'}")
+        trace_log("OPEN", "OPEN.RESULT", flow=flow_tag, stage="stage0", attempted=bool(attempted), error=err or "")
+        stage1_ev = Clock.schedule_once(_run_stage1, 0.8)
+        _append_event(stage1_ev)
+
+    def _run_initial(_dt: float) -> None:
+        tglog(f"[{flow_tag}] step10 open attempt url={_mask_url(start_url)} code={masked_code} ts={start_ts}")
         attempted, err = open_tg_scheme(start_url)
-        tglog(f"[{flow_tag}] retry result attempted={bool(attempted)} err={err or '-'}")
+        state["open_failed"] = not bool(attempted)
+        tglog(f"[{flow_tag}] open result attempted={bool(attempted)} err={err or '-'}")
+        trace_log("OPEN", "OPEN.RESULT", flow=flow_tag, stage="initial", attempted=bool(attempted), error=err or "")
+        if not bool(attempted):
+            _schedule_retry_and_fallback()
+
+    def _run_stage1(_dt: float) -> None:
+        tglog(f"[{flow_tag}] open Stage1 url={_mask_url(start_url)} code={masked_code}")
+        attempted, err = open_tg_scheme(start_url)
+        state["open_failed"] = not bool(attempted)
+        tglog(f"[{flow_tag}] open Stage1 attempted={bool(attempted)} err={err or '-'}")
+        trace_log("OPEN", "OPEN.RESULT", flow=flow_tag, stage="stage1", attempted=bool(attempted), error=err or "")
+        if bool(retry_always):
+            retry_ev = Clock.schedule_once(_run_retry, float(DELAY_RETRY_MS) / 1000.0)
+            _append_event(retry_ev)
+        if not bool(attempted):
+            _schedule_retry_and_fallback()
+
+    def _run_retry(_dt: float) -> None:
+        if not bool(state.get("open_failed")):
+            return
+        tglog(f"[{flow_tag}] open Stage1Retry url={_mask_url(start_url)} code={masked_code}")
+        attempted, err = open_tg_scheme(start_url)
+        tglog(f"[{flow_tag}] open Stage1Retry attempted={bool(attempted)} err={err or '-'}")
         trace_log("OPEN", "OPEN.RESULT", flow=flow_tag, stage="retry", attempted=bool(attempted), error=err or "")
 
     def _run_web_fallback(_dt: float) -> None:
-        if not bool(state.get("initial_failed")):
+        if not bool(state.get("open_failed")):
             return
         current_focus = getattr(Window, "focus", None)
         if current_focus is None:
@@ -142,8 +187,8 @@ def open_bot_two_stage(bot_username: str, code: str, flow_tag: str) -> float:
         tglog(f"[{flow_tag}] fallback result attempted={bool(attempted)} err={err or '-'}")
         trace_log("OPEN", "OPEN.RESULT", flow=flow_tag, stage="web_fallback", attempted=bool(attempted), error=err or "")
 
-    initial_ev = Clock.schedule_once(_run_initial, 0)
-    _append_event(initial_ev)
+    first_ev = Clock.schedule_once(_run_stage0 if warmup else _run_initial, 0)
+    _append_event(first_ev)
     _OPEN_FLOW_EVENTS[str(flow_tag)] = state
     return start_ts
 
