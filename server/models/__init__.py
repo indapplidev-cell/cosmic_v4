@@ -10,6 +10,8 @@ from server.models.refresh_token import RefreshToken
 from server.models.telegram_account import TelegramAccount
 from server.models.telegram_link_token import TelegramLinkToken
 from server.models.telegram_outbox import TelegramOutbox
+from server.models.telegram_reset_challenge import TelegramResetChallenge
+from server.models.telegram_reset_request import TelegramResetRequest
 from server.models.telegram_verify_challenge import TelegramVerifyChallenge
 from server.models.user import User
 
@@ -23,5 +25,7 @@ __all__ = [
     "TelegramAccount",
     "TelegramLinkToken",
     "TelegramOutbox",
+    "TelegramResetRequest",
+    "TelegramResetChallenge",
     "TelegramVerifyChallenge",
 ]

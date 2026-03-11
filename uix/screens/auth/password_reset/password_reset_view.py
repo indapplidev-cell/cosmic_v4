@@ -74,11 +74,14 @@ class PasswordResetScreenView(MDScreen):
             return
 
         channel = "telegram" if self.ids.reset_channel_telegram.active else "email"
-        ok, _error = auth_backend.password_reset_request(email, channel=channel)
+        ok, payload = auth_backend.password_reset_request(email, channel=channel)
         if not ok:
             self.set_error(t("reset.error.request_failed"))
             return
-        self.set_error(t("reset.info.request_sent"))
+        if isinstance(payload, dict) and payload.get("reset_link_code"):
+            self.set_error(t("reset.info.request_sent"))
+        else:
+            self.set_error(t("reset.telegram_not_verified"))
 
     def _on_confirm_pressed(self) -> None:
         """EN: Confirm one-time code and set new password, then return to login.
@@ -105,10 +108,15 @@ class PasswordResetScreenView(MDScreen):
                 self.set_error(t("reset.error.invalid_input"))
             return
 
-        ok, error = auth_backend.password_reset_confirm(email, code, new_psw)
+        ok, payload = auth_backend.password_reset_confirm(email, code, new_psw)
         if not ok:
-            if error == "INVALID_CODE":
+            error = str((payload or {}).get("error") or "")
+            if error in {"CODE_INVALID", "EMAIL_NOT_FOUND"}:
                 self.set_error(t("reset.error.invalid_code"))
+            elif error == "CODE_EXPIRED":
+                self.set_error(t("reset.error.code_expired"))
+            elif error in {"CODE_USED", "CODE_LOCKED"}:
+                self.set_error(t("reset.error.code_used"))
             else:
                 self.set_error(t("reset.error.confirm_failed"))
             return

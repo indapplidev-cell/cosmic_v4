@@ -1,5 +1,5 @@
-"""EN: Telegram bot entrypoint with 2-button menu and server-side confirmation flow.
-RU: Точка входа Telegram-бота с 2-кнопочным меню и серверным потоком подтверждения.
+﻿"""EN: Telegram bot entrypoint with 2-button menu for link and reset flows.
+RU: Точка входа Telegram-бота с меню из 2 кнопок для flow привязки и сброса.
 """
 
 from __future__ import annotations
@@ -55,20 +55,34 @@ def _api_base_url() -> str:
     return os.getenv("API_INTERNAL_URL", "http://api:8000").rstrip("/")
 
 
-def _mask_confirm_code(value: str) -> str:
-    """EN: Mask confirm-code in logs without exposing full value.
-    RU: Маскировать confirm-code в логах без раскрытия полного значения.
+def _mask_code(value: str) -> str:
+    """EN: Mask code in logs without exposing full value.
+    RU: Маскировать код в логах без раскрытия полного значения.
     """
 
     code = str((value or "").strip())
+    if not code:
+        return "-"
     if len(code) <= 4:
         return "*" * len(code)
     return f"{code[:2]}...{code[-2:]}"
 
 
+def _pending_payloads(context: ContextTypes.DEFAULT_TYPE) -> dict[int, str]:
+    """EN: Return mutable in-memory map of pending /start payload by telegram_user_id.
+    RU: Вернуть изменяемую in-memory карту pending /start payload по telegram_user_id.
+    """
+
+    pending = context.application.bot_data.get("pending_payloads")
+    if not isinstance(pending, dict):
+        pending = {}
+        context.application.bot_data["pending_payloads"] = pending
+    return pending
+
+
 def _confirm_latest_http(telegram_user_id: int, tg_username: str | None) -> tuple[int, dict]:
     """EN: Call API endpoint that confirms latest pending link and returns confirm_code.
-    RU: Вызвать API-эндпоинт, который подтверждает последний pending link и возвращает confirm_code.
+    RU: Вызвать API-эндпоинт подтверждения последнего pending link и получения confirm_code.
     """
 
     url = f"{_api_base_url()}/telegram/link/confirm_latest"
@@ -76,13 +90,35 @@ def _confirm_latest_http(telegram_user_id: int, tg_username: str | None) -> tupl
         "telegram_user_id": int(telegram_user_id),
         "tg_username": str((tg_username or "").strip()),
     }
+    return _post_json(url=url, payload=payload, headers={"Content-Type": "application/json"})
+
+
+def _reset_issue_http(telegram_user_id: int, reset_link_code: str, tg_username: str | None) -> tuple[int, dict]:
+    """EN: Call bot-protected API endpoint issuing reset confirm_code from reset_link_code.
+    RU: Вызвать защищённый bot-endpoint API, выдающий reset confirm_code из reset_link_code.
+    """
+
+    url = f"{_api_base_url()}/telegram/reset/issue_by_code"
+    payload = {
+        "telegram_user_id": int(telegram_user_id),
+        "reset_link_code": str((reset_link_code or "").strip()),
+        "tg_username": str((tg_username or "").strip()) or None,
+    }
+    secret = str((os.getenv("BOT_SHARED_SECRET", "") or "").strip())
+    headers = {
+        "Content-Type": "application/json",
+        "X-Bot-Secret": secret,
+    }
+    return _post_json(url=url, payload=payload, headers=headers)
+
+
+def _post_json(url: str, payload: dict, headers: dict[str, str]) -> tuple[int, dict]:
+    """EN: Execute JSON POST and return normalized `(status, payload)` tuple.
+    RU: Выполнить JSON POST и вернуть нормализованный кортеж `(status, payload)`.
+    """
+
     body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url=url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    request = urllib.request.Request(url=url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             raw = response.read().decode("utf-8", errors="replace")
@@ -100,35 +136,41 @@ def _confirm_latest_http(telegram_user_id: int, tg_username: str | None) -> tupl
             pass
         return int(exc.code or 0), {"ok": False, "error": "API_ERROR"}
     except Exception as exc:
-        logger.exception(
-            "event=TG_API_CALL_CONFIRM_LATEST_EXCEPTION tg_uid=%s tg_username=%s error=%s",
-            int(telegram_user_id),
-            str((tg_username or "-").strip() or "-"),
-            exc.__class__.__name__,
-        )
+        logger.exception("event=BOT_POST_JSON_EXCEPTION error=%s url=%s", exc.__class__.__name__, url)
         return 0, {"ok": False, "error": "API_ERROR"}
 
 
 async def _cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """EN: Show compact menu and do not depend on `/start <payload>` for confirmation.
-    RU: Показать компактное меню и не зависеть от `/start <payload>` для подтверждения.
+    """EN: Save /start payload for later button action and show menu.
+    RU: Сохранить payload из /start для последующего действия кнопкой и показать меню.
     """
 
-    del context
     if update.message is None or update.effective_user is None:
         return
+
     tg_user_id = int(update.effective_user.id)
     tg_username = str((update.effective_user.username or "").strip() or "-")
+    payload = str(" ".join(getattr(context, "args", []) or [])).strip()
+    if payload:
+        _pending_payloads(context)[tg_user_id] = payload
+        logger.info(
+            "event=TG_START_WITH_PAYLOAD tg_uid=%s tg_username=%s payload_mask=%s",
+            tg_user_id,
+            tg_username,
+            _mask_code(payload),
+        )
+        await update.message.reply_text("Готово. Выберите действие.", reply_markup=_menu_keyboard())
+        return
+
     logger.info("event=TG_START tg_uid=%s tg_username=%s", tg_user_id, tg_username)
     await update.message.reply_text("Выберите действие.", reply_markup=_menu_keyboard())
 
 
 async def _on_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """EN: Handle 2-button menu texts: confirm flow and reset placeholder.
-    RU: Обработать тексты 2-кнопочного меню: flow подтверждения и заглушку сброса.
+    """EN: Handle menu texts for link-confirm and reset-confirm code issue.
+    RU: Обработать тексты меню для link-confirm и выдачи reset-confirm кода.
     """
 
-    del context
     if update.message is None or update.effective_user is None:
         return
 
@@ -141,16 +183,7 @@ async def _on_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if text_norm == "подтвердить":
         try:
-            logger.info(
-                "event=TG_BTN_CONFIRM_IN tg_uid=%s tg_username=%s pending_present=- pending_link_code=-",
-                tg_user_id,
-                tg_username or "-",
-            )
-            logger.info(
-                "event=TG_API_CALL_CONFIRM_LATEST tg_uid=%s tg_username=%s",
-                tg_user_id,
-                tg_username or "-",
-            )
+            logger.info("event=TG_API_CALL_CONFIRM_LATEST tg_uid=%s tg_username=%s", tg_user_id, tg_username or "-")
             http_status, result = await asyncio.to_thread(_confirm_latest_http, tg_user_id, tg_username)
             confirm_code_for_log = str(result.get("confirm_code") or "")
             logger.info(
@@ -160,9 +193,8 @@ async def _on_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 str(result.get("error") or "-"),
                 int(result.get("user_id") or 0),
                 str(bool(confirm_code_for_log)).lower(),
-                _mask_confirm_code(confirm_code_for_log) if confirm_code_for_log else "-",
+                _mask_code(confirm_code_for_log) if confirm_code_for_log else "-",
             )
-
             if bool(result.get("ok")):
                 confirm_code = str(result.get("confirm_code") or "")
                 returned_username = str(result.get("tg_username") or tg_username or "").strip() or "no_data"
@@ -178,7 +210,6 @@ async def _on_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     reply_markup=_menu_keyboard(),
                 )
                 return
-
             error = str(result.get("error") or "API_ERROR")
             if error == "NO_PENDING":
                 text_out = "Нет активного запроса. Откройте бота из приложения заново."
@@ -198,8 +229,66 @@ async def _on_menu_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
     if text_norm == "сбросить":
-        await update.message.reply_text("Функция сброса будет добавлена позже.", reply_markup=_menu_keyboard())
-        return
+        try:
+            pending = _pending_payloads(context)
+            pending_payload = str((pending.get(tg_user_id) or "").strip())
+            logger.info(
+                "event=TG_BTN_RESET_IN tg_uid=%s tg_username=%s pending_present=%s pending_payload_mask=%s",
+                tg_user_id,
+                tg_username or "-",
+                str(bool(pending_payload)).lower(),
+                _mask_code(pending_payload) if pending_payload else "-",
+            )
+            if not pending_payload:
+                await update.message.reply_text("Нет активного запроса. Откройте бота из приложения.", reply_markup=_menu_keyboard())
+                return
+
+            reset_link_code = pending_payload[2:] if pending_payload.startswith("R_") else pending_payload
+            logger.info(
+                "event=TG_API_CALL_RESET_ISSUE tg_uid=%s tg_username=%s reset_link_code=%s",
+                tg_user_id,
+                tg_username or "-",
+                _mask_code(reset_link_code),
+            )
+            http_status, result = await asyncio.to_thread(_reset_issue_http, tg_user_id, reset_link_code, tg_username)
+            code_for_log = str(result.get("confirm_code") or "")
+            logger.info(
+                "event=TG_API_RESP_RESET_ISSUE http_status=%s ok=%s error=%s user_id=%s confirm_code_present=%s confirm_code_masked=%s",
+                int(http_status or 0),
+                str(bool(result.get("ok"))).lower(),
+                str(result.get("error") or "-"),
+                int(result.get("user_id") or 0),
+                str(bool(code_for_log)).lower(),
+                _mask_code(code_for_log) if code_for_log else "-",
+            )
+            if bool(result.get("ok")):
+                pending.pop(tg_user_id, None)
+                confirm_code = str(result.get("confirm_code") or "")
+                returned_username = str(result.get("tg_username") or tg_username or "").strip() or "no_data"
+                returned_tg_id = int(result.get("telegram_user_id") or tg_user_id)
+                await update.message.reply_text(
+                    "\n".join(
+                        [
+                            f"Код сброса: {confirm_code}",
+                            f"Ваш Telegram ID: {returned_tg_id}",
+                            f"Ваш username: {returned_username}",
+                        ]
+                    ),
+                    reply_markup=_menu_keyboard(),
+                )
+                return
+
+            error = str(result.get("error") or "API_ERROR")
+            if error == "NO_PENDING":
+                text_out = "Нет активного запроса. Откройте бота из приложения заново."
+            else:
+                text_out = "Запрос не совпал. Откройте бота из приложения заново."
+            await update.message.reply_text(text_out, reply_markup=_menu_keyboard())
+            return
+        except Exception:
+            logger.exception("event=TG_BTN_RESET_EXCEPTION tg_uid=%s tg_username=%s", tg_user_id, tg_username or "-")
+            await update.message.reply_text("Ошибка. Попробуйте позже.", reply_markup=_menu_keyboard())
+            return
 
     await update.message.reply_text("Выберите действие.", reply_markup=_menu_keyboard())
 

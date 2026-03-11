@@ -586,41 +586,52 @@ def finish_session_metrics(payload: dict, timeout: int = 10) -> Tuple[bool, dict
     return True, response
 
 
-def password_reset_request(email: str, channel: str = "telegram") -> Tuple[bool, str]:
-    """EN: Request password reset code by email without exposing account existence.
-    RU: Запросить код восстановления пароля по email без раскрытия существования аккаунта.
+def password_reset_request(email: str, channel: str = "telegram") -> Tuple[bool, dict]:
+    """EN: Request Telegram reset_link_code from backend for forgot-password flow.
+    RU: ????????? Telegram reset_link_code ? backend ??? flow ??????? ???????.
     """
 
     _ensure_healthcheck_once()
+    email_value = str((email or "").strip())
+    tglog(f"[TGDBG][RESET] request email_mask={mask_token(email_value)} channel={str(channel or '').strip().lower()}")
     ok, payload = api_client.request(
         "POST",
         "/auth/password/reset/request",
-        json={"email": email, "channel": str(channel or "telegram").strip().lower()},
+        json={"email": email_value, "channel": str(channel or "telegram").strip().lower()},
         timeout=10,
     )
+    has_link = bool(isinstance(payload, dict) and payload.get("reset_link_code"))
+    ttl = int((payload or {}).get("ttl_sec") or 0) if isinstance(payload, dict) else 0
+    tglog(f"[TGDBG][RESET] resp ok={ok} payload_ok={bool(isinstance(payload, dict) and payload.get('ok'))} has_link={has_link} ttl={ttl}")
     if ok and isinstance(payload, dict) and payload.get("ok"):
-        return True, ""
-    return False, _error_code(payload, "API_ERROR")
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
 
 
-def password_reset_confirm(email: str, code: str, new_psw: str) -> Tuple[bool, str]:
-    """EN: Confirm reset code and set new password, clearing local cache on success.
-    RU: Подтвердить reset-код и задать новый пароль, очищая локальный кэш при успехе.
+def password_reset_confirm(email: str, confirm_code: str, new_password: str) -> Tuple[bool, dict]:
+    """EN: Confirm Telegram reset code and set new password, clearing local session on success.
+    RU: ??????????? Telegram reset-??? ? ?????? ????? ?????? ? ???????? ????????? ?????? ??? ??????.
     """
 
     _ensure_healthcheck_once()
+    email_value = str((email or "").strip())
+    code_value = str((confirm_code or "").strip())
+    tglog(f"[TGDBG][RESET] confirm send email_mask={mask_token(email_value)} code_mask={mask_token(code_value)}")
     ok, payload = api_client.request(
         "POST",
         "/auth/password/reset/confirm",
-        json={"email": email, "code": code, "new_psw": new_psw},
+        json={"email": email_value, "confirm_code": code_value, "new_password": str(new_password or "")},
         timeout=10,
     )
+    tglog(f"[TGDBG][RESET] confirm resp ok={ok} payload_ok={bool(isinstance(payload, dict) and payload.get('ok'))} error={(payload or {}).get('error') if isinstance(payload, dict) else 'API_ERROR'}")
     if ok and isinstance(payload, dict) and payload.get("ok"):
         clear_cached_session()
-        return True, ""
-    return False, _error_code(payload, "INVALID_CODE")
-
-
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
 def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
     """EN: Request one-time Telegram deep-link code for authenticated user.
     RU: Запросить одноразовый Telegram deep-link code для авторизованного пользователя.

@@ -5,12 +5,19 @@ RU: Представление экрана входа.
 from pathlib import Path
 
 from manager import auth_backend
+from manager.config import TELEGRAM_BOT_USERNAME
 from manager.input_validation import validate_login
+from manager.lang.lang_manager import t
+from manager.telegram_deeplink import open_telegram_bot_chat
 from kivy.clock import Clock
 from kivy.lang import Builder
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
+from kivy.uix.textinput import TextInput
 from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
-from manager.lang.lang_manager import t
 from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
@@ -70,7 +77,7 @@ class LoginScreenView(MDScreen):
         self.set_error(vm.error_text)
 
         self.ids.login_btn.on_release = self._on_login_pressed
-        self.ids.forgot_btn.on_release = controller.forgot
+        self.ids.forgot_btn.on_release = self._on_forgot_pressed
         self.ids.register_btn.on_release = controller.register
 
     def on_pre_enter(self, *args) -> None:
@@ -122,6 +129,112 @@ class LoginScreenView(MDScreen):
             self._clear_fields()
         finally:
             self._clear_auth_inflight()
+
+    def _on_forgot_pressed(self) -> None:
+        """EN: Run Telegram-only forgot-password flow from login screen via popup.
+        RU: Запустить Telegram-only flow «Забыли пароль» с экрана входа через popup.
+        """
+
+        email = str((self.ids.email_field.text or "").strip())
+        if not email:
+            self.set_error(t("reset.error.email_required"))
+            return
+
+        ok, payload = auth_backend.password_reset_request(email, channel="telegram")
+        if not ok:
+            self._show_simple_popup(t("reset.error.request_failed"))
+            return
+
+        reset_link_code = str((payload.get("reset_link_code") or "").strip()) if isinstance(payload, dict) else ""
+        ttl_sec = int((payload.get("ttl_sec") or 0)) if isinstance(payload, dict) else 0
+        tglog(
+            f"[TGDBG][RESET] open tg start={auth_backend.mask_token('R_' + reset_link_code) if reset_link_code else '-'} ttl={ttl_sec}"
+        )
+        if not reset_link_code:
+            self._show_simple_popup(t("reset.telegram_not_verified"))
+            return
+
+        start_payload = f"R_{reset_link_code}"
+        open_telegram_bot_chat(TELEGRAM_BOT_USERNAME, start_payload)
+        self._show_reset_confirm_popup(email=email)
+
+    def _show_simple_popup(self, message: str) -> None:
+        """EN: Show one-button informational popup for login forgot-password flow.
+        RU: Показать информационный popup с одной кнопкой для flow восстановления на login.
+        """
+
+        content = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        lbl = Label(text=message, halign="center", valign="middle")
+        lbl.bind(size=lambda inst, _: setattr(inst, "text_size", inst.size))
+        btn = Button(text=t("common.ok"), size_hint=(1, None), height=44)
+        content.add_widget(lbl)
+        content.add_widget(btn)
+        popup = Popup(title="", content=content, size_hint=(0.85, 0.35), auto_dismiss=False)
+        btn.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
+
+    def _show_reset_confirm_popup(self, email: str) -> None:
+        """EN: Show popup for entering bot confirm_code and new password pair.
+        RU: Показать popup ввода bot confirm_code и пары нового пароля.
+        """
+
+        content = BoxLayout(orientation="vertical", spacing=8, padding=10)
+        info = Label(text=t("reset.popup_instruction"), halign="center", valign="middle", size_hint=(1, None), height=70)
+        info.bind(size=lambda inst, _: setattr(inst, "text_size", inst.size))
+        code_inp = TextInput(hint_text=t("reset.hint_code"), multiline=False, input_filter="int")
+        psw_inp = TextInput(hint_text=t("reset.hint_new_password"), multiline=False, password=True)
+        psw2_inp = TextInput(hint_text=t("reset.hint_new_password_repeat"), multiline=False, password=True)
+        row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
+        ok_btn = Button(text=t("common.ok"))
+        back_btn = Button(text=t("common.back"))
+        row.add_widget(ok_btn)
+        row.add_widget(back_btn)
+        content.add_widget(info)
+        content.add_widget(code_inp)
+        content.add_widget(psw_inp)
+        content.add_widget(psw2_inp)
+        content.add_widget(row)
+        popup = Popup(title="", content=content, size_hint=(0.9, 0.55), auto_dismiss=False)
+
+        def _submit(*_args) -> None:
+            code_value = str((code_inp.text or "").strip())
+            psw_value = str(psw_inp.text or "")
+            psw2_value = str(psw2_inp.text or "")
+            if not code_value.isdigit() or len(code_value) != 6:
+                self._show_simple_popup(t("reset.error.invalid_code"))
+                return
+            if psw_value != psw2_value:
+                self._show_simple_popup(t("reset.error.password_mismatch"))
+                return
+            ok_input, input_error, _field = validate_login(email, psw_value)
+            if not ok_input:
+                if input_error == "PASSWORD_LENGTH":
+                    self._show_simple_popup(t("reset.error.password_length"))
+                elif input_error == "CONTROL_CHARS":
+                    self._show_simple_popup(t("reset.error.password_control"))
+                else:
+                    self._show_simple_popup(t("reset.error.invalid_input"))
+                return
+
+            ok_confirm, response = auth_backend.password_reset_confirm(email, code_value, psw_value)
+            if not ok_confirm:
+                error = str((response or {}).get("error") or "API_ERROR")
+                if error == "CODE_EXPIRED":
+                    self._show_simple_popup(t("reset.error.code_expired"))
+                elif error in {"CODE_USED", "CODE_LOCKED"}:
+                    self._show_simple_popup(t("reset.error.code_used"))
+                elif error in {"CODE_INVALID", "EMAIL_NOT_FOUND"}:
+                    self._show_simple_popup(t("reset.error.invalid_code"))
+                else:
+                    self._show_simple_popup(t("reset.error.confirm_failed"))
+                return
+
+            popup.dismiss()
+            self._show_simple_popup(t("reset.success.password_changed"))
+
+        ok_btn.bind(on_release=_submit)
+        back_btn.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
 
     def _reset_auth_inflight_safety(self, _dt: float) -> None:
         """EN: Safety reset for in-flight auth flag in case callback chain is interrupted.

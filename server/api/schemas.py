@@ -84,7 +84,7 @@ class PasswordResetRequest(StrictBaseModel):
     """
 
     email: EmailStr
-    channel: Literal["telegram", "email"] = "telegram"
+    channel: Literal["telegram"] = "telegram"
 
 
 class PasswordResetConfirm(StrictBaseModel):
@@ -93,10 +93,10 @@ class PasswordResetConfirm(StrictBaseModel):
     """
 
     email: EmailStr
-    code: Annotated[str, MinLen(6), MaxLen(6)]
-    new_psw: Annotated[str, MinLen(8), MaxLen(72)]
+    confirm_code: Annotated[str, MinLen(6), MaxLen(6)]
+    new_password: Annotated[str, MinLen(8), MaxLen(72)]
 
-    @field_validator("code")
+    @field_validator("confirm_code")
     @classmethod
     def validate_code(cls, value: str) -> str:
         """EN: Accept only 6-digit numeric reset code.
@@ -107,7 +107,7 @@ class PasswordResetConfirm(StrictBaseModel):
             raise ValueError("FORMAT")
         return value
 
-    @field_validator("new_psw")
+    @field_validator("new_password")
     @classmethod
     def validate_new_psw(cls, value: str) -> str:
         """EN: Reject control characters in new password input.
@@ -179,6 +179,16 @@ class TelegramLinkConfirmLatestRequest(StrictBaseModel):
 
     telegram_user_id: int = Field(gt=0)
     tg_username: Annotated[str, MinLen(1), MaxLen(64)]
+
+
+class BotResetIssueRequest(StrictBaseModel):
+    """EN: Bot payload for issuing 6-digit reset confirm code from reset_link_code.
+    RU: Payload бота для выдачи 6-значного reset confirm-кода на основе reset_link_code.
+    """
+
+    telegram_user_id: int = Field(gt=0)
+    reset_link_code: Annotated[str, MinLen(1), MaxLen(128)]
+    tg_username: Annotated[str, MaxLen(64)] | None = None
 
 
 class TelegramVerifyRequest(StrictBaseModel):

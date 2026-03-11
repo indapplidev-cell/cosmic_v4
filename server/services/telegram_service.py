@@ -16,13 +16,17 @@ from sqlalchemy.exc import IntegrityError
 from server.db import get_session
 from server.models.password_reset import PasswordResetToken
 from server.models.profile_user import ProfileUser
+from server.models.refresh_token import RefreshToken
 from server.models.telegram_account import TelegramAccount
 from server.models.telegram_link_token import TelegramLinkToken
 from server.models.telegram_outbox import TelegramOutbox
+from server.models.telegram_reset_challenge import TelegramResetChallenge
+from server.models.telegram_reset_request import TelegramResetRequest
 from server.models.telegram_verify_challenge import TelegramVerifyChallenge
 from server.models.user import User
 from server.security.passwords import hash_password
 from server.security.tokens import gen_6digit_code, hash_code
+from server.security.validators import reject_control_chars
 
 _LOG = logging.getLogger("cosmic.telegram_service")
 _TOKEN_ALLOWED = re.compile(r"^[A-Za-z0-9_-]{1,48}$")
@@ -70,6 +74,18 @@ def _mask_code(code: str) -> str:
     if len(value) <= 8:
         return f"{value[:1]}...{value[-1:]}(len={len(value)})"
     return f"{value[:4]}...{value[-4:]}(len={len(value)})"
+
+
+def _gen_reset_link_code() -> str:
+    """EN: Generate opaque reset_link_code token (not 6-digit) for Telegram reset flow.
+    RU: Сгенерировать непрозрачный reset_link_code токен (не 6-значный) для Telegram reset flow.
+    """
+
+    token = base64.urlsafe_b64encode(os.urandom(24)).decode("ascii").rstrip("=")
+    token = str(token).strip()
+    if token.isdigit():
+        token = f"A{token}"
+    return token[:48]
 
 
 def _normalize_telegram_username(raw_value: str | None) -> str:
@@ -777,144 +793,214 @@ def confirm_link(user_id: int, confirm_code: str) -> dict:
 
 
 def request_password_reset(email: str, channel: str, request_ip: str | None, user_agent: str | None) -> dict:
-    """EN: Queue Telegram reset message when account is linked; keep anti-enumeration response.
-    RU: Поставить в очередь Telegram reset-сообщение при привязанном аккаунте, сохранив anti-enumeration ответ.
+    """EN: Request Telegram reset_link_code; return code only for verified Telegram accounts.
+    RU: ????????? Telegram reset_link_code; ??????? ??? ?????? ??? ???????????????? Telegram-?????????.
     """
 
     del request_ip, user_agent
-    channel_value = (channel or "").strip().lower()
-    if channel_value != "telegram":
-        # EN: Keep anti-enumeration response stable for non-telegram channels.
-        # RU: Сохранять стабильный anti-enumeration ответ для не-telegram каналов.
-        return {"ok": True}
-
+    channel_value = str((channel or "").strip().lower())
+    email_value = str((email or "").strip().lower())
     secret = _reset_secret()
-    email_value = (email or "").strip().lower()
-    ttl_min = max(1, _env_int("RESET_TOKEN_TTL_MIN", 15))
-    throttle_sec = max(1, _env_int("RESET_THROTTLE_SEC", 60))
-    prod_mode = os.getenv("APP_ENV", "prod").strip().lower() not in {"dev", "local"}
+    ttl_sec = max(60, _env_int("TG_RESET_LINK_TTL_SEC", 600))
+    throttle_sec = max(1, _env_int("TG_RESET_LINK_THROTTLE_SEC", 30))
 
+    if channel_value != "telegram":
+        return {"ok": True, "reset_link_code": None, "ttl_sec": 0}
     if not secret or not email_value:
-        return {"ok": True}
+        return {"ok": True, "reset_link_code": None, "ttl_sec": 0}
 
     now_utc = datetime.now(timezone.utc)
-    delivery = "not_linked"
     try:
         with get_session() as session:
             user = session.scalar(select(User).where(User.email == email_value))
             if user is None:
-                return {"ok": True}
+                return {"ok": True, "reset_link_code": None, "ttl_sec": 0}
 
             account = session.scalar(select(TelegramAccount).where(TelegramAccount.user_id == int(user.id)))
-            if account is None or account.verified_at is None:
-                return {"ok": True} if prod_mode else {"ok": True, "delivery": delivery}
+            if account is None or account.verified_at is None or int(account.telegram_user_id or 0) <= 0:
+                return {"ok": True, "reset_link_code": None, "ttl_sec": 0}
 
-            last_row = session.scalar(
-                select(PasswordResetToken)
-                .where(PasswordResetToken.user_id == int(user.id))
-                .order_by(PasswordResetToken.created_at.desc())
+            last_req = session.scalar(
+                select(TelegramResetRequest)
+                .where(
+                    TelegramResetRequest.user_id == int(user.id),
+                    TelegramResetRequest.used_at.is_(None),
+                )
+                .order_by(TelegramResetRequest.created_at.desc())
                 .limit(1)
             )
-            if last_row is not None and last_row.created_at is not None:
-                if (now_utc - last_row.created_at).total_seconds() < throttle_sec:
-                    return {"ok": True} if prod_mode else {"ok": True, "delivery": "throttled"}
+            if last_req is not None and last_req.created_at is not None:
+                age_sec = (now_utc - last_req.created_at).total_seconds()
+                if age_sec < throttle_sec:
+                    return {"ok": True, "reset_link_code": None, "ttl_sec": 0}
 
-            code = gen_6digit_code()
-            token_hash = hash_code(code, secret)
-            expires_at = now_utc + timedelta(minutes=ttl_min)
-
-            session.execute(
-                update(PasswordResetToken)
-                .where(
-                    PasswordResetToken.user_id == int(user.id),
-                    PasswordResetToken.used_at.is_(None),
-                )
-                .values(used_at=now_utc)
-            )
+            reset_link_code = _gen_reset_link_code()
+            code_hash = hash_code(reset_link_code, secret)
+            expires_at = now_utc + timedelta(seconds=ttl_sec)
             session.add(
-                PasswordResetToken(
+                TelegramResetRequest(
                     user_id=int(user.id),
-                    token_hash=token_hash,
+                    reset_link_code_hash=code_hash,
                     expires_at=expires_at,
                     used_at=None,
-                    request_ip=None,
-                    user_agent=None,
-                )
-            )
-            message = f"Cosmic: код для сброса пароля: {code}. Действует {ttl_min} минут."
-            session.add(
-                TelegramOutbox(
-                    telegram_user_id=int(account.telegram_user_id),
-                    message=message,
-                    status="pending",
                     attempts=0,
-                    next_attempt_at=now_utc,
-                    last_error=None,
+                    telegram_user_id=int(account.telegram_user_id),
+                    telegram_username=str((account.telegram_username or "").strip()) or None,
                 )
             )
             session.flush()
-            delivery = "queued"
-            return {"ok": True} if prod_mode else {"ok": True, "delivery": delivery}
+            _LOG.info(
+                "event=TG_RESET_LINK_REQUEST ok=true user_id=%s has_link=true email_mask=%s",
+                int(user.id),
+                _mask_code(email_value),
+            )
+            return {"ok": True, "reset_link_code": reset_link_code, "ttl_sec": int(ttl_sec)}
     except Exception:
-        return {"ok": True}
+        _LOG.exception("event=TG_RESET_LINK_REQUEST_EXCEPTION email_mask=%s", _mask_code(email_value))
+        return {"ok": True, "reset_link_code": None, "ttl_sec": 0}
 
 
-def confirm_password_reset(email: str, code: str, new_password: str) -> dict:
-    """EN: Validate reset code and update password hash.
-    RU: Проверить reset-код и обновить хеш пароля.
+def issue_reset_confirm_code(telegram_user_id: int, reset_link_code: str, tg_username: str | None) -> dict:
+    """EN: Issue 6-digit confirm_code for password reset from bot-side reset_link_code.
+    RU: ?????? 6-??????? confirm_code ??? ?????? ?????? ?? bot-side reset_link_code.
     """
 
     secret = _reset_secret()
-    email_value = (email or "").strip().lower()
-    code_value = (code or "").strip()
-    new_password_value = new_password or ""
-    max_attempts = max(1, _env_int("RESET_MAX_ATTEMPTS", 5))
+    code_value = str((reset_link_code or "").strip())
+    tg_uid = int(telegram_user_id or 0)
+    tg_username_value = str((tg_username or "").strip()) or None
+    if not secret or not code_value or tg_uid <= 0:
+        return {"ok": False, "error": "NO_PENDING"}
 
-    if not secret or not email_value or not code_value or not new_password_value:
-        return {"ok": False, "error": "INVALID_CODE"}
+    now_utc = datetime.now(timezone.utc)
+    max_attempts = max(1, _env_int("TG_RESET_MAX_ATTEMPTS", 5))
+    confirm_ttl_sec = max(60, _env_int("TG_RESET_CONFIRM_TTL_SEC", 600))
+    code_hash = hash_code(code_value, secret)
+
+    try:
+        with get_session() as session:
+            row = session.scalar(
+                select(TelegramResetRequest)
+                .where(TelegramResetRequest.reset_link_code_hash == code_hash)
+                .order_by(TelegramResetRequest.created_at.desc())
+                .limit(1)
+            )
+            if row is None:
+                return {"ok": False, "error": "NO_PENDING"}
+            if row.used_at is not None:
+                return {"ok": False, "error": "CODE_USED"}
+            if row.expires_at <= now_utc:
+                return {"ok": False, "error": "CODE_EXPIRED"}
+            if int(row.attempts or 0) >= max_attempts:
+                return {"ok": False, "error": "CODE_USED"}
+
+            account = session.scalar(select(TelegramAccount).where(TelegramAccount.user_id == int(row.user_id)))
+            if account is None or account.verified_at is None or int(account.telegram_user_id or 0) <= 0:
+                return {"ok": False, "error": "NOT_VERIFIED"}
+            if int(account.telegram_user_id) != tg_uid:
+                row.attempts = int(row.attempts or 0) + 1
+                session.flush()
+                return {"ok": False, "error": "MISMATCH"}
+
+            confirm_code = gen_6digit_code()
+            while confirm_code == code_value:
+                confirm_code = gen_6digit_code()
+            confirm_hash = hash_code(confirm_code, secret)
+            challenge_expires = now_utc + timedelta(seconds=confirm_ttl_sec)
+            session.add(
+                TelegramResetChallenge(
+                    user_id=int(row.user_id),
+                    confirm_code_hash=confirm_hash,
+                    expires_at=challenge_expires,
+                    used_at=None,
+                    attempts=0,
+                    telegram_user_id=tg_uid,
+                    telegram_username=tg_username_value,
+                )
+            )
+            row.used_at = now_utc
+            row.telegram_user_id = tg_uid
+            row.telegram_username = tg_username_value
+            session.flush()
+            return {
+                "ok": True,
+                "confirm_code": confirm_code,
+                "user_id": int(row.user_id),
+                "tg_username": tg_username_value or "",
+                "telegram_user_id": tg_uid,
+            }
+    except Exception:
+        _LOG.exception(
+            "event=TG_RESET_ISSUE_EXCEPTION tg_uid=%s reset_link=%s",
+            tg_uid,
+            _mask_code(code_value),
+        )
+        return {"ok": False, "error": "DB_ERROR"}
+
+
+def confirm_password_reset(email: str, code: str, new_password: str) -> dict:
+    """EN: Confirm Telegram reset code and update password hash, revoking refresh sessions.
+    RU: ??????????? Telegram reset-??? ? ???????? ??? ?????? ? ??????? refresh-??????.
+    """
+
+    secret = _reset_secret()
+    email_value = str((email or "").strip().lower())
+    code_value = str((code or "").strip())
+    password_value = str(new_password or "")
+    max_attempts = max(1, _env_int("TG_RESET_MAX_ATTEMPTS", 5))
+
+    if not secret or not email_value:
+        return {"ok": False, "error": "CODE_INVALID"}
+    if not code_value.isdigit() or len(code_value) != 6:
+        return {"ok": False, "error": "CODE_INVALID"}
+    if len(password_value) < 8 or len(password_value) > 72:
+        return {"ok": False, "error": "PASSWORD_INVALID"}
+    try:
+        reject_control_chars(password_value)
+    except Exception:
+        return {"ok": False, "error": "PASSWORD_INVALID"}
 
     now_utc = datetime.now(timezone.utc)
     try:
         with get_session() as session:
             user = session.scalar(select(User).where(User.email == email_value))
             if user is None:
-                return {"ok": False, "error": "INVALID_CODE"}
+                return {"ok": False, "error": "EMAIL_NOT_FOUND"}
 
-            token = session.scalar(
-                select(PasswordResetToken)
+            code_hash = hash_code(code_value, secret)
+            challenge = session.scalar(
+                select(TelegramResetChallenge)
                 .where(
-                    PasswordResetToken.user_id == int(user.id),
-                    PasswordResetToken.used_at.is_(None),
+                    TelegramResetChallenge.user_id == int(user.id),
+                    TelegramResetChallenge.confirm_code_hash == code_hash,
                 )
-                .order_by(PasswordResetToken.created_at.desc())
+                .order_by(TelegramResetChallenge.created_at.desc())
                 .limit(1)
             )
-            if token is None or token.expires_at <= now_utc or int(token.attempts or 0) >= max_attempts:
-                return {"ok": False, "error": "INVALID_CODE"}
+            if challenge is None:
+                return {"ok": False, "error": "CODE_INVALID"}
+            if challenge.used_at is not None:
+                return {"ok": False, "error": "CODE_USED"}
+            if challenge.expires_at <= now_utc:
+                return {"ok": False, "error": "CODE_EXPIRED"}
+            if int(challenge.attempts or 0) >= max_attempts:
+                return {"ok": False, "error": "CODE_LOCKED"}
 
-            expected = hash_code(code_value, secret)
-            if expected != token.token_hash:
-                token.attempts = int(token.attempts or 0) + 1
-                session.flush()
-                return {"ok": False, "error": "INVALID_CODE"}
-
-            token.used_at = now_utc
-            user.password_hash = hash_password(new_password_value)
+            challenge.used_at = now_utc
+            user.password_hash = hash_password(password_value)
             session.execute(
-                update(PasswordResetToken)
+                update(RefreshToken)
                 .where(
-                    PasswordResetToken.user_id == int(user.id),
-                    PasswordResetToken.used_at.is_(None),
-                    PasswordResetToken.id != int(token.id),
+                    RefreshToken.user_id == int(user.id),
+                    RefreshToken.revoked_at.is_(None),
                 )
-                .values(used_at=now_utc)
+                .values(revoked_at=now_utc)
             )
             session.flush()
             return {"ok": True}
     except Exception:
-        return {"ok": False, "error": "INVALID_CODE"}
-
-
+        _LOG.exception("event=TG_RESET_CONFIRM_EXCEPTION email_mask=%s", _mask_code(email_value))
+        return {"ok": False, "error": "CODE_INVALID"}
 def fetch_outbox_batch(limit: int = 20) -> list[dict]:
     """EN: Fetch pending outbox rows ready for delivery at current time.
     RU: Получить pending-строки outbox, готовые к отправке на текущий момент.

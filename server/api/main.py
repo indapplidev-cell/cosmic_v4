@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from server.api.schemas import (
+    BotResetIssueRequest,
     DeleteUserRequest,
     GameSessionFinishRequest,
     LoginRequest,
@@ -54,6 +55,7 @@ from server.services.telegram_service import (
     confirm_link,
     confirm_link_latest,
     confirm_password_reset as confirm_password_reset_telegram,
+    issue_reset_confirm_code,
     request_link_code,
     request_password_reset as request_password_reset_telegram,
 )
@@ -278,7 +280,7 @@ def auth_password_reset_request(payload: PasswordResetRequest, request: Request)
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
     result = request_password_reset_telegram(payload.email, payload.channel, client_ip, user_agent)
-    return _service_result_to_response(result)
+    return result if isinstance(result, dict) else {"ok": True, "reset_link_code": None, "ttl_sec": 0}
 
 
 @app.post("/auth/password/reset/confirm")
@@ -290,8 +292,26 @@ def auth_password_reset_confirm(payload: PasswordResetConfirm, request: Request)
     del request
     result = confirm_password_reset_telegram(
         payload.email,
-        payload.code,
-        payload.new_psw,
+        payload.confirm_code,
+        payload.new_password,
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/reset/issue_by_code")
+def telegram_reset_issue_by_code(payload: BotResetIssueRequest, request: Request) -> dict:
+    """EN: Bot-only endpoint issuing one-time 6-digit reset confirm code from reset_link_code.
+    RU: Bot-only эндпоинт, выдающий одноразовый 6-значный reset confirm-код из reset_link_code.
+    """
+
+    expected_secret = str((os.getenv("BOT_SHARED_SECRET", "") or "").strip())
+    provided_secret = str((request.headers.get("X-Bot-Secret", "") or "").strip())
+    if not expected_secret or provided_secret != expected_secret:
+        return {"ok": False, "error": "FORBIDDEN"}
+    result = issue_reset_confirm_code(
+        telegram_user_id=int(payload.telegram_user_id),
+        reset_link_code=str(payload.reset_link_code),
+        tg_username=payload.tg_username,
     )
     return _service_result_to_response(result)
 
