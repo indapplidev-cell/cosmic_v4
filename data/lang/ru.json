@@ -141,5 +141,12 @@
   "reset.error.code_used": "Код уже использован",
   "reset.telegram_not_verified": "Telegram не подтверждён. Восстановление через Telegram недоступно.",
   "reset.popup_instruction": "Откройте Telegram, нажмите СБРОСИТЬ в боте, получите 6-значный код и введите его здесь.",
-  "reset.success.password_changed": "Пароль изменён. Войдите заново."
+  "reset.success.password_changed": "Пароль изменён. Войдите заново.",
+  "pay.open_fail": "Не удалось открыть Telegram. Попробуйте позже.",
+  "pay.request_fail": "Не удалось открыть. Попробуйте позже.",
+  "pay.session_expired": "Сессия истекла. Войдите заново.",
+  "pay.return_hint": "Если ссылка не открылась, переключитесь обратно в приложение Cosmic.",
+  "tg.open_timeout": "Не удалось открыть Telegram. Откройте Telegram и нажмите Start в чате бота.",
+  "pay.open_timeout": "Не удалось открыть Telegram. Откройте Telegram и нажмите Start в чате бота.",
+  "tg.verify_timeout": "Подтверждение Telegram не завершено. Откройте Telegram и нажмите Start в чате бота."
 }

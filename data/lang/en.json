@@ -68,6 +68,10 @@
   "reset.telegram_not_verified": "Telegram is not verified. Recovery via Telegram is unavailable.",
   "reset.popup_instruction": "Open Telegram, press RESET in bot, get 6-digit code, then enter it here.",
   "reset.success.password_changed": "Password changed. Log in again.",
+  "pay.open_fail": "Could not open Telegram. Please try again later.",
+  "pay.request_fail": "Could not open payout bot. Please try again later.",
+  "pay.session_expired": "Session expired. Please sign in again.",
+  "pay.return_hint": "If the link did not open, switch back to the Cosmic app.",
   "tg_verify.ask": "Verify Telegram?",
   "tg_verify.instructions": "Open our Telegram bot and send command: {cmd}",
   "tg_verify.waiting": "Waiting for confirmation...",
@@ -141,5 +145,8 @@
   "game.reward_prompt": "Want to continue? Get lives.",
   "profile_change.popup.delete_forbidden": "Email and password cannot be deleted",
   "ads.banner.placeholder": "ADVERTISEMENT",
-  "ads.rewarded.placeholder": "REWARDED AD"
+  "ads.rewarded.placeholder": "REWARDED AD",
+  "tg.open_timeout": "Could not open Telegram. Open Telegram and press Start in the bot chat.",
+  "pay.open_timeout": "Could not open Telegram. Open Telegram and press Start in the bot chat.",
+  "tg.verify_timeout": "Telegram verification was not completed. Open Telegram and press Start in the bot chat."
 }

@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import logging
 from threading import Thread
-from time import monotonic, time
+from time import monotonic
 
 from kivy.clock import Clock
-from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -18,9 +17,8 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
 from manager import api_client, auth_backend
-from manager import app_focus_tracker
-from manager.config import TG_DEBUG_FLOW, TG_OPEN_TIMEOUT_SEC, TG_VERIFY_TIMEOUT_SEC, TELEGRAM_BOT_USERNAME
-from manager.telegram_deeplink import build_urls, open_tg_scheme, open_web
+from manager.config import TG_DEBUG_FLOW, TG_LINK_STATUS_POLL_SEC, TELEGRAM_BOT_USERNAME, TG_VERIFY_TIMEOUT_SEC
+from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
 from manager.trace import trace_exception, trace_log
 from data.user_cache.user_cache_reader import get_user_cache
 from manager.lang.lang_manager import t
@@ -215,8 +213,8 @@ class ProfileChangeController:
         popup.open()
 
     def _start_tg_verify_flow(self, changes: dict) -> None:
-        """EN: Stage-1 Telegram flow with A+B decision for web fallback.
-        RU: Этап-1 Telegram flow с правилом A+B для решения по web fallback.
+        """EN: Request code, run two-stage Telegram open, and poll server ack until used=true.
+        RU: Запросить code, выполнить двухстадийное открытие Telegram и опрашивать server ack до used=true.
         """
 
         def _worker() -> None:
@@ -231,91 +229,73 @@ class ProfileChangeController:
                 ok, payload = auth_backend.telegram_link_request(user_id=user_id)
                 payload_ok = bool(isinstance(payload, dict) and payload.get("ok"))
                 payload_error = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
-                tglog(f"[TGDBG] step8 result: ok={ok} body_ok={payload_ok} error={payload_error}")
+                tglog(f"[TGVERIFY] step8 result: ok={ok} body_ok={payload_ok} error={payload_error}")
                 trace_log("HTTP", "FLOW.STEP8_RESULT", ok=ok, body_ok=payload_ok, error=payload_error)
                 code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
                 if not ok or not code:
                     error_code = payload_error
                     if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
                         Clock.schedule_once(lambda _dt: self._show_session_expired_popup(), 0)
-                    tglog(f"[TGDBG] step10 DONE fail error={error_code}")
+                    tglog(f"[TGVERIFY] step10 fail error={error_code}")
                     trace_log("STATE", "FLOW.DONE", ok=False, reason=error_code)
                     return
 
-                if not TG_DEBUG_FLOW:
-                    tglog(f"[TGDBG] step9 code={self._mask_token(code)}")
+                tglog(f"[TGVERIFY] step9 code={self._mask_token(code)}")
                 trace_log("STATE", "FLOW.STEP9_CODE", code=code, debug_mode=bool(TG_DEBUG_FLOW))
+                tglog(f"[TGVERIFY] step10 open scheduled code={self._mask_token(code)}")
+                self._tg_verify_active = True
+                self._tg_verify_started_at = monotonic()
+                self._cancel_tg_events()
 
-                tglog(f"[TGDBG] step10 OPEN_TG_SCHEDULED timeout={TG_OPEN_TIMEOUT_SEC}")
-                trace_log("TIMER", "OPEN.SCHEDULED", timeout_sec=float(TG_OPEN_TIMEOUT_SEC))
-                tg_url, web_url = build_urls(TELEGRAM_BOT_USERNAME, code)
-                self._tg_urls = (tg_url, web_url)
-                self._tg_open_started_at = float(time())
-                tglog(f"[TGDBG] tg_open begin ts={self._tg_open_started_at}")
-                trace_log("OPEN", "OPEN.BEGIN", started_at=self._tg_open_started_at, bot=TELEGRAM_BOT_USERNAME)
+                def _open_and_poll(_dt: float) -> None:
+                    open_bot_two_stage(TELEGRAM_BOT_USERNAME, code, "TGVERIFY")
+                    self._start_tg_open_polling(user_id=int(user_id))
 
-                def _open_tg(_dt) -> None:
-                    attempted, err = open_tg_scheme(tg_url)
-                    self._tg_open_attempted = bool(attempted)
-                    tglog(f"[TGDBG] tg_open attempted={self._tg_open_attempted} err={err or '-'}")
-                    trace_log("OPEN", "OPEN.RESULT", stage="tg", attempted=self._tg_open_attempted, error=err or "")
-
-                    if not self._tg_open_attempted:
-                        tglog("[TGDBG] fallback immediate because tg_open failed")
-                        trace_log("TIMER", "FALLBACK.ACTION", action="immediate_web", reason="TG_OPEN_FAILED")
-                        web_attempted, web_err = open_web(web_url)
-                        tglog(f"[TGDBG] fallback fired stage=web attempted={web_attempted} err={web_err or '-'}")
-                        trace_log("OPEN", "OPEN.RESULT", stage="web", attempted=bool(web_attempted), error=web_err or "")
-                    else:
-                        self._tg_fallback_ev = Clock.schedule_once(self._tg_maybe_open_web, float(TG_OPEN_TIMEOUT_SEC))
-                    self._show_tg_enter_code_popup(user_id=int(user_id))
-
-                Clock.schedule_once(_open_tg, 0)
+                Clock.schedule_once(_open_and_poll, 0)
             except Exception as exc:
                 trace_exception("STATE", "FLOW.EXCEPTION", exc)
                 tglog("[TGDBG] step10 DONE fail error=EXCEPTION")
 
         Thread(target=_worker, daemon=True).start()
 
-    def _tg_maybe_open_web(self, _dt) -> None:
-        """EN: Open web fallback only when app did not go background in the fallback window.
-        RU: Открыть web fallback только если приложение не ушло в background в окне fallback.
+    def _start_tg_open_polling(self, user_id: int) -> None:
+        """EN: Poll `/telegram/link/status` until link code becomes used or open times out.
+        RU: Опрашивать `/telegram/link/status`, пока link code не станет used или не истечёт timeout открытия.
         """
 
-        since_ts = float(self._tg_open_started_at or 0.0)
-        if since_ts <= 0:
-            return
+        def _poll(_dt: float) -> bool:
+            if not self._tg_verify_active:
+                return False
+            elapsed = float(monotonic() - float(self._tg_verify_started_at or 0.0))
+            ok, payload = auth_backend.telegram_link_status(user_id=int(user_id))
+            used = bool(isinstance(payload, dict) and payload.get("used"))
+            confirmed = bool(isinstance(payload, dict) and payload.get("confirmed"))
+            ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
+            tglog(f"[TGVERIFY] polling used={used} confirmed={confirmed} ttl={ttl_sec} elapsed={elapsed:.1f}")
+            if confirmed:
+                self._tg_verify_active = False
+                cancel_open_flow("TGVERIFY")
+                self._cancel_tg_events()
+                tglog("[TGVERIFY] success decision=confirmed")
+                self._show_changed_popup()
+                return False
+            if used:
+                self._tg_verify_active = False
+                cancel_open_flow("TGVERIFY")
+                self._cancel_tg_events()
+                tglog("[TGVERIFY] success decision=used")
+                self._show_tg_enter_code_popup(user_id=int(user_id))
+                return False
+            if elapsed >= float(TG_VERIFY_TIMEOUT_SEC):
+                self._tg_verify_active = False
+                cancel_open_flow("TGVERIFY")
+                self._cancel_tg_events()
+                tglog("[TGVERIFY] timeout popup shown")
+                self._show_tg_fail_popup(message=t("tg.verify_timeout"))
+                return False
+            return True
 
-        current_focus = getattr(Window, "focus", None)
-        if current_focus is None:
-            current_focus = app_focus_tracker.last_focus_value
-        if current_focus is None:
-            current_focus = True
-
-        tglog(
-            f"[TGDBG] fallback check: current_focus={bool(current_focus)} "
-            f"last_blur_ts={app_focus_tracker.last_blur_ts} started_at={since_ts}"
-        )
-        trace_log(
-            "TIMER",
-            "TIMER.FALLBACK_CHECK",
-            current_focus=bool(current_focus),
-            last_blur_ts=app_focus_tracker.last_blur_ts,
-            started_at=since_ts,
-        )
-
-        went_bg = app_focus_tracker.went_background_within(TG_OPEN_TIMEOUT_SEC, since_ts)
-        if (not bool(current_focus)) or went_bg:
-            tglog("[TGDBG] fallback SKIP (app not focused)")
-            trace_log("TIMER", "TIMER.FALLBACK_ACTION", executed=False, reason="APP_NOT_FOCUSED")
-            return
-
-        tglog("[TGDBG] fallback DO (app still focused)")
-        trace_log("TIMER", "TIMER.FALLBACK_ACTION", executed=True, reason="APP_STILL_FOCUSED")
-        _tg_url, web_url = self._tg_urls
-        web_attempted, web_err = open_web(web_url)
-        tglog(f"[TGDBG] fallback fired stage=web attempted={web_attempted} err={web_err or '-'}")
-        trace_log("OPEN", "OPEN.RESULT", stage="web", attempted=bool(web_attempted), error=web_err or "")
+        self._tg_verify_poll_event = Clock.schedule_interval(_poll, float(TG_LINK_STATUS_POLL_SEC))
 
     def _start_tg_verify_state(self, user_id: int) -> None:
         """EN: Initialize active Telegram verification state and timeout timer.
