@@ -15,6 +15,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
+from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
 from manager import api_client, auth_backend
 from manager import app_focus_tracker
@@ -23,6 +24,7 @@ from manager.telegram_deeplink import build_urls, open_tg_scheme, open_web
 from manager.trace import trace_exception, trace_log
 from data.user_cache.user_cache_reader import get_user_cache
 from manager.lang.lang_manager import t
+from manager.session_manager import sync_user_snapshot_from_payload
 from manager.tg_debug_log import tglog
 
 from data.format.phone import attach_phone_mask, format_phone, normalize_phone
@@ -264,9 +266,9 @@ class ProfileChangeController:
                         web_attempted, web_err = open_web(web_url)
                         tglog(f"[TGDBG] fallback fired stage=web attempted={web_attempted} err={web_err or '-'}")
                         trace_log("OPEN", "OPEN.RESULT", stage="web", attempted=bool(web_attempted), error=web_err or "")
-                        return
-
-                    self._tg_fallback_ev = Clock.schedule_once(self._tg_maybe_open_web, float(TG_OPEN_TIMEOUT_SEC))
+                    else:
+                        self._tg_fallback_ev = Clock.schedule_once(self._tg_maybe_open_web, float(TG_OPEN_TIMEOUT_SEC))
+                    self._show_tg_enter_code_popup(user_id=int(user_id))
 
                 Clock.schedule_once(_open_tg, 0)
             except Exception as exc:
@@ -442,6 +444,148 @@ class ProfileChangeController:
         ok_btn.bind(on_release=_on_ok)
         self._tg_instruction_popup = popup
         popup.open()
+
+    def _show_tg_enter_code_popup(self, user_id: int) -> None:
+        """EN: Show popup for entering 6-digit Telegram confirm code from bot message.
+        RU: Показать popup для ввода 6-значного Telegram confirm-кода из сообщения бота.
+
+        EN: This popup is the final step of app-side verification: user manually copies code
+        from Telegram chat and app sends it to server for trusted validation.
+        RU: Этот popup — финальный шаг подтверждения со стороны приложения: пользователь
+        вручную переносит код из Telegram-чата, а приложение отправляет его на сервер.
+        """
+
+        tglog("[TGDBG] step11 show popup ENTER_CODE")
+        trace_log("UI", "UI.POPUP_SHOW", popup="TG_ENTER_CODE")
+
+        content = BoxLayout(orientation="vertical", spacing=10, padding=10)
+        content.add_widget(Label(text=t("tg.enter_code_title")))
+        code_input = TextInput(
+            hint_text=t("tg.enter_code_hint"),
+            multiline=False,
+            input_filter="int",
+            password=False,
+            size_hint_y=None,
+            height=dp(44),
+        )
+        content.add_widget(code_input)
+
+        buttons = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=dp(40))
+        ok_btn = Button(text=t("common.ok"))
+        back_btn = Button(text=t("common.back"))
+        buttons.add_widget(ok_btn)
+        buttons.add_widget(back_btn)
+        content.add_widget(buttons)
+        popup = Popup(title="", content=content, size_hint=(0.85, 0.45), auto_dismiss=False)
+
+        def _on_back(_instance) -> None:
+            trace_log("UI", "UI.POPUP_CLOSE", popup="TG_ENTER_CODE", action="BACK")
+            self._uncheck_tg_checkbox()
+            popup.dismiss()
+
+        def _on_ok(_instance) -> None:
+            code_value = str((code_input.text or "").strip())
+            if len(code_value) != 6 or not code_value.isdigit():
+                self._show_popup(t("tg.code_invalid_input"))
+                return
+            trace_log(
+                "UI",
+                "UI.BUTTON_CLICK",
+                button="TG_ENTER_CODE_OK",
+                code_len=len(code_value),
+                code_tail=code_value[-2:],
+            )
+            popup.dismiss()
+            self._submit_tg_confirm_code(user_id=int(user_id), confirm_code=code_value)
+
+        ok_btn.bind(on_release=_on_ok)
+        back_btn.bind(on_release=_on_back)
+        popup.open()
+
+    def _submit_tg_confirm_code(self, user_id: int, confirm_code: str) -> None:
+        """EN: Submit confirm code to backend, refresh snapshot, and show success/fail popup.
+        RU: Отправить confirm-код на backend, обновить snapshot и показать popup успеха/ошибки.
+        """
+
+        tglog(f"[TGDBG] step11 confirm_code_entered mask=**{confirm_code[-2:]}")
+        tglog(f"[TGDBG] step12 confirm send user_id={int(user_id)} len(code)={len(confirm_code)}")
+        trace_log(
+            "HTTP",
+            "FLOW.STEP12_CONFIRM_SEND",
+            endpoint="/telegram/link/confirm",
+            user_id=int(user_id),
+            code_len=len(confirm_code),
+        )
+
+        def _worker() -> None:
+            try:
+                ok, payload = auth_backend.telegram_link_confirm(user_id=int(user_id), confirm_code=confirm_code)
+                error_code = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
+                tglog(f"[TGDBG] step13 confirm response ok={ok} error={error_code}")
+                trace_log("HTTP", "FLOW.STEP13_CONFIRM_RESPONSE", ok=bool(ok), error=error_code)
+                if not ok:
+                    if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
+                        Clock.schedule_once(lambda _dt: self._show_session_expired_popup(), 0)
+                        return
+                    msg_key = {
+                        "CODE_INVALID": "tg.code_invalid",
+                        "CODE_EXPIRED": "tg.code_expired",
+                        "CODE_USED": "tg.code_used",
+                        "TG_ALREADY_LINKED": "tg.tg_already_linked",
+                        "CONFIRM_422": "tg.confirm_unavailable",
+                    }.get(error_code, "tg.code_invalid")
+                    Clock.schedule_once(lambda _dt: self._show_tg_fail_popup(message=t(msg_key)), 0)
+                    return
+
+                tglog("[TGDBG] confirm ok, syncing /auth/me")
+                me_ok, me_payload = api_client.get_me(user_id=int(user_id), timeout=10)
+                if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
+                    sync_user_snapshot_from_payload(me_payload)
+                user_payload = me_payload.get("user") if isinstance(me_payload, dict) else {}
+                tglog(
+                    "[TGDBG] snapshot telegram_username={u} telegram_user_id={uid} verified={ver}".format(
+                        u=str((user_payload or {}).get("telegram_username") or ""),
+                        uid=int((user_payload or {}).get("telegram_user_id") or 0),
+                        ver=bool((user_payload or {}).get("telegram_verified")),
+                    )
+                )
+                verified = bool(
+                    me_ok
+                    and isinstance(me_payload, dict)
+                    and isinstance(me_payload.get("user"), dict)
+                    and me_payload["user"].get("telegram_verified")
+                )
+                tglog(f"[TGDBG] step14 profile refreshed telegram_verified={verified}")
+                trace_log("STATE", "FLOW.STEP14_PROFILE_REFRESHED", telegram_verified=verified)
+                Clock.schedule_once(lambda _dt: self._apply_tg_snapshot_to_current_view(me_payload), 0)
+                Clock.schedule_once(lambda _dt: self._show_changed_popup(), 0)
+            except Exception as exc:
+                trace_exception("STATE", "FLOW.CONFIRM_EXCEPTION", exc)
+                Clock.schedule_once(lambda _dt: self._show_tg_fail_popup(message=t("tg.code_invalid")), 0)
+
+        Thread(target=_worker, daemon=True).start()
+
+    def _apply_tg_snapshot_to_current_view(self, me_payload: dict | None) -> None:
+        """EN: Apply Telegram values from server snapshot to current edit view fields.
+        RU: Применить Telegram-значения из серверного snapshot в текущие поля экрана редактирования.
+        """
+
+        try:
+            if not isinstance(me_payload, dict):
+                return
+            user_payload = me_payload.get("user")
+            if not isinstance(user_payload, dict):
+                return
+            telegram_display = str((user_payload.get("telegram") or "").strip())
+            if not telegram_display:
+                telegram_display = str((user_payload.get("telegram_username") or "").strip())
+            if not telegram_display:
+                telegram_display = t("common.no_data")
+            if self._view is not None and "inp_tg" in self._view.ids:
+                self._view.ids.inp_tg.text = "" if telegram_display == t("common.no_data") else telegram_display
+            tglog(f"[TGDBG] ui updated telegram label={telegram_display}")
+        except Exception:
+            return
 
     def _start_tg_polling(self, user_id: int) -> None:
         """EN: Start periodic poll of /auth/me to detect telegram_verified transition.

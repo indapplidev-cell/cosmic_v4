@@ -83,6 +83,40 @@ def _normalize_telegram_username(raw_value: str | None) -> str:
     return value
 
 
+def _sync_username_to_profile_tables(session, user_id: int, telegram_username: str | None) -> list[str]:
+    """EN: Synchronize confirmed Telegram username to all user-scoped profile columns.
+    RU: Синхронизировать подтверждённый Telegram username во все пользовательские профильные колонки.
+
+    EN: This helper updates only rows that belong to the provided user_id and is called
+    strictly after successful app-side `/telegram/link/confirm`.
+    RU: Этот helper обновляет только строки указанного user_id и вызывается
+    строго после успешного app-side `/telegram/link/confirm`.
+    """
+
+    normalized_username = str((telegram_username or "").strip()) or None
+    normalized_expected = _normalize_telegram_username(normalized_username)
+    updated_targets: list[str] = []
+
+    profile_row = session.scalar(select(ProfileUser).where(ProfileUser.user_id == int(user_id)).limit(1))
+    if profile_row is not None:
+        profile_row.telegram = normalized_username
+        updated_targets.append("profile_users.telegram")
+
+    account_row = session.scalar(select(TelegramAccount).where(TelegramAccount.user_id == int(user_id)).limit(1))
+    if account_row is not None:
+        account_row.telegram_username = normalized_username
+        updated_targets.append("telegram_accounts.telegram_username")
+
+    session.execute(
+        update(TelegramLinkToken)
+        .where(TelegramLinkToken.user_id == int(user_id))
+        .values(expected_tg_username=normalized_expected)
+    )
+    updated_targets.append("telegram_link_tokens.expected_tg_username")
+
+    return updated_targets
+
+
 def link_or_update_telegram_account(
     session,
     user_id: int,
@@ -299,6 +333,7 @@ def confirm_link_latest(telegram_user_id: int, tg_username: str) -> dict:
                     request_id=request_id,
                     code_hash=confirm_hash,
                     telegram_user_id=tg_user_id_value,
+                    telegram_username=incoming_username or None,
                     expires_at=expires_at,
                     sent_at=now_utc,
                     used_at=None,
@@ -625,6 +660,7 @@ def confirm_link_by_code(telegram_user_id: int, link_code: str, tg_username: str
                     request_id=request_id,
                     code_hash=confirm_hash,
                     telegram_user_id=tg_user_id_value,
+                    telegram_username=tg_username_value or None,
                     expires_at=expires_at,
                     sent_at=now_utc,
                     used_at=None,
@@ -653,6 +689,90 @@ def confirm_link_by_code(telegram_user_id: int, link_code: str, tg_username: str
             _mask_code(link_code_value),
             exc.__class__.__name__,
         )
+        return {"ok": False, "error": "DB_ERROR"}
+
+
+def confirm_link(user_id: int, confirm_code: str) -> dict:
+    """EN: Validate bot-issued confirm code and persist Telegram account binding for app user.
+    RU: Проверить confirm-код, выданный ботом, и сохранить привязку Telegram-аккаунта для пользователя приложения.
+
+    EN: This flow is the only trusted final confirmation from mobile/desktop client:
+    the client sends user-entered 6-digit code, server validates TTL/used/attempts,
+    then writes telegram_accounts and marks challenge as used.
+    RU: Этот поток является финальным подтверждением со стороны клиента:
+    клиент отправляет введённый 6-значный код, сервер проверяет TTL/used/attempts,
+    затем записывает telegram_accounts и помечает challenge как использованный.
+    """
+
+    secret = _reset_secret()
+    code_value = str((confirm_code or "").strip())
+    user_id_value = int(user_id or 0)
+    if not secret or user_id_value <= 0 or not code_value.isdigit() or len(code_value) != 6:
+        return {"ok": False, "error": "CODE_INVALID"}
+
+    now_utc = datetime.now(timezone.utc)
+    max_attempts = max(1, _env_int("TG_VERIFY_MAX_ATTEMPTS", 5))
+    code_hash = hash_code(code_value, secret)
+
+    try:
+        with get_session() as session:
+            challenge = session.scalar(
+                select(TelegramVerifyChallenge)
+                .where(
+                    TelegramVerifyChallenge.user_id == user_id_value,
+                    TelegramVerifyChallenge.code_hash == code_hash,
+                )
+                .order_by(TelegramVerifyChallenge.created_at.desc())
+                .limit(1)
+            )
+            if challenge is None:
+                return {"ok": False, "error": "CODE_INVALID"}
+            if challenge.used_at is not None:
+                return {"ok": False, "error": "CODE_USED"}
+            if challenge.expires_at <= now_utc:
+                return {"ok": False, "error": "CODE_EXPIRED"}
+            if int(challenge.attempts or 0) >= max_attempts:
+                return {"ok": False, "error": "CODE_INVALID"}
+
+            tg_uid = int(challenge.telegram_user_id or 0)
+            if tg_uid <= 0:
+                return {"ok": False, "error": "CODE_INVALID"}
+            tg_username = str((challenge.telegram_username or "")).strip() or None
+
+            linked_ok, linked_error = link_or_update_telegram_account(
+                session=session,
+                user_id=user_id_value,
+                telegram_user_id=tg_uid,
+                telegram_username=tg_username,
+            )
+            if not linked_ok:
+                return {"ok": False, "error": str(linked_error or "TG_ALREADY_LINKED")}
+
+            challenge.used_at = now_utc
+            updated_targets = _sync_username_to_profile_tables(
+                session=session,
+                user_id=user_id_value,
+                telegram_username=tg_username,
+            )
+            session.flush()
+            account = session.scalar(
+                select(TelegramAccount).where(TelegramAccount.user_id == user_id_value).limit(1)
+            )
+            _LOG.info(
+                "event=TG_CONFIRM_SYNC_OK user_id=%s telegram_user_id=%s telegram_username=%s updated_targets=%s",
+                int(user_id_value),
+                int(account.telegram_user_id) if account is not None else int(tg_uid),
+                str((account.telegram_username if account is not None else tg_username) or ""),
+                ",".join(updated_targets),
+            )
+            return {
+                "ok": True,
+                "telegram_user_id": int(account.telegram_user_id) if account is not None else tg_uid,
+                "telegram_username": str((account.telegram_username if account else tg_username) or ""),
+                "telegram_verified": True,
+            }
+    except Exception:
+        _LOG.exception("event=TG_CONFIRM_APP_EXCEPTION user_id=%s", user_id_value)
         return {"ok": False, "error": "DB_ERROR"}
 
 

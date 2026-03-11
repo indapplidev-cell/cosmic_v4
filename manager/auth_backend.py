@@ -656,6 +656,37 @@ def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
     return False, {"ok": False, "error": "API_ERROR"}
 
 
+def telegram_link_confirm(user_id: int, confirm_code: str) -> Tuple[bool, dict]:
+    """EN: Confirm Telegram link in app by sending user-entered 6-digit bot code to backend.
+    RU: Подтвердить Telegram-привязку в приложении, отправив введённый 6-значный код из бота на backend.
+
+    EN: Request is authorized and passes through standard access/refresh retry wrapper.
+    RU: Запрос авторизован и проходит через стандартный wrapper access/refresh с retry.
+    """
+
+    _ensure_healthcheck_once()
+    code_value = str((confirm_code or "").strip())
+    if len(code_value) != 6 or not code_value.isdigit():
+        return False, {"ok": False, "error": "CODE_INVALID"}
+    ok, payload, status_code = _authorized_request_with_retry(
+        "POST",
+        "/telegram/link/confirm",
+        json={"user_id": int(user_id), "confirm_code": code_value},
+        timeout=10,
+    )
+    body_short = str(payload)[:200]
+    tglog(f"[TGDBG] step13 confirm response status={status_code} ok={ok} body={body_short}")
+    if int(status_code or 0) == 422:
+        detail_short = str(payload)[:240]
+        tglog(f"[TGDBG] confirm 422 detail={detail_short}")
+        return False, {"ok": False, "error": "CONFIRM_422", "detail": payload}
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
 def telegram_verify_request(user_id: int) -> Tuple[bool, dict]:
     """EN: Request Telegram verification challenge for given user and return request_id/ttl.
     RU: Запросить challenge верификации Telegram для указанного пользователя и вернуть request_id/ttl.

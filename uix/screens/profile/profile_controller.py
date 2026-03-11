@@ -72,7 +72,7 @@ class ProfileScreenController:
             login_raw = snapshot.get("login") or ""
             login_val = login_raw.strip() or no_data
             phone_val = snapshot.get("phone") or no_data
-            tg_val = snapshot.get("telegram") or no_data
+            tg_val = snapshot.get("telegram") or snapshot.get("telegram_username") or no_data
             val_email = str((snapshot.get("email") or UserSession().get_email() or "").strip()) or no_data
             view.ids.profile_top_right_login.text = login_val
         else:
@@ -152,7 +152,7 @@ class ProfileScreenController:
         record, rating, balance = self._snapshot_store.get_game()
         login_val = str((snapshot.get("login") or "").strip()) or no_data
         phone_val = str((snapshot.get("phone") or "").strip()) or no_data
-        tg_val = str((snapshot.get("telegram") or "").strip()) or no_data
+        tg_val = str((snapshot.get("telegram") or snapshot.get("telegram_username") or "").strip()) or no_data
         email_val = str((snapshot.get("email") or "").strip()) or no_data
 
         view.ids.profile_top_right_login.text = login_val

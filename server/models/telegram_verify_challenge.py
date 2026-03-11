@@ -29,6 +29,7 @@ class TelegramVerifyChallenge(Base):
     request_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     code_hash: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    telegram_username: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

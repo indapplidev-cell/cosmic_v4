@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from annotated_types import MaxLen, MinLen
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from server.security.validators import (
     reject_control_chars,
@@ -118,21 +118,38 @@ class PasswordResetConfirm(StrictBaseModel):
 
 
 class TelegramLinkConfirmRequest(StrictBaseModel):
-    """EN: Telegram bot confirmation payload with one-time link code and telegram user id.
-    RU: Payload подтверждения от Telegram-бота с одноразовым кодом привязки и telegram user id.
+    """EN: App-side confirmation payload with user_id and one-time confirm_code from bot.
+    RU: Payload подтверждения со стороны приложения с user_id и одноразовым confirm_code из бота.
     """
 
-    code: Annotated[str, MinLen(6), MaxLen(6)]
-    telegram_user_id: int = Field(gt=0)
+    user_id: int = Field(gt=0)
+    confirm_code: str | None = None
+    code: str | None = None
+    telegram_user_id: int | None = Field(default=None, gt=0)
 
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, value: str) -> str:
-        """EN: Accept only 6-digit numeric link code.
-        RU: Принимать только 6-значный цифровой код привязки.
+    @model_validator(mode="after")
+    def normalize_code_alias(self):
+        """EN: Normalize legacy `code` alias into canonical `confirm_code`.
+        RU: Нормализовать legacy-алиас `code` в каноническое поле `confirm_code`.
         """
 
+        confirm_value = str((self.confirm_code or "").strip())
+        legacy_value = str((self.code or "").strip())
+        normalized = confirm_value or legacy_value
+        self.confirm_code = normalized
+        return self
+
+    @field_validator("confirm_code")
+    @classmethod
+    def validate_confirm_code(cls, value: str | None) -> str:
+        """EN: Accept only 6-digit numeric confirm code.
+        RU: Принимать только 6-значный цифровой confirm-код.
+        """
+
+        value = str((value or "").strip())
         if not value.isdigit():
+            raise ValueError("FORMAT")
+        if len(value) != 6:
             raise ValueError("FORMAT")
         return value
 

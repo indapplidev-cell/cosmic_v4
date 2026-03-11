@@ -51,8 +51,8 @@ from server.services.profile_service import (
 from server.security.jwt import decode_access_token, extract_bearer_token
 from server.services.telegram_service import (
     confirm_link_by_code,
+    confirm_link,
     confirm_link_latest,
-    confirm_link_code,
     confirm_password_reset as confirm_password_reset_telegram,
     request_link_code,
     request_password_reset as request_password_reset_telegram,
@@ -312,12 +312,17 @@ def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dic
 
 
 @app.post("/telegram/link/confirm")
-def telegram_link_confirm(payload: TelegramLinkConfirmRequest) -> dict:
-    """EN: Confirm Telegram link code from bot and bind telegram_user_id to app user.
-    RU: Подтвердить Telegram-код от бота и привязать telegram_user_id к пользователю приложения.
+def telegram_link_confirm(payload: TelegramLinkConfirmRequest, request: Request) -> dict:
+    """EN: Confirm bot-issued 6-digit code from app and finalize Telegram binding for current user.
+    RU: Подтвердить 6-значный код из бота со стороны приложения и завершить привязку Telegram для текущего пользователя.
     """
 
-    result = confirm_link_code(payload.code, payload.telegram_user_id)
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    result = confirm_link(payload.user_id, payload.confirm_code)
     return _service_result_to_response(result)
 
 

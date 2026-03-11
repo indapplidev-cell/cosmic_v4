@@ -90,12 +90,19 @@ def sync_user_snapshot(user: dict) -> None:
     RU: Сохранить серверный snapshot пользователя в локальные поля кэша/сессии.
     """
 
+    telegram_value = str((user.get("telegram") or "").strip())
+    telegram_username_value = str((user.get("telegram_username") or "").strip())
+    if not telegram_value and telegram_username_value:
+        telegram_value = telegram_username_value
     patch = {
         "user_id": int(user.get("user_id") or 0),
         "email": str((user.get("email") or "").strip()),
         "login": str((user.get("login") or "").strip()),
         "phone": str((user.get("phone") or "").strip()),
-        "tg": str((user.get("telegram") or "").strip()),
+        "tg": telegram_value,
+        "telegram": telegram_value,
+        "telegram_username": telegram_username_value,
+        "telegram_user_id": int(user.get("telegram_user_id") or 0),
         "telegram_linked": bool(user.get("telegram_linked")),
         "telegram_verified": bool(user.get("telegram_verified")),
         "record": int(user.get("record") or 0),

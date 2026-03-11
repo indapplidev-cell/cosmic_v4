@@ -64,3 +64,16 @@ RU: Когда пользователь даёт пошаговый запрос
   - Each module should have one clear purpose.
   - Each class should encapsulate one role.
   - Each function/method should do one thing; split long methods into small helpers.
+
+## No Improvisation (Critical)
+EN:
+- Do exactly what the user asked, and only that.
+- Do not perform extra refactors, cleanups, migrations, builds, installs, syncs, or environment changes unless explicitly requested.
+- If a step is not explicitly requested, ask first.
+- If there is ambiguity, stop and ask a clarifying question before making changes.
+
+RU:
+- Делай только то, что пользователь явно попросил, и ничего сверх этого.
+- Запрещено выполнять дополнительные рефакторы, чистки, миграции, сборки, установки, синхронизации и изменения окружения без прямого запроса.
+- Если шаг не запрошен явно — сначала спроси подтверждение.
+- Если есть неоднозначность — остановись и задай уточняющий вопрос до внесения изменений.

@@ -43,12 +43,18 @@ class UserSnapshotStore:
         """
 
         cache = get_user_cache() or {}
+        telegram_value = str((cache.get("telegram") or cache.get("tg") or "").strip())
+        telegram_username_value = str((cache.get("telegram_username") or "").strip())
+        if not telegram_value and telegram_username_value:
+            telegram_value = telegram_username_value
         return {
             "user_id": _as_int(cache.get("user_id"), 0),
             "email": str((cache.get("email") or "").strip()),
             "login": str((cache.get("login") or "").strip()),
             "phone": str((cache.get("phone") or "").strip()),
-            "telegram": str((cache.get("telegram") or cache.get("tg") or "").strip()),
+            "telegram": telegram_value,
+            "telegram_username": telegram_username_value,
+            "telegram_user_id": _as_int(cache.get("telegram_user_id"), 0),
             "telegram_linked": bool(cache.get("telegram_linked")),
             "telegram_verified": bool(cache.get("telegram_verified")),
             "record": _as_int(cache.get("record"), 0),
@@ -61,15 +67,21 @@ class UserSnapshotStore:
         RU: Сохранить полный payload snapshot в поля user cache.
         """
 
+        telegram_value = str((snapshot.get("telegram") or "").strip())
+        telegram_username_value = str((snapshot.get("telegram_username") or "").strip())
+        if not telegram_value and telegram_username_value:
+            telegram_value = telegram_username_value
         patch = {
             "user_id": _as_int(snapshot.get("user_id"), 0),
             "email": str((snapshot.get("email") or "").strip()),
             "login": str((snapshot.get("login") or "").strip()),
             "phone": str((snapshot.get("phone") or "").strip()),
-            "telegram": str((snapshot.get("telegram") or "").strip()),
+            "telegram": telegram_value,
+            "telegram_username": telegram_username_value,
+            "telegram_user_id": _as_int(snapshot.get("telegram_user_id"), 0),
             "telegram_linked": bool(snapshot.get("telegram_linked")),
             "telegram_verified": bool(snapshot.get("telegram_verified")),
-            "tg": str((snapshot.get("telegram") or "").strip()),
+            "tg": telegram_value,
             "record": _as_int(snapshot.get("record"), 0),
             "rating": _as_int(snapshot.get("rating"), 0),
             "balance": _as_float(snapshot.get("balance"), 0.0),
