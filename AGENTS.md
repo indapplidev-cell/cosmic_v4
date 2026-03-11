@@ -4,6 +4,8 @@ Add local agent instructions here.
 
 ## Communication
 - Пиши по делу и по существу, без воды.
+- Любую установку APK на устройство выполнять только из папки загрузок пользователя (`Downloads` / `Загрузки`), потому что пользователь складывает туда самые свежие APK вручную.
+- Если `adb install` падает с `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, автоматически выполнять переустановку: `adb uninstall <package>` и затем повторный `adb install`, без дополнительного запроса пользователю.
 
 ## Permissions
 - Imports: allowed to edit/update as needed.

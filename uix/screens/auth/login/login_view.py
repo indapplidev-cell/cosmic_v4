@@ -16,6 +16,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
+from kivy.uix.widget import Widget
 from kivy.utils import platform as kivy_platform
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
@@ -180,37 +181,39 @@ class LoginScreenView(MDScreen):
         """
 
         content = BoxLayout(orientation="vertical", spacing=8, padding=10)
-        info = Label(text=t("reset.popup_instruction"), halign="center", valign="middle", size_hint=(1, None), height=70)
+        info = Label(text=t("reset.popup_instruction"), halign="center", valign="middle", size_hint=(1, 0.28))
         info.bind(size=lambda inst, _: setattr(inst, "text_size", inst.size))
-        code_inp = TextInput(hint_text=t("reset.hint_code"), multiline=False, input_filter="int")
-        psw_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
-        psw_inp = TextInput(hint_text=t("reset.hint_new_password"), multiline=False, password=True)
+        code_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.18))
+        code_inp = TextInput(hint_text=t("reset.hint_code"), multiline=False, input_filter="int", size_hint=(0.86, 1))
+        code_row.add_widget(code_inp)
+        code_row.add_widget(Widget(size_hint=(0.14, 1)))
+
+        psw_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.18))
+        psw_inp = TextInput(hint_text=t("reset.hint_new_password"), multiline=False, password=True, size_hint=(0.86, 1))
         psw_eye_btn = MDIconButton(
             icon="eye-off",
-            size_hint=(None, None),
-            size=(44, 44),
+            size_hint=(0.14, 1),
             pos_hint={"center_y": 0.5},
         )
         psw_row.add_widget(psw_inp)
         psw_row.add_widget(psw_eye_btn)
 
-        psw2_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
-        psw2_inp = TextInput(hint_text=t("reset.hint_new_password_repeat"), multiline=False, password=True)
+        psw2_row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.18))
+        psw2_inp = TextInput(hint_text=t("reset.hint_new_password_repeat"), multiline=False, password=True, size_hint=(0.86, 1))
         psw2_eye_btn = MDIconButton(
             icon="eye-off",
-            size_hint=(None, None),
-            size=(44, 44),
+            size_hint=(0.14, 1),
             pos_hint={"center_y": 0.5},
         )
         psw2_row.add_widget(psw2_inp)
         psw2_row.add_widget(psw2_eye_btn)
-        row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, None), height=44)
+        row = BoxLayout(orientation="horizontal", spacing=8, size_hint=(1, 0.18))
         ok_btn = Button(text=t("common.ok"))
         back_btn = Button(text=t("common.back"))
         row.add_widget(ok_btn)
         row.add_widget(back_btn)
         content.add_widget(info)
-        content.add_widget(code_inp)
+        content.add_widget(code_row)
         content.add_widget(psw_row)
         content.add_widget(psw2_row)
         content.add_widget(row)
