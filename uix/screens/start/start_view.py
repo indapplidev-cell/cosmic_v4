@@ -7,6 +7,7 @@ from pathlib import Path
 from kivy.lang import Builder
 from kivymd.uix.screen import MDScreen
 
+from manager.ads import AdsManager
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 
@@ -37,6 +38,20 @@ class StartScreenView(MDScreen):
             ],
         )
         apply_debug_borders_to_ids(self, START_DEBUG_IDS)
+
+    def on_pre_enter(self, *args):
+        """EN: Attach the shared top-bar banner slot before showing the screen.
+        RU: Подключить общий banner-slot в верхней панели перед показом экрана.
+        """
+        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
+        return super().on_pre_enter(*args)
+
+    def on_pre_leave(self, *args):
+        """EN: Detach the shared top-bar banner slot before leaving the screen.
+        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
+        """
+        AdsManager.detach_banner()
+        return super().on_pre_leave(*args)
 
     def configure(self, vm: StartScreenVM, controller: StartScreenController) -> None:
         """EN: Configure texts and bind callbacks.

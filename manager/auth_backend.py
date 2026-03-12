@@ -12,6 +12,7 @@ from manager import api_client
 from manager.session_manager import (
     clear_cached_session,
     force_logout as session_force_logout,
+    get_session_user_id,
     has_valid_session,
     sync_user_snapshot_from_payload,
 )
@@ -325,6 +326,31 @@ def _authorized_request_with_retry(
         did_retry=True,
     )
     return payload_ok2, payload2, status2
+
+
+def authorized_post_json(path: str, payload: dict, *, tag: str) -> tuple[int, dict]:
+    """EN: Execute one authorized POST JSON request with one refresh+retry cycle on auth failure.
+    RU: Выполнить один authorized POST JSON-запрос с одним refresh+retry циклом при auth-ошибке.
+    """
+
+    ok, response, status_code = _authorized_request_with_retry(
+        "POST",
+        path,
+        json=dict(payload or {}),
+        timeout=10,
+    )
+    data = response if isinstance(response, dict) else {"ok": False, "error": "BAD_RESPONSE"}
+    trace_log(
+        "SESSION",
+        "SESSION.AUTHORIZED_POST_JSON",
+        tag=str(tag),
+        path=str(path),
+        status=int(status_code),
+        ok=bool(ok and data.get("ok")),
+        error=str(data.get("error") or ""),
+        user_id=int(get_session_user_id()),
+    )
+    return int(status_code), data
 
 
 def has_access_token() -> bool:
@@ -641,10 +667,10 @@ def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
 
     token = ensure_access_token(force_refresh=False)
     if not token:
-        tglog("[TGDBG] step8 response status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
+        tglog("[TGVERIFY] step8 response status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
         return False, {"ok": False, "error": "NO_SESSION"}
 
-    tglog(f"[TGDBG] link_request send: user_id={int(user_id)} auth={mask_token(token)}")
+    tglog(f"[TGVERIFY] step8 request /telegram/link/request user_id={int(user_id)} auth={mask_token(token)}")
     ok, payload, status_code = _authorized_request_with_retry(
         "POST",
         "/telegram/link/request",
@@ -652,17 +678,64 @@ def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
         timeout=10,
     )
     body_short = str(payload)[:200]
-    tglog(f"[TGDBG] step8 response status={status_code} ok={ok} body={body_short}")
+    tglog(f"[TGVERIFY] step8 response status={status_code} ok={ok} body={body_short}")
 
     code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
     payload_ok = bool(isinstance(payload, dict) and payload.get("ok"))
     if ok and payload_ok and code:
-        tglog(f"[TGDBG] step9 code={mask_token(code)}")
+        tglog(f"[TGVERIFY] step9 code={mask_token(code)}")
         return True, payload
 
     if isinstance(payload, dict):
         if payload_ok and not code:
             return False, {"ok": False, "error": "API_ERROR"}
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def payout_link_request(user_id: int) -> Tuple[bool, dict]:
+    """EN: Request one-time payout bot link code for authenticated user.
+    RU: Запросить одноразовый payout bot link-код для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    token = ensure_access_token(force_refresh=False)
+    if not token:
+        tglog("[PAY] step3 response status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
+        return False, {"ok": False, "error": "NO_SESSION"}
+
+    tglog(f"[PAY] step2 request /payout/link/request user_id={int(user_id)} auth={mask_token(token)}")
+    ok, payload, status_code = _authorized_request_with_retry(
+        "POST",
+        "/payout/link/request",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    body_short = str(payload)[:200]
+    tglog(f"[PAY] step3 response status={status_code} ok={ok} body={body_short}")
+    code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
+    if ok and isinstance(payload, dict) and payload.get("ok") and code:
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def payout_link_status(user_id: int) -> Tuple[bool, dict]:
+    """EN: Poll latest payout link status for authenticated user.
+    RU: Опрашивать статус последнего payout link-кода для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload, _status = _authorized_request_with_retry(
+        "POST",
+        "/payout/link/status",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, payload
+    if isinstance(payload, dict):
         return False, payload
     return False, {"ok": False, "error": "API_ERROR"}
 
@@ -686,10 +759,10 @@ def telegram_link_confirm(user_id: int, confirm_code: str) -> Tuple[bool, dict]:
         timeout=10,
     )
     body_short = str(payload)[:200]
-    tglog(f"[TGDBG] step13 confirm response status={status_code} ok={ok} body={body_short}")
+    tglog(f"[TGVERIFY] step13 confirm resp status={status_code} ok={ok} body={body_short}")
     if int(status_code or 0) == 422:
         detail_short = str(payload)[:240]
-        tglog(f"[TGDBG] confirm 422 detail={detail_short}")
+        tglog(f"[TGVERIFY] confirm 422 detail={detail_short}")
         return False, {"ok": False, "error": "CONFIRM_422", "detail": payload}
     if ok and isinstance(payload, dict) and payload.get("ok"):
         return True, payload

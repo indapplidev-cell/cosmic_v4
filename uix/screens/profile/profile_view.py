@@ -19,6 +19,7 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog, MDDialogContentContainer, MDDialogHeadlineText
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
+from manager.ads import AdsManager
 from manager import auth_backend
 from manager.lang.lang_manager import t
 from uix.debug.debug_borders import apply_debug_borders_to_ids
@@ -67,10 +68,18 @@ class ProfileScreenView(MDScreen):
         """EN: Refresh profile data before showing the screen.
         RU: Обновить данные профиля перед показом экрана.
         """
+        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
         if hasattr(self, "vm"):
             self.ids.profile_top_left_title.text = self.vm.title
         self.controller.refresh_profile_cards(self)
         return super().on_pre_enter(*args)
+
+    def on_pre_leave(self, *args):
+        """EN: Detach the shared top-bar banner slot before leaving the screen.
+        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
+        """
+        AdsManager.detach_banner()
+        return super().on_pre_leave(*args)
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.

@@ -12,6 +12,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from server.api.schemas import (
+    AdsConfigRequest,
+    AdsConfigResponse,
+    AdsEventRequest,
+    PayoutLinkAckRequest,
+    PayoutLinkRequest,
+    PayoutLinkStatusRequest,
     BotResetIssueRequest,
     DeleteUserRequest,
     GameSessionFinishRequest,
@@ -24,6 +30,7 @@ from server.api.schemas import (
     TelegramLinkConfirmByCodeRequest,
     TelegramLinkConfirmLatestRequest,
     TelegramLinkConfirmRequest,
+    TelegramLinkStatusRequest,
     TelegramVerifyConfirm,
     TelegramVerifyRequest,
     TelegramVerifySend,
@@ -33,6 +40,8 @@ from server.api.schemas import (
     ProfileUserUpdateRequest,
     RegisterRequest,
 )
+from server.services.ads_service import get_ads_config, log_ads_event
+from server.services.payout_service import ack_payout_link_code, get_last_payout_link_status, request_payout_link_code
 from server.services.auth_service import (
     delete_user,
     get_user_snapshot,
@@ -54,6 +63,7 @@ from server.services.telegram_service import (
     confirm_link_by_code,
     confirm_link,
     confirm_link_latest,
+    get_last_link_status,
     confirm_password_reset as confirm_password_reset_telegram,
     issue_reset_confirm_code,
     request_link_code,
@@ -221,6 +231,43 @@ def meta_compat() -> dict:
     return {"ok": bool(status.get("ok")), "db": status}
 
 
+@app.post("/ads/config")
+def ads_config(payload: AdsConfigRequest, request: Request) -> dict:
+    """EN: Return authenticated ads mediation config resolved from locale region and placement rules.
+    RU: Вернуть authenticated ads-конфиг медиации, определенный по locale-региону и правилам плейсментов.
+    """
+
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    result = get_ads_config(auth_user_id, payload)
+    result.pop("user_id", None)
+    return AdsConfigResponse(**result).model_dump()
+
+
+@app.post("/ads/event")
+def ads_event(payload: AdsEventRequest, request: Request) -> dict:
+    """EN: Collect authenticated ads event and log it to stdout for current server stub stage.
+    RU: Собрать authenticated ads-событие и залогировать его в stdout на текущем stub-этапе сервера.
+    """
+
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    return log_ads_event(
+        user_id=payload.user_id,
+        provider=payload.provider,
+        placement=payload.placement,
+        event=payload.event,
+        ts=payload.ts,
+        extra=payload.extra,
+    )
+
+
 @app.post("/auth/register")
 def auth_register(payload: RegisterRequest, request: Request) -> dict:
     """EN: Register user using existing auth service.
@@ -328,6 +375,69 @@ def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dic
     if int(auth_user_id) != int(payload.user_id):
         return {"ok": False, "error": "FORBIDDEN"}
     result = request_link_code(payload.user_id)
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/link/status")
+def telegram_link_status(payload: TelegramLinkStatusRequest, request: Request) -> dict:
+    """EN: Return status of latest Telegram deep-link code for authenticated user.
+    RU: Вернуть статус последнего Telegram deep-link кода для авторизованного пользователя.
+    """
+
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "FORBIDDEN"}
+    result = get_last_link_status(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/payout/link/request")
+def payout_link_request(payload: PayoutLinkRequest, request: Request) -> dict:
+    """EN: Issue one-time payout deep-link code for authenticated user.
+    RU: Выдать одноразовый payout deep-link-код для авторизованного пользователя.
+    """
+
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "FORBIDDEN"}
+    result = request_payout_link_code(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/payout/link/status")
+def payout_link_status(payload: PayoutLinkStatusRequest, request: Request) -> dict:
+    """EN: Return status of latest payout deep-link code for authenticated user.
+    RU: Вернуть статус последнего payout deep-link кода для авторизованного пользователя.
+    """
+
+    auth_user_id = _resolve_user_id_from_bearer(request)
+    if auth_user_id is None or auth_user_id <= 0:
+        return {"ok": False, "error": "UNAUTHORIZED"}
+    if int(auth_user_id) != int(payload.user_id):
+        return {"ok": False, "error": "FORBIDDEN"}
+    result = get_last_payout_link_status(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/payout/link/ack")
+def payout_link_ack(payload: PayoutLinkAckRequest, request: Request) -> dict:
+    """EN: Bot-only acknowledgement proving payout bot was opened from the app.
+    RU: Bot-only подтверждение, доказывающее открытие payout bot из приложения.
+    """
+
+    expected_secret = str((os.getenv("PAY_BOT_SHARED_SECRET", "") or "").strip())
+    provided_secret = str((request.headers.get("X-Bot-Secret", "") or "").strip())
+    if not expected_secret or provided_secret != expected_secret:
+        return {"ok": False, "error": "FORBIDDEN"}
+    result = ack_payout_link_code(
+        code=str(payload.code),
+        telegram_user_id=int(payload.telegram_user_id),
+        telegram_username=payload.telegram_username,
+    )
     return _service_result_to_response(result)
 
 

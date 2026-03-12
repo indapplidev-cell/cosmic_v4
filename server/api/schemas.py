@@ -162,6 +162,40 @@ class TelegramLinkRequest(StrictBaseModel):
     user_id: int = Field(gt=0)
 
 
+class PayoutLinkRequest(StrictBaseModel):
+    """EN: Authenticated payout link request payload.
+    RU: Payload авторизованного запроса payout link-кода.
+    """
+
+    user_id: int = Field(gt=0)
+
+
+class TelegramLinkStatusRequest(StrictBaseModel):
+    """EN: Authenticated status request for latest Telegram deep-link code.
+    RU: Авторизованный запрос статуса последнего Telegram deep-link кода.
+    """
+
+    user_id: int = Field(gt=0)
+
+
+class PayoutLinkStatusRequest(StrictBaseModel):
+    """EN: Authenticated status request for latest payout deep-link code.
+    RU: Авторизованный запрос статуса последнего payout deep-link кода.
+    """
+
+    user_id: int = Field(gt=0)
+
+
+class PayoutLinkAckRequest(StrictBaseModel):
+    """EN: Paybot acknowledgement payload for one-time payout link code.
+    RU: Payload подтверждения paybot для одноразового payout link-кода.
+    """
+
+    code: Annotated[str, MinLen(1), MaxLen(128)]
+    telegram_user_id: int = Field(gt=0)
+    telegram_username: Annotated[str, MaxLen(64)] | None = None
+
+
 class TelegramLinkConfirmByCodeRequest(StrictBaseModel):
     """EN: Bot payload to convert pending link_code into one-time confirm_code.
     RU: Payload бота для преобразования pending link_code в одноразовый confirm_code.
@@ -405,3 +439,56 @@ class GameSessionFinishRequest(StrictBaseModel):
         if record_sis is not None and int(value) > int(record_sis):
             raise ValueError("FORMAT")
         return int(value)
+
+
+class AdsConfigRequest(StrictBaseModel):
+    """EN: Client ads-config request payload describing runtime platform and locale context.
+    RU: Payload запроса ads-config от клиента с описанием runtime-платформы и locale-контекста.
+    """
+
+    user_id: int = Field(gt=0)
+    platform: Annotated[str, MinLen(2), MaxLen(32)]
+    app_version: Annotated[str, MinLen(1), MaxLen(32)]
+    locale_country: Annotated[str, MinLen(2), MaxLen(8)]
+    tz_offset: Annotated[str, MinLen(1), MaxLen(8)]
+    device: Annotated[str, MinLen(1), MaxLen(128)]
+
+
+class AdsPlacementConfig(StrictBaseModel):
+    """EN: Placement-level ads config returned by backend for banner or rewarded slots.
+    RU: Конфиг ads на уровне плейсмента, возвращаемый backend для banner или rewarded-слотов.
+    """
+
+    enabled: bool
+    unit_id: Annotated[str, MinLen(1), MaxLen(256)]
+    refresh_sec: int | None = Field(default=None, ge=0)
+    cooldown_sec: int | None = Field(default=None, ge=0)
+    reward_type: Literal["life"] | None = None
+    reward_amount: int | None = Field(default=None, ge=1)
+
+
+class AdsConfigResponse(StrictBaseModel):
+    """EN: Server-side ads mediation response with resolved region, provider, and placements map.
+    RU: Ответ серверной ads-медиации с определенными region, provider и картой плейсментов.
+    """
+
+    ok: bool
+    region: Literal["cis", "world"]
+    provider: Literal["dummy", "yandex", "admob"]
+    banner_enabled: bool
+    rewarded_enabled: bool
+    placements: dict[str, AdsPlacementConfig]
+    ts: int = Field(ge=0)
+
+
+class AdsEventRequest(StrictBaseModel):
+    """EN: Authenticated client ads-event payload collected for diagnostics and analytics.
+    RU: Authenticated payload ads-события клиента, собираемый для диагностики и аналитики.
+    """
+
+    user_id: int = Field(gt=0)
+    provider: Annotated[str, MinLen(1), MaxLen(32)]
+    placement: Annotated[str, MinLen(1), MaxLen(64)]
+    event: Annotated[str, MinLen(1), MaxLen(64)]
+    ts: int = Field(ge=0)
+    extra: dict[str, object] = Field(default_factory=dict)

@@ -10,6 +10,7 @@ from kivy.lang import Builder
 from kivy.properties import ObjectProperty, StringProperty
 from kivymd.uix.screen import MDScreen
 
+from manager.ads import AdsManager
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 
@@ -78,9 +79,17 @@ class ProfileChangeView(MDScreen):
         """EN: Prefill fields before showing the screen.
         RU: Предзаполнить поля перед показом экрана.
         """
+        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
         if self.controller:
             self.controller.on_enter(self)
         return super().on_pre_enter(*args)
+
+    def on_pre_leave(self, *args) -> None:
+        """EN: Detach the shared top-bar banner slot before leaving the screen.
+        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
+        """
+        AdsManager.detach_banner()
+        return super().on_pre_leave(*args)
 
     def _apply_layout(self) -> None:
         """EN: Apply simple layout proportions like Profile/Settings.

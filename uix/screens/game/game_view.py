@@ -11,10 +11,16 @@ from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivymd.uix.screen import MDScreen
 
 from engine.runtime.gameplay_runtime import GameplayRuntime
 from engine.widgets.gameplay_surface import GameplaySurface
+from manager.ads import AdsManager
+from manager.ads.ads_types import RewardedResult, ads_log
 from manager.life.attempts_session import GameSessionManager
 from manager.life.life_manager import LifeManager
 from manager.life.lives_indicator import LivesIndicator
@@ -36,7 +42,6 @@ from data.user_cache.user_session import UserSession
 from manager.user_snapshot_store import UserSnapshotStore
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
-from ads.rewarded.rewarded_modal import RewardedAdModal
 
 from .game_controller import GameScreenController
 from .game_layout import GAME_DEBUG_IDS, apply_game_layout, set_hud_visible
@@ -75,6 +80,7 @@ class GameScreenView(MDScreen):
         self._cheat_flag = False
         self._cheat_points_window = deque(maxlen=64)
         self._snapshot_store = UserSnapshotStore()
+        AdsManager.init()
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
@@ -127,6 +133,7 @@ class GameScreenView(MDScreen):
         self.touch_controls_hide()
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.attach(self._gameplay_surface)
+        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
 
     def on_pre_leave(self, *args) -> None:
         """EN: Stop gameplay runtime before leaving the screen.
@@ -137,6 +144,7 @@ class GameScreenView(MDScreen):
         self._stop_hud_sync()
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.detach(self._gameplay_surface)
+        AdsManager.detach_banner()
 
     def _inject_hud_widgets(self) -> None:
         """EN: Inject score and lives widgets into the top bar.
@@ -438,14 +446,25 @@ class GameScreenView(MDScreen):
         self._game_over_flag = True
 
     def receive_reward(self) -> None:
-        """EN: Open rewarded modal and continue after close.
-        RU: РћС‚РєСЂС‹С‚СЊ rewarded-РјРѕРґР°Р»РєСѓ Рё РїСЂРѕРґРѕР»Р¶РёС‚СЊ РёРіСЂСѓ РїРѕСЃР»Рµ Р·Р°РєСЂС‹С‚РёСЏ.
+        """EN: Request rewarded flow through `AdsManager` and continue only after granted result.
+        RU: Запросить rewarded-flow через `AdsManager` и продолжить только после подтвержденного результата.
         """
         counters.inc_receive_click()
         self._close_chis_segment()
-        modal = RewardedAdModal(on_close=self._resume_after_reward)
-        self._rewarded_modal = modal
-        modal.open()
+        AdsManager.show_rewarded(context="gameover", on_result_callback=self._on_rewarded_result)
+
+    def _on_rewarded_result(self, result: RewardedResult) -> None:
+        """EN: Apply rewarded outcome to gameplay or show user-facing unavailable message.
+        RU: Применить результат rewarded к игровому процессу или показать пользователю сообщение о недоступности.
+        """
+
+        if result.reward_granted:
+            ads_log("reward granted hook", placement=result.placement, provider=result.provider)
+            self._resume_after_reward()
+            return
+        result_message = str(result.message or "Реклама недоступна")
+        ads_log("reward denied hook", placement=result.placement, provider=result.provider, detail=result_message)
+        self._show_ads_info_popup(result_message)
 
     def _resume_after_reward(self) -> None:
         """EN: Resume game after rewarded modal closes.
@@ -461,6 +480,25 @@ class GameScreenView(MDScreen):
         self._time_manager.time_gameplay(start=True)
         self._reward_used = True
         self._open_chis_segment()
+
+    def _show_ads_info_popup(self, message: str) -> None:
+        """EN: Show compact informational popup for ads-disabled/unavailable flows.
+        RU: Показать компактный информационный popup для сценариев disabled/unavailable рекламы.
+        """
+
+        content = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(16))
+        content.add_widget(Label(text=str(message), halign="center", valign="middle"))
+        close_btn = Button(text="OK", size_hint=(1, None), height=dp(44))
+        popup = Popup(
+            title="Реклама",
+            content=content,
+            size_hint=(None, None),
+            size=(dp(320), dp(180)),
+            auto_dismiss=True,
+        )
+        close_btn.bind(on_release=lambda *_: popup.dismiss())
+        content.add_widget(close_btn)
+        popup.open()
 
     def _reset_to_first_start_state(self) -> None:
         """

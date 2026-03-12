@@ -59,6 +59,16 @@ def has_valid_session(cache: dict | None = None) -> bool:
     return bool(user_id > 0 and refresh_token)
 
 
+def get_session_user_id(cache: dict | None = None) -> int:
+    """EN: Return current positive session user id or zero when session identity is unavailable.
+    RU: Вернуть текущий положительный session user id или ноль, если идентификатор сессии недоступен.
+    """
+
+    src = cache if isinstance(cache, dict) else (get_user_cache() or {})
+    user_id = _safe_int(src.get("user_id")) or 0
+    return int(user_id) if int(user_id) > 0 else 0
+
+
 def force_logout(reason: str = "UNKNOWN") -> None:
     """EN: Clear auth/session identifiers while preserving non-auth profile fields in cache.
     RU: Очистить auth/session идентификаторы, сохранив неавторизационные поля профиля в кэше.

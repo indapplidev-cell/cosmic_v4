@@ -21,6 +21,7 @@ from kivy.uix.scrollview import ScrollView
 from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
+from manager.ads import AdsManager
 from manager.auth.account_delete import confirm_delete_account
 from manager import auth_backend
 from manager.config import API_BASE_URL, PAYOUT_TELEGRAM_BOT_USERNAME, TG_LINK_STATUS_POLL_SEC, VERIFY_OPEN_TIMEOUT_SEC
@@ -131,6 +132,7 @@ class SettingsScreenView(MDScreen):
         RU: Обновить текст/логин в верхней панели по состоянию авторизации.
         """
         super().on_pre_enter(*args)
+        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
         no_data = t("common.no_data")
         app = MDApp.get_running_app()
         if hasattr(app, "is_logged_in"):
@@ -143,6 +145,13 @@ class SettingsScreenView(MDScreen):
         else:
             self.ids.settings_top_right_login.text = no_data
         self._sync_hud_layout_icon()
+
+    def on_pre_leave(self, *args) -> None:
+        """EN: Detach the shared top-bar banner slot before leaving the screen.
+        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
+        """
+        AdsManager.detach_banner()
+        return super().on_pre_leave(*args)
 
     def _sync_hud_layout_icon(self) -> None:
         """EN: Sync settings gamepad icon mirror state with persisted HUD layout flag.
