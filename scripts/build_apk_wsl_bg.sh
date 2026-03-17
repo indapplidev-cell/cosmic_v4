@@ -15,6 +15,11 @@ export BUILDOZER_HOME="$PWD/_buildozer_home"
 # EN: Let pip (including p4a internal pip calls) see locally built wheels first.
 # RU: Даём pip (включая внутренние вызовы p4a) видеть локальные wheel-файлы в первую очередь.
 export PIP_FIND_LINKS="$PWD/android_build_env/wheels"
+# EN: Prefer the Android toolchain and mask the host `link` binary that breaks
+# FreeType/libtool configure checks during clean GitHub-backed builds.
+# RU: Отдаём приоритет Android toolchain и маскируем host-бинарник `link`,
+# который ломает проверки FreeType/libtool при чистой GitHub-сборке.
+export PATH="$PWD/build-tools/linux-shims:$PATH"
 
 python scripts/run_buildozer_with_spec.py -v android debug
 
