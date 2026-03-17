@@ -24,6 +24,7 @@ from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 from uix.screens.common.password_eye import wire_password_eye
+from uix.screens.common.input_focus import blur_inputs_on_screen_enter
 
 from .login_controller import LoginController
 from .login_layout import LOGIN_DEBUG_IDS, apply_login_layout
@@ -92,22 +93,11 @@ class LoginScreenView(MDScreen):
         self.ids.register_btn.bind(on_release=self._register_callback)
 
     def on_pre_enter(self, *args) -> None:
-        """EN: Ensure email field focus on screen entry.
-        RU: РћР±РµСЃРїРµС‡РёС‚СЊ С„РѕРєСѓСЃ РЅР° РїРѕР»Рµ email РїСЂРё РІС…РѕРґРµ РЅР° СЌРєСЂР°РЅ.
+        """EN: Clear automatic input focus before showing the login screen.
+        RU: ????? ?????????????? ????? ? ????? ????? ????? ??????? ?????? ?????.
         """
         super().on_pre_enter(*args)
-
-        def _focus(_dt: float) -> None:
-            """EN: Move focus to email field after layout is ready.
-            RU: РџРµСЂРµРІРµСЃС‚Рё С„РѕРєСѓСЃ РЅР° РїРѕР»Рµ email РїРѕСЃР»Рµ РіРѕС‚РѕРІРЅРѕСЃС‚Рё СЂР°СЃРєР»Р°РґРєРё.
-            """
-            if kivy_platform in ("android", "ios"):
-                return
-            self.ids.password_field.focus = False
-            self.ids.email_field.focus = True
-            self.ids.email_field.cursor = (len(self.ids.email_field.text or ""), 0)
-
-        Clock.schedule_once(_focus, 0)
+        blur_inputs_on_screen_enter(self)
 
     def _on_login_pressed(self, *args) -> None:
         """EN: Validate credentials before dispatching login.

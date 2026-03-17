@@ -3,6 +3,8 @@
   "common.ok": "OK",
   "common.back": "Back",
   "common.no_data": "No data",
+  "common.close": "Close",
+  "common.file_not_found": "File not found.",
   "shell.title.login": "Sign in",
   "shell.title.register": "Sign up",
   "shell.title.password_reset": "Reset password",

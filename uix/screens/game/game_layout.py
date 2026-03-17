@@ -37,14 +37,20 @@ def set_hud_visible(view, *, top: bool, content: bool, bottom: bool) -> None:
 
 
 def apply_game_layout(view) -> None:
-    """EN: Apply responsive layout rules to the game view.
-    RU: Применить адаптивные правила раскладки к виду игры.
+    """EN: Apply responsive layout rules to the game view and keep the gameplay area
+    constrained to the shell space below the persistent top bar.
+    RU: Применить адаптивные правила раскладки к экрану игры и удерживать игровую
+    область в пределах shell-пространства ниже постоянного верхнего бара.
     """
 
     def _recalc(*_args) -> None:
         ids = view.ids
         win_w, win_h = Window.size
         pad = win_h * 0.05
+        shell = getattr(view, "_shell", None)
+        shell_topbar = getattr(getattr(shell, "ids", {}), "get", lambda *_args, **_kwargs: None)("topbar")
+        top_inset = float(getattr(shell_topbar, "height", 0) or 0)
+        gameplay_h = max(win_h - top_inset, 0)
 
         ids.main_layout.orientation = "vertical"
         ids.main_layout.size_hint = (1, 1)
@@ -52,9 +58,9 @@ def apply_game_layout(view) -> None:
         ids.main_layout.padding = (pad, pad, pad, pad)
         ids.main_layout.spacing = 0
 
-        ids.gameplay_layout.size_hint = (1, 1)
+        ids.gameplay_layout.size_hint = (None, None)
         ids.gameplay_layout.pos = (0, 0)
-        ids.gameplay_layout.size = (win_w, win_h)
+        ids.gameplay_layout.size = (win_w, gameplay_h)
         if "game_bg_gif" in ids:
             ids.game_bg_gif.size_hint = (None, None)
             ids.game_bg_gif.size = ids.gameplay_layout.size
@@ -82,7 +88,7 @@ def apply_game_layout(view) -> None:
             else:
                 layer.size_hint = (None, None)
                 layer.pos = (0, 0)
-                layer.size = (win_w, win_h)
+                layer.size = ids.gameplay_layout.size
 
                 btn_w = max(win_w * 0.18, dp(140))
                 btn_h = max(win_h * 0.08, dp(70))

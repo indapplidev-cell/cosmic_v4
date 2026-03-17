@@ -12,6 +12,7 @@ from kivymd.uix.screen import MDScreen
 
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
+from uix.screens.common.input_focus import blur_inputs_on_screen_enter
 
 from .profile_change_controller import ProfileChangeController
 from .profile_change_vm import ProfileChangeVM
@@ -80,12 +81,14 @@ class ProfileChangeView(MDScreen):
         self.controller.bind(self)
 
     def on_pre_enter(self, *args) -> None:
-        """EN: Prefill fields before showing the screen.
-        RU: Р СџРЎР‚Р ВµР Т‘Р В·Р В°Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ Р С—Р С•Р В»РЎРЏ Р С—Р ВµРЎР‚Р ВµР Т‘ Р С—Р С•Р С”Р В°Р В·Р С•Р С РЎРЊР С”РЎР‚Р В°Р Р…Р В°.
+        """EN: Prefill fields and clear automatic input focus before showing the screen.
+        RU: ????????????? ???? ? ????? ?????????????? ????? ? ????? ????? ????? ??????? ??????.
         """
         if self.controller:
             self.controller.on_enter(self)
-        return super().on_pre_enter(*args)
+        result = super().on_pre_enter(*args)
+        blur_inputs_on_screen_enter(self)
+        return result
 
     def _apply_layout(self) -> None:
         """EN: Apply simple layout proportions like Profile/Settings.

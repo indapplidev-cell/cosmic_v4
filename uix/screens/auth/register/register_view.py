@@ -21,6 +21,7 @@ from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 from uix.screens.common.password_eye import wire_password_eye
+from uix.screens.common.input_focus import blur_inputs_on_screen_enter
 
 from .register_controller import RegisterController
 from .register_layout import REGISTER_DEBUG_IDS, apply_register_layout
@@ -94,6 +95,13 @@ class RegisterScreenView(MDScreen):
         self.email_field = self.ids.register_email_field
         self.password_field = self.ids.register_password_field
         self.password2_field = self.ids.register_password2_field
+
+    def on_pre_enter(self, *args) -> None:
+        """EN: Clear automatic input focus before showing the register screen.
+        RU: ????? ?????????????? ????? ? ????? ????? ????? ??????? ?????? ???????????.
+        """
+        super().on_pre_enter(*args)
+        blur_inputs_on_screen_enter(self)
 
     def _on_create_pressed(self, *args) -> None:
         """EN: Validate registration data, save cache, and dispatch create action.

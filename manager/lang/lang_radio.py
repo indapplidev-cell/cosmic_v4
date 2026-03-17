@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from kivy.clock import Clock
 from kivy.utils import platform as kivy_platform
@@ -13,6 +13,18 @@ from manager.lang.hint_text_refresh import (
 from manager.lang.lang_manager import lang, t
 from uix.screens import routes
 from uix.screens.common.button_text_style import caps
+
+
+_SHELL_TITLE_KEYS = {
+    routes.LOGIN: "shell.title.login",
+    routes.REGISTER: "shell.title.register",
+    routes.PASSWORD_RESET: "shell.title.password_reset",
+    routes.START: "shell.title.start",
+    routes.PROFILE: "shell.title.profile",
+    routes.PROFILE_CHANGE: "shell.title.profile_change",
+    routes.SETTINGS: "shell.title.settings",
+    routes.GAME: "shell.title.game",
+}
 
 
 def bind_lang_radios(ru_radio, en_radio) -> None:
@@ -288,12 +300,31 @@ def _refresh_all_screens(old_no_data: str) -> None:
             password_reset.ids.back_btn_text.text = caps(t("common.back"))
         _force_refresh_screen_hints(password_reset)
 
+    _refresh_current_shell_title(manager)
+
     # --- FORCE HINT REFRESH VIA FOCUS-WALK ---
     try:
         screens = [start, settings, profile, profile_change, game, login, register, password_reset]
         _force_focus_walk_mdtextfields(screens)
     except Exception:
         pass
+
+
+def _refresh_current_shell_title(manager) -> None:
+    """
+    EN: Refresh the currently visible shell title after a language switch.
+    RU: Обновить заголовок shell для текущего экрана после смены языка.
+    """
+    shell = getattr(manager, "_shell", None)
+    if shell is None:
+        return
+
+    route_name = str(getattr(manager, "current", "") or "").strip().lower()
+    title_key = _SHELL_TITLE_KEYS.get(route_name, "")
+    if not title_key:
+        return
+
+    shell.set_title(t(title_key))
 
 
 def _refresh_banner_slot(screen) -> None:

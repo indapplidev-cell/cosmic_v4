@@ -18,10 +18,25 @@ from kivy.utils import platform as kivy_platform
 from kivymd.uix.screen import MDScreen
 from manager.lang.lang_manager import t
 
+from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.screen_manager import AppScreenManager
 
 KV_PATH = Path(__file__).with_name("app_shell.kv")
 Builder.load_file(str(KV_PATH))
+
+APP_SHELL_DEBUG_IDS = [
+    "topbar_container",
+    "topbar",
+    "lefttopbar",
+    "top_left_custom_host",
+    "midltopbar",
+    "righttopbar",
+    "top_right_custom_host",
+    "content_container",
+    "content_host",
+    "bottom_container",
+    "bottom_host",
+]
 
 
 class AppShell(MDScreen):
@@ -60,6 +75,7 @@ class AppShell(MDScreen):
         if kivy_platform in ("android", "ios"):
             Window.bind(on_key_down=self._on_window_key_down)
             self._backspace_bound = True
+        apply_debug_borders_to_ids(self, APP_SHELL_DEBUG_IDS)
         self._bind_layout()
 
     @property
@@ -141,12 +157,10 @@ class AppShell(MDScreen):
 
     def set_bar_visibility(self, *, top: bool, content: bool, bottom: bool) -> None:
         """EN: Toggle visibility of shared shell bars while preserving mounted widgets.
-        RU: Переключить видимость общих баров shell, сохраняя уже смонтированные виджеты.
+        RU: ??????????? ????????? ????? ????? shell, ???????? ??? ?????????????? ???????.
         """
         self._bar_visibility = {"top": bool(top), "content": bool(content), "bottom": bool(bottom)}
-        self._set_area_visibility(self.ids.topbar, top)
-        self._set_area_visibility(self.ids.content_host, content)
-        self._set_area_visibility(self.ids.bottom_host, bottom)
+        self._apply_layout()
 
     def present_load_screen(self, widget: Widget) -> None:
         """EN: Present startup loading widget inside the shared content area with bars hidden.
@@ -269,24 +283,20 @@ class AppShell(MDScreen):
         mounted = self._replace_host_widget(host_id, widget)
         setattr(self, mounted_attr, mounted)
 
+    def _apply_bar_visibility(self) -> None:
+        """EN: Apply non-destructive visibility to the fixed top, content, and bottom shell zones.
+        RU: ????????? ????????????? ????????? ? ????????????? ???????, ??????? ? ?????? ????? shell.
+        """
+        self._set_area_visibility(self.ids.topbar_container, self._bar_visibility["top"])
+        self._set_area_visibility(self.ids.content_container, self._bar_visibility["content"])
+        self._set_area_visibility(self.ids.bottom_container, self._bar_visibility["bottom"])
+
     def _set_area_visibility(self, widget: Widget, visible: bool) -> None:
         """EN: Apply non-destructive visibility state to a shared shell area.
-        RU: Применить неразрушающее состояние видимости к общей области shell.
+        RU: ????????? ????????????? ????????? ????????? ? ????? ??????? shell.
         """
         widget.opacity = 1 if visible else 0
         widget.disabled = not visible
-        if widget is self.ids.topbar:
-            widget.size_hint_y = None
-            widget.height = dp(64) if visible else 0
-            return
-        if widget is self.ids.content_host:
-            widget.size_hint_y = 1 if visible else None
-            if not visible:
-                widget.height = 0
-            return
-        if widget is self.ids.bottom_host:
-            widget.size_hint_y = None
-            widget.height = dp(160) if visible else 0
 
     def _apply_layout(self, *_args) -> None:
         """EN: Apply current shell geometry unless layout is frozen by a transient overlay.
@@ -296,7 +306,15 @@ class AppShell(MDScreen):
             return
         win_w, win_h = Window.size
         ids = self.ids
-        side_width = min(dp(240), max((win_w - dp(200)) / 2.0, dp(120)))
+        top_h = (win_h * 0.15) if self._bar_visibility["top"] else 0
+        bottom_h = (win_h * 0.30) if self._bar_visibility["bottom"] else 0
+        content_h = (win_h * 0.55) if self._bar_visibility["content"] else 0
+        used_h = top_h + content_h + bottom_h
+        if used_h > win_h and used_h > 0:
+            scale = win_h / used_h
+            top_h *= scale
+            content_h *= scale
+            bottom_h *= scale
 
         ids.shell_root.pos = (0, 0)
         ids.shell_root.size = (win_w, win_h)
@@ -304,19 +322,25 @@ class AppShell(MDScreen):
         ids.background_host.size = (win_w, win_h)
         ids.bar_layer.pos = (0, 0)
         ids.bar_layer.size = (win_w, win_h)
-        ids.bar_layer.padding = (0, 0, 0, 0)
-        ids.bar_layer.spacing = 0
 
-        ids.topbar.height = dp(64)
-        ids.bottom_host.height = dp(160)
+        ids.topbar_container.pos = (0, win_h - top_h)
+        ids.topbar_container.size = (win_w, top_h)
+        ids.topbar.size = ids.topbar_container.size
 
-        ids.lefttopbar.size_hint = (None, 1)
-        ids.lefttopbar.width = side_width
-        ids.midltopbar.size_hint = (1, 1)
-        ids.righttopbar.size_hint = (None, 1)
-        ids.righttopbar.width = side_width
+        ids.content_container.pos = (0, bottom_h)
+        ids.content_container.size = (win_w, content_h)
+        ids.content_host.size = ids.content_container.size
+        ids.content_host.pos = (0, 0)
 
-        self.set_bar_visibility(**self._bar_visibility)
+        ids.bottom_container.pos = (0, 0)
+        ids.bottom_container.size = (win_w, bottom_h)
+        ids.bottom_host.size = ids.bottom_container.size
+
+        ids.lefttopbar.size_hint = (0.2, 1)
+        ids.midltopbar.size_hint = (0.6, 1)
+        ids.righttopbar.size_hint = (0.2, 1)
+
+        self._apply_bar_visibility()
         self._sync_hidden_manager_size()
         self._refresh_mounted_widgets()
         Clock.schedule_once(self._log_shell_sizes, 0)

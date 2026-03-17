@@ -3,6 +3,8 @@
   "common.ok": "OK",
   "common.back": "Назад",
   "common.no_data": "Нет данных",
+  "common.close": "Закрыть",
+  "common.file_not_found": "Файл не найден.",
   "shell.title.login": "Вход",
   "shell.title.register": "Регистрация",
   "shell.title.password_reset": "Восстановление пароля",

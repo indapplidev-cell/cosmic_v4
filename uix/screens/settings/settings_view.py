@@ -177,7 +177,7 @@ class SettingsScreenView(MDScreen):
         self.open_text_doc(
             t("settings.docs.about"),
             DOC_KEY_ABOUT,
-            "File not found.",
+            t("common.file_not_found"),
         )
 
     def _read_text_doc(self, doc_key: str, missing_message: str) -> str:
@@ -224,8 +224,7 @@ class SettingsScreenView(MDScreen):
         text_lbl.bind(width=_sync_text_size, texture_size=_sync_height)
         scroller.add_widget(text_lbl)
         content.add_widget(scroller)
-
-        close_btn = Button(text="Р вЂ”Р В°Р С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ", size_hint_y=None, height=dp(40))
+        close_btn = Button(text=t("common.close"), size_hint_y=None, height=dp(40))
         content.add_widget(close_btn)
 
         popup = Popup(
@@ -244,7 +243,7 @@ class SettingsScreenView(MDScreen):
         self.open_text_doc(
             t("settings.docs.policy"),
             DOC_KEY_POLICY,
-            "File not found.",
+            t("common.file_not_found"),
         )
 
     def open_game_rules(self) -> None:
@@ -254,7 +253,7 @@ class SettingsScreenView(MDScreen):
         self.open_text_doc(
             t("settings.docs.rules"),
             DOC_KEY_RULES,
-            "File not found.",
+            t("common.file_not_found"),
         )
 
     def on_delete_account_pressed(self) -> None:

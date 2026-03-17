@@ -14,86 +14,94 @@
             spacing: 0
             padding: 0
 
-        MDBoxLayout:
+        MDRelativeLayout:
             id: bar_layer
-            orientation: "vertical"
             size_hint: 1, 1
             pos: 0, 0
-            spacing: 0
-            padding: 0
 
-            MDBoxLayout:
-                id: topbar
-                orientation: "horizontal"
-                size_hint_x: 1
-                size_hint_y: None
-                height: dp(64)
-                spacing: 0
-                padding: 0
+            MDRelativeLayout:
+                id: content_container
+                size_hint: None, None
+                pos: 0, 0
 
                 MDBoxLayout:
-                    id: lefttopbar
-                    orientation: "horizontal"
-                    size_hint_x: None
-                    width: dp(220)
+                    id: content_host
+                    orientation: "vertical"
+                    size_hint: 1, 1
+                    pos: 0, 0
                     spacing: 0
                     padding: 0
+
+            AnchorLayout:
+                id: topbar_container
+                size_hint: None, None
+                anchor_x: "center"
+                anchor_y: "top"
+
+                MDBoxLayout:
+                    id: topbar
+                    orientation: "horizontal"
+                    size_hint: 1, 1
+                    spacing: 0
+                    padding: 0
+
                     AnchorLayout:
+                        id: lefttopbar
+                        size_hint_x: 0.2
                         anchor_x: "center"
                         anchor_y: "center"
+
                         MDLabel:
                             id: top_left_title
+                            size_hint: 1, 1
                             halign: "center"
                             valign: "middle"
                             text_size: self.size
+
+                        AnchorLayout:
+                            id: top_left_custom_host
+                            size_hint: 1, 1
+                            anchor_x: "center"
+                            anchor_y: "center"
+
                     AnchorLayout:
-                        id: top_left_custom_host
+                        id: midltopbar
+                        size_hint_x: 0.6
                         anchor_x: "center"
                         anchor_y: "center"
 
-                MDBoxLayout:
-                    id: midltopbar
-                    orientation: "horizontal"
-                    size_hint_x: 1
-                    spacing: 0
-                    padding: 0
-                    AdsBannerSlot:
-                        id: ads_banner_slot
-                        size_hint: 1, 1
+                        AdsBannerSlot:
+                            id: ads_banner_slot
+                            size_hint: 1, 1
 
-                MDBoxLayout:
-                    id: righttopbar
-                    orientation: "horizontal"
-                    size_hint_x: None
-                    width: dp(220)
-                    spacing: 0
-                    padding: 0
                     AnchorLayout:
+                        id: righttopbar
+                        size_hint_x: 0.2
                         anchor_x: "center"
                         anchor_y: "center"
+
                         MDLabel:
                             id: top_right_user
+                            size_hint: 1, 1
                             halign: "center"
                             valign: "middle"
                             text_size: self.size
-                    AnchorLayout:
-                        id: top_right_custom_host
-                        anchor_x: "center"
-                        anchor_y: "center"
 
-            MDBoxLayout:
-                id: content_host
-                orientation: "vertical"
-                size_hint_x: 1
-                size_hint_y: 1
-                spacing: 0
-                padding: 0
+                        AnchorLayout:
+                            id: top_right_custom_host
+                            size_hint: 1, 1
+                            anchor_x: "center"
+                            anchor_y: "center"
 
-            MDBoxLayout:
-                id: bottom_host
-                orientation: "vertical"
-                size_hint_x: 1
-                size_hint_y: None
-                height: dp(160)
-                spacing: 0
-                padding: 0
+            AnchorLayout:
+                id: bottom_container
+                size_hint: None, None
+                anchor_x: "center"
+                anchor_y: "bottom"
+
+                MDBoxLayout:
+                    id: bottom_host
+                    orientation: "vertical"
+                    size_hint: 1, 1
+                    spacing: 0
+                    padding: 0
