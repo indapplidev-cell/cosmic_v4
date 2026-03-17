@@ -40,8 +40,6 @@ def _safe_response_meta(payload: Any) -> dict[str, Any]:
         out["error_field"] = payload.get("error")
         if "code" in payload:
             out["code"] = tm.mask_code(str(payload.get("code") or ""))
-        if "start_token" in payload:
-            out["start_token"] = tm.mask_code(str(payload.get("start_token") or ""))
         if "access_token" in payload:
             out["access_token"] = tm.mask_token(str(payload.get("access_token") or ""))
         if "refresh_token" in payload:

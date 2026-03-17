@@ -108,3 +108,10 @@ class LoadAppScreenView(MDScreen):
             # RU: Строгая политика: требовать онлайн-проверку перед автологином.
             return LOGIN
         return LOGIN
+
+    def get_shell_load_widget(self):
+        """EN: Return the loading content widget for mounting into shared shell content host.
+        RU: Вернуть loading-виджет контента для монтирования в общий content-host shell.
+        """
+
+        return self.children[0] if self.children else None

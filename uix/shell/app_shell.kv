@@ -1,0 +1,99 @@
+#:import dp kivy.metrics.dp
+
+<AppShell>:
+    MDRelativeLayout:
+        id: shell_root
+        size_hint: 1, 1
+        pos: 0, 0
+
+        MDBoxLayout:
+            id: background_host
+            orientation: "vertical"
+            size_hint: 1, 1
+            pos: 0, 0
+            spacing: 0
+            padding: 0
+
+        MDBoxLayout:
+            id: bar_layer
+            orientation: "vertical"
+            size_hint: 1, 1
+            pos: 0, 0
+            spacing: 0
+            padding: 0
+
+            MDBoxLayout:
+                id: topbar
+                orientation: "horizontal"
+                size_hint_x: 1
+                size_hint_y: None
+                height: dp(64)
+                spacing: 0
+                padding: 0
+
+                MDBoxLayout:
+                    id: lefttopbar
+                    orientation: "horizontal"
+                    size_hint_x: None
+                    width: dp(220)
+                    spacing: 0
+                    padding: 0
+                    AnchorLayout:
+                        anchor_x: "center"
+                        anchor_y: "center"
+                        MDLabel:
+                            id: top_left_title
+                            halign: "center"
+                            valign: "middle"
+                            text_size: self.size
+                    AnchorLayout:
+                        id: top_left_custom_host
+                        anchor_x: "center"
+                        anchor_y: "center"
+
+                MDBoxLayout:
+                    id: midltopbar
+                    orientation: "horizontal"
+                    size_hint_x: 1
+                    spacing: 0
+                    padding: 0
+                    AdsBannerSlot:
+                        id: ads_banner_slot
+                        size_hint: 1, 1
+
+                MDBoxLayout:
+                    id: righttopbar
+                    orientation: "horizontal"
+                    size_hint_x: None
+                    width: dp(220)
+                    spacing: 0
+                    padding: 0
+                    AnchorLayout:
+                        anchor_x: "center"
+                        anchor_y: "center"
+                        MDLabel:
+                            id: top_right_user
+                            halign: "center"
+                            valign: "middle"
+                            text_size: self.size
+                    AnchorLayout:
+                        id: top_right_custom_host
+                        anchor_x: "center"
+                        anchor_y: "center"
+
+            MDBoxLayout:
+                id: content_host
+                orientation: "vertical"
+                size_hint_x: 1
+                size_hint_y: 1
+                spacing: 0
+                padding: 0
+
+            MDBoxLayout:
+                id: bottom_host
+                orientation: "vertical"
+                size_hint_x: 1
+                size_hint_y: None
+                height: dp(160)
+                spacing: 0
+                padding: 0

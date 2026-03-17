@@ -17,7 +17,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
 from manager import api_client, auth_backend
-from manager.config import TG_DEBUG_FLOW, TG_LINK_STATUS_POLL_SEC, TELEGRAM_BOT_USERNAME, TG_VERIFY_TIMEOUT_SEC
+from manager.config import TG_DEBUG_FLOW, TELEGRAM_BOT_USERNAME, TG_VERIFY_TIMEOUT_SEC
 from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
 from manager.trace import trace_exception, trace_log
 from data.user_cache.user_cache_reader import get_user_cache
@@ -229,9 +229,11 @@ class ProfileChangeController:
                 ok, payload = auth_backend.telegram_link_request(user_id=user_id)
                 payload_ok = bool(isinstance(payload, dict) and payload.get("ok"))
                 payload_error = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
+                ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
                 tglog(f"[TGVERIFY] step8 result: ok={ok} body_ok={payload_ok} error={payload_error}")
                 trace_log("HTTP", "FLOW.STEP8_RESULT", ok=ok, body_ok=payload_ok, error=payload_error)
                 code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
+                tglog(f"[TGVERIFY] step8 link_request ok={ok} has_code={bool(code)} ttl={ttl_sec}")
                 if not ok or not code:
                     error_code = payload_error
                     if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
@@ -243,13 +245,11 @@ class ProfileChangeController:
                 tglog(f"[TGVERIFY] step9 code={self._mask_token(code)}")
                 trace_log("STATE", "FLOW.STEP9_CODE", code=code, debug_mode=bool(TG_DEBUG_FLOW))
                 tglog(f"[TGVERIFY] step10 open scheduled code={self._mask_token(code)}")
-                self._tg_verify_active = True
-                self._tg_verify_started_at = monotonic()
-                self._cancel_tg_events()
 
                 def _open_and_poll(_dt: float) -> None:
-                    open_bot_two_stage(TELEGRAM_BOT_USERNAME, code, "TGVERIFY")
-                    self._start_tg_open_polling(user_id=int(user_id))
+                    self._start_tg_verify_state(user_id=int(user_id))
+                    open_bot_two_stage(TELEGRAM_BOT_USERNAME, code, "TGVERIFY", warmup=True)
+                    self._show_tg_enter_code_popup(user_id=int(user_id))
 
                 Clock.schedule_once(_open_and_poll, 0)
             except Exception as exc:
@@ -257,45 +257,6 @@ class ProfileChangeController:
                 tglog("[TGDBG] step10 DONE fail error=EXCEPTION")
 
         Thread(target=_worker, daemon=True).start()
-
-    def _start_tg_open_polling(self, user_id: int) -> None:
-        """EN: Poll `/telegram/link/status` until link code becomes used or open times out.
-        RU: Опрашивать `/telegram/link/status`, пока link code не станет used или не истечёт timeout открытия.
-        """
-
-        def _poll(_dt: float) -> bool:
-            if not self._tg_verify_active:
-                return False
-            elapsed = float(monotonic() - float(self._tg_verify_started_at or 0.0))
-            ok, payload = auth_backend.telegram_link_status(user_id=int(user_id))
-            used = bool(isinstance(payload, dict) and payload.get("used"))
-            confirmed = bool(isinstance(payload, dict) and payload.get("confirmed"))
-            ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
-            tglog(f"[TGVERIFY] polling used={used} confirmed={confirmed} ttl={ttl_sec} elapsed={elapsed:.1f}")
-            if confirmed:
-                self._tg_verify_active = False
-                cancel_open_flow("TGVERIFY")
-                self._cancel_tg_events()
-                tglog("[TGVERIFY] success decision=confirmed")
-                self._show_changed_popup()
-                return False
-            if used:
-                self._tg_verify_active = False
-                cancel_open_flow("TGVERIFY")
-                self._cancel_tg_events()
-                tglog("[TGVERIFY] success decision=used")
-                self._show_tg_enter_code_popup(user_id=int(user_id))
-                return False
-            if elapsed >= float(TG_VERIFY_TIMEOUT_SEC):
-                self._tg_verify_active = False
-                cancel_open_flow("TGVERIFY")
-                self._cancel_tg_events()
-                tglog("[TGVERIFY] timeout popup shown")
-                self._show_tg_fail_popup(message=t("tg.verify_timeout"))
-                return False
-            return True
-
-        self._tg_verify_poll_event = Clock.schedule_interval(_poll, float(TG_LINK_STATUS_POLL_SEC))
 
     def _start_tg_verify_state(self, user_id: int) -> None:
         """EN: Initialize active Telegram verification state and timeout timer.
@@ -310,22 +271,7 @@ class ProfileChangeController:
             self._on_tg_verify_timeout,
             float(TG_VERIFY_TIMEOUT_SEC),
         )
-        self._dbg(f"[TG] verify started user_id={user_id} timeout={TG_VERIFY_TIMEOUT_SEC}s")
-
-    def _schedule_tg_web_fallback(self, code: str) -> None:
-        """EN: Schedule web fallback after open-timeout if verification is still active.
-        RU: ????????????? web fallback ????? open-????????, ???? ??????????? ??? ???????.
-        """
-
-        self._tg_open_fallback_scheduled = True
-
-        def _fallback(_dt) -> None:
-            if not self._tg_verify_active:
-                return
-            tglog("[TGDBG] OPEN_TELEGRAM SKIPPED (debug mode)")
-            self._dbg(f"[TG] stage=web_fallback skipped token={self._mask_token(code)}")
-
-        Clock.schedule_once(_fallback, float(TG_OPEN_TIMEOUT_SEC))
+        tglog(f"[TGVERIFY] verify timeout armed user_id={user_id} timeout={TG_VERIFY_TIMEOUT_SEC}")
 
     def _cancel_tg_events(self) -> None:
         """EN: Cancel Telegram verification timers and polling events safely.
@@ -338,12 +284,6 @@ class ProfileChangeController:
             except Exception:
                 pass
         self._tg_verify_timeout_event = None
-        if self._tg_verify_poll_event is not None:
-            try:
-                self._tg_verify_poll_event.cancel()
-            except Exception:
-                pass
-        self._tg_verify_poll_event = None
 
     def _on_tg_verify_timeout(self, _dt) -> None:
         """EN: Handle overall verify timeout by showing fail popup once.
@@ -352,10 +292,11 @@ class ProfileChangeController:
 
         if not self._tg_verify_active:
             return
-        self._dbg("[TG] verify_timeout fired")
+        tglog("[TGVERIFY] timeout popup shown")
         self._tg_verify_active = False
+        cancel_open_flow("TGVERIFY")
         self._cancel_tg_events()
-        self._show_tg_fail_popup(message=t("tg_verify.fail"))
+        self._show_tg_fail_popup(message=t("tg.verify_timeout"))
 
     def _ensure_server_telegram(self, user_id: int, changes: dict) -> bool:
         """EN: Ensure Telegram handle is persisted in server profile before verify request.
@@ -435,7 +376,7 @@ class ProfileChangeController:
         вручную переносит код из Telegram-чата, а приложение отправляет его на сервер.
         """
 
-        tglog("[TGDBG] step11 show popup ENTER_CODE")
+        tglog("[TGVERIFY] step11 show popup ENTER_CODE")
         trace_log("UI", "UI.POPUP_SHOW", popup="TG_ENTER_CODE")
 
         content = BoxLayout(orientation="vertical", spacing=10, padding=10)
@@ -460,6 +401,9 @@ class ProfileChangeController:
 
         def _on_back(_instance) -> None:
             trace_log("UI", "UI.POPUP_CLOSE", popup="TG_ENTER_CODE", action="BACK")
+            self._tg_verify_active = False
+            cancel_open_flow("TGVERIFY")
+            self._cancel_tg_events()
             self._uncheck_tg_checkbox()
             popup.dismiss()
 
@@ -487,8 +431,8 @@ class ProfileChangeController:
         RU: Отправить confirm-код на backend, обновить snapshot и показать popup успеха/ошибки.
         """
 
-        tglog(f"[TGDBG] step11 confirm_code_entered mask=**{confirm_code[-2:]}")
-        tglog(f"[TGDBG] step12 confirm send user_id={int(user_id)} len(code)={len(confirm_code)}")
+        tglog(f"[TGVERIFY] step11 confirm_code_entered mask=**{confirm_code[-2:]}")
+        tglog(f"[TGVERIFY] step12 confirm send len(code)={len(confirm_code)}")
         trace_log(
             "HTTP",
             "FLOW.STEP12_CONFIRM_SEND",
@@ -501,7 +445,7 @@ class ProfileChangeController:
             try:
                 ok, payload = auth_backend.telegram_link_confirm(user_id=int(user_id), confirm_code=confirm_code)
                 error_code = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
-                tglog(f"[TGDBG] step13 confirm response ok={ok} error={error_code}")
+                tglog(f"[TGVERIFY] step13 confirm resp ok={ok} error={error_code}")
                 trace_log("HTTP", "FLOW.STEP13_CONFIRM_RESPONSE", ok=bool(ok), error=error_code)
                 if not ok:
                     if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
@@ -517,7 +461,10 @@ class ProfileChangeController:
                     Clock.schedule_once(lambda _dt: self._show_tg_fail_popup(message=t(msg_key)), 0)
                     return
 
-                tglog("[TGDBG] confirm ok, syncing /auth/me")
+                self._tg_verify_active = False
+                cancel_open_flow("TGVERIFY")
+                self._cancel_tg_events()
+                tglog("[TGVERIFY] confirm ok, syncing /auth/me")
                 me_ok, me_payload = api_client.get_me(user_id=int(user_id), timeout=10)
                 if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
                     sync_user_snapshot_from_payload(me_payload)

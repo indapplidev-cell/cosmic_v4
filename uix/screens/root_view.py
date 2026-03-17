@@ -1,58 +1,26 @@
-﻿"""EN: Root view container for the screen manager.
-RU: Корневой контейнер для менеджера экранов.
+"""EN: Backward-compatible root view alias for the shared application shell.
+RU: Обратно совместимый alias корневого view для общего shell приложения.
 """
 
 from kivy.core.window import Window
-from kivy.uix.textinput import TextInput
-from kivy.utils import platform as kivy_platform
-from kivymd.uix.screen import MDScreen
 
-from .screen_manager import AppScreenManager
+from uix.shell.app_shell import AppShell
 
 
-class RootView(MDScreen):
-    """EN: Root screen that only hosts the screen manager.
-    RU: Корневой экран, который размещает менеджер экранов.
+class RootView(AppShell):
+    """EN: Backward-compatible root view that now delegates to `AppShell`.
+    RU: Обратно совместимый root view, который теперь делегирует в `AppShell`.
     """
 
-    def __init__(self, manager: AppScreenManager, **kwargs) -> None:
-        """EN: Attach the provided screen manager.
-        RU: Подключить переданный менеджер экранов.
+    def __init__(self, manager, **kwargs) -> None:
+        """EN: Initialize the shared shell and immediately present the already-selected screen.
+        RU: Инициализировать общий shell и сразу показать уже выбранный текущий экран.
         """
-        super().__init__(**kwargs)
-        self.add_widget(manager)
-        self._backspace_bound = False
-        if kivy_platform in ("android", "ios"):
-            Window.bind(on_key_down=self._on_window_key_down)
-            self._backspace_bound = True
-
-    def _on_window_key_down(self, _window, key, _scancode, _codepoint, _modifiers):
-        """EN: Normalize mobile backspace/delete for focused text inputs.
-        RU: Нормализовать backspace/delete мобильной клавиатуры для активных текстовых полей.
-        """
-        if kivy_platform not in ("android", "ios"):
-            return False
-        if key not in (8, 67, 112, 127):
-            return False
-
-        focused = getattr(Window, "keyboard_focused", None)
-        if not isinstance(focused, TextInput):
-            return False
-
-        mode = "bkspc" if key in (8, 67) else "del"
-        focused.do_backspace(mode=mode)
-        return True
-
-    def on_touch_down(self, touch):
-        """EN: Hide mobile keyboard when user taps outside focused input.
-        RU: Скрыть мобильную клавиатуру при тапе вне сфокусированного поля.
-        """
-        if kivy_platform in ("android", "ios"):
-            focused = getattr(Window, "keyboard_focused", None)
-            if isinstance(focused, TextInput) and not focused.collide_point(*touch.pos):
-                focused.focus = False
-                try:
-                    Window.release_all_keyboards()
-                except Exception:
-                    pass
-        return super().on_touch_down(touch)
+        super().__init__(manager, **kwargs)
+        manager.opacity = 0
+        manager.disabled = True
+        manager.size_hint = (None, None)
+        manager.size = Window.size
+        manager.pos = (-10_000, -10_000)
+        if manager.current:
+            manager._present_screen(manager.get_screen(manager.current), manager.current)

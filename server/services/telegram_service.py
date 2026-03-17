@@ -283,6 +283,36 @@ def request_link_code(user_id: int) -> dict:
         return {"ok": False, "error": "DB_ERROR"}
 
 
+def get_last_link_status(user_id: int) -> dict:
+    """EN: Return used/confirmed/ttl status for latest Telegram deep-link code of a user.
+    RU: Вернуть used/confirmed/ttl-статус для последнего Telegram deep-link кода пользователя.
+    """
+
+    now_utc = datetime.now(timezone.utc)
+    with get_session() as session:
+        row = session.scalar(
+            select(TelegramLinkToken)
+            .where(TelegramLinkToken.user_id == int(user_id))
+            .order_by(TelegramLinkToken.created_at.desc())
+            .limit(1)
+        )
+        account = session.scalar(
+            select(TelegramAccount)
+            .where(TelegramAccount.user_id == int(user_id))
+            .limit(1)
+        )
+        confirmed = bool(account is not None and account.verified_at is not None)
+        if row is None:
+            return {"ok": True, "used": False, "confirmed": confirmed, "ttl_sec": 0}
+        ttl_sec = max(0, int((row.expires_at - now_utc).total_seconds()))
+        return {
+            "ok": True,
+            "used": bool(row.used_at is not None or row.used),
+            "confirmed": confirmed,
+            "ttl_sec": int(ttl_sec),
+        }
+
+
 def confirm_link_latest(telegram_user_id: int, tg_username: str) -> dict:
     """EN: Confirm latest active pending link for Telegram username and issue separate 6-digit confirm_code.
     RU: Подтвердить последний активный pending link по Telegram username и выдать отдельный 6-значный confirm_code.

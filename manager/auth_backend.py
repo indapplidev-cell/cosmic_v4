@@ -353,6 +353,49 @@ def authorized_post_json(path: str, payload: dict, *, tag: str) -> tuple[int, di
     return int(status_code), data
 
 
+def ads_config_fetch(
+    user_id: int,
+    platform: str,
+    locale_country: str,
+    screen: str,
+    *,
+    app_version: str | None = None,
+) -> dict:
+    """EN: Execute authenticated `/ads/config` request via the common auth retry wrapper.
+    RU: Выполнить аутентифицированный запрос `/ads/config` через общий auth wrapper с retry.
+    """
+
+    status_code, data = authorized_post_json(
+        "/ads/config",
+        {
+            "user_id": int(user_id),
+            "platform": str(platform or "unknown"),
+            "locale_country": str(locale_country or "ZZ"),
+            "app_version": str(app_version or "debug"),
+            "screen": str(screen or "Unknown"),
+        },
+        tag="ADS_CONFIG",
+    )
+    response = dict(data or {})
+    response["_status"] = int(status_code)
+    return response
+
+
+def ads_event_post(payload: dict) -> dict:
+    """EN: Execute authenticated `/ads/event` request via the common auth retry wrapper.
+    RU: Выполнить аутентифицированный запрос `/ads/event` через общий auth wrapper с retry.
+    """
+
+    status_code, data = authorized_post_json(
+        "/ads/event",
+        dict(payload or {}),
+        tag=f"ADS_EVENT_{str((payload or {}).get('event') or 'unknown')}",
+    )
+    response = dict(data or {})
+    response["_status"] = int(status_code)
+    return response
+
+
 def has_access_token() -> bool:
     """EN: Return True when local cache contains non-empty access token.
     RU: Вернуть True, если в локальном кэше есть непустой access token.

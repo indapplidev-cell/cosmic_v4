@@ -1,5 +1,5 @@
 """EN: View for the login screen.
-RU: Представление экрана входа.
+RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЌРєСЂР°РЅР° РІС…РѕРґР°.
 """
 
 from pathlib import Path
@@ -35,15 +35,15 @@ Builder.load_file(str(KV_PATH))
 
 class LoginScreenView(MDScreen):
     """EN: Login screen view that wires layout, VM, and controller.
-    RU: Представление входа, связывающее раскладку, VM и контроллер.
+    RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ РІС…РѕРґР°, СЃРІСЏР·С‹РІР°СЋС‰РµРµ СЂР°СЃРєР»Р°РґРєСѓ, VM Рё РєРѕРЅС‚СЂРѕР»Р»РµСЂ.
     """
 
     def __init__(self, **kwargs) -> None:
         """EN: Initialize login view state for duplicate-click protection.
-        RU: Инициализировать состояние экрана входа для защиты от двойных кликов.
+        RU: РРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ СЌРєСЂР°РЅР° РІС…РѕРґР° РґР»СЏ Р·Р°С‰РёС‚С‹ РѕС‚ РґРІРѕР№РЅС‹С… РєР»РёРєРѕРІ.
 
         EN: The in-flight flag blocks repeated taps while the auth request is being processed.
-        RU: Флаг in-flight блокирует повторные нажатия, пока обрабатывается auth-запрос.
+        RU: Р¤Р»Р°Рі in-flight Р±Р»РѕРєРёСЂСѓРµС‚ РїРѕРІС‚РѕСЂРЅС‹Рµ РЅР°Р¶Р°С‚РёСЏ, РїРѕРєР° РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ auth-Р·Р°РїСЂРѕСЃ.
         """
         super().__init__(**kwargs)
         self._auth_inflight = False
@@ -51,7 +51,7 @@ class LoginScreenView(MDScreen):
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
-        RU: Применить раскладку после загрузки KV.
+        RU: РџСЂРёРјРµРЅРёС‚СЊ СЂР°СЃРєР»Р°РґРєСѓ РїРѕСЃР»Рµ Р·Р°РіСЂСѓР·РєРё KV.
         """
         apply_login_layout(self)
         wire_password_eye(self.ids.password_field, self.ids.password_eye_btn, start_hidden=True)
@@ -64,10 +64,15 @@ class LoginScreenView(MDScreen):
             ],
         )
         apply_debug_borders_to_ids(self, LOGIN_DEBUG_IDS)
+        self._ids_keepalive = dict(self.ids)
+        for _key, _widget in self._ids_keepalive.items():
+            self.ids[_key] = _widget
+        self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
+        self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
 
     def configure(self, vm: LoginVM, controller: LoginController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать колбэки.
+        RU: РќР°СЃС‚СЂРѕРёС‚СЊ С‚РµРєСЃС‚С‹ Рё РїСЂРёРІСЏР·Р°С‚СЊ РєРѕР»Р±СЌРєРё.
         """
         self.controller = controller
         self.ids.title_lbl.text = vm.title
@@ -78,19 +83,23 @@ class LoginScreenView(MDScreen):
         self.ids.register_btn_text.text = caps(vm.register_text)
         self.set_error(vm.error_text)
 
-        self.ids.login_btn.on_release = self._on_login_pressed
-        self.ids.forgot_btn.on_release = self._on_forgot_pressed
-        self.ids.register_btn.on_release = controller.register
+        self._register_callback = lambda *_: controller.register()
+        self.ids.login_btn.unbind(on_release=self._on_login_pressed)
+        self.ids.login_btn.bind(on_release=self._on_login_pressed)
+        self.ids.forgot_btn.unbind(on_release=self._on_forgot_pressed)
+        self.ids.forgot_btn.bind(on_release=self._on_forgot_pressed)
+        self.ids.register_btn.unbind(on_release=self._register_callback)
+        self.ids.register_btn.bind(on_release=self._register_callback)
 
     def on_pre_enter(self, *args) -> None:
         """EN: Ensure email field focus on screen entry.
-        RU: Обеспечить фокус на поле email при входе на экран.
+        RU: РћР±РµСЃРїРµС‡РёС‚СЊ С„РѕРєСѓСЃ РЅР° РїРѕР»Рµ email РїСЂРё РІС…РѕРґРµ РЅР° СЌРєСЂР°РЅ.
         """
         super().on_pre_enter(*args)
 
         def _focus(_dt: float) -> None:
             """EN: Move focus to email field after layout is ready.
-            RU: Перевести фокус на поле email после готовности раскладки.
+            RU: РџРµСЂРµРІРµСЃС‚Рё С„РѕРєСѓСЃ РЅР° РїРѕР»Рµ email РїРѕСЃР»Рµ РіРѕС‚РѕРІРЅРѕСЃС‚Рё СЂР°СЃРєР»Р°РґРєРё.
             """
             if kivy_platform in ("android", "ios"):
                 return
@@ -100,9 +109,9 @@ class LoginScreenView(MDScreen):
 
         Clock.schedule_once(_focus, 0)
 
-    def _on_login_pressed(self) -> None:
+    def _on_login_pressed(self, *args) -> None:
         """EN: Validate credentials before dispatching login.
-        RU: Проверить учетные данные перед диспетчеризацией входа.
+        RU: РџСЂРѕРІРµСЂРёС‚СЊ СѓС‡РµС‚РЅС‹Рµ РґР°РЅРЅС‹Рµ РїРµСЂРµРґ РґРёСЃРїРµС‚С‡РµСЂРёР·Р°С†РёРµР№ РІС…РѕРґР°.
         """
         if self._auth_inflight:
             tglog("[AUTH] drop duplicate click action=login")
@@ -116,11 +125,11 @@ class LoginScreenView(MDScreen):
             ok_input, error_code, _field = validate_login(email, password)
             if not ok_input:
                 msg_map = {
-                    "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
-                    "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
-                    "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
+                    "EMAIL_FORMAT": "Invalid email format / РќРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ email",
+                    "PASSWORD_LENGTH": "Password length must be 8..72 / Р”Р»РёРЅР° РїР°СЂРѕР»СЏ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ 8..72",
+                    "CONTROL_CHARS": "Password contains forbidden chars / РџР°СЂРѕР»СЊ СЃРѕРґРµСЂР¶РёС‚ Р·Р°РїСЂРµС‰С‘РЅРЅС‹Рµ СЃРёРјРІРѕР»С‹",
                 }
-                self.set_error(msg_map.get(error_code, "Invalid input / Некорректный ввод"))
+                self.set_error(msg_map.get(error_code, "Invalid input / РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РІРІРѕРґ"))
                 return
             ok_login, payload = auth_backend.login(email, password)
             if not ok_login:
@@ -132,9 +141,9 @@ class LoginScreenView(MDScreen):
         finally:
             self._clear_auth_inflight()
 
-    def _on_forgot_pressed(self) -> None:
+    def _on_forgot_pressed(self, *args) -> None:
         """EN: Run Telegram-only forgot-password flow from login screen via popup.
-        RU: Запустить Telegram-only flow «Забыли пароль» с экрана входа через popup.
+        RU: Р—Р°РїСѓСЃС‚РёС‚СЊ Telegram-only flow В«Р—Р°Р±С‹Р»Рё РїР°СЂРѕР»СЊВ» СЃ СЌРєСЂР°РЅР° РІС…РѕРґР° С‡РµСЂРµР· popup.
         """
 
         email = str((self.ids.email_field.text or "").strip())
@@ -162,7 +171,7 @@ class LoginScreenView(MDScreen):
 
     def _show_simple_popup(self, message: str) -> None:
         """EN: Show one-button informational popup for login forgot-password flow.
-        RU: Показать информационный popup с одной кнопкой для flow восстановления на login.
+        RU: РџРѕРєР°Р·Р°С‚СЊ РёРЅС„РѕСЂРјР°С†РёРѕРЅРЅС‹Р№ popup СЃ РѕРґРЅРѕР№ РєРЅРѕРїРєРѕР№ РґР»СЏ flow РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РЅР° login.
         """
 
         content = BoxLayout(orientation="vertical", spacing=10, padding=10)
@@ -177,7 +186,7 @@ class LoginScreenView(MDScreen):
 
     def _show_reset_confirm_popup(self, email: str) -> None:
         """EN: Show popup for entering bot confirm_code and new password pair.
-        RU: Показать popup ввода bot confirm_code и пары нового пароля.
+        RU: РџРѕРєР°Р·Р°С‚СЊ popup РІРІРѕРґР° bot confirm_code Рё РїР°СЂС‹ РЅРѕРІРѕРіРѕ РїР°СЂРѕР»СЏ.
         """
 
         content = BoxLayout(orientation="vertical", spacing=8, padding=10)
@@ -264,7 +273,7 @@ class LoginScreenView(MDScreen):
 
     def _reset_auth_inflight_safety(self, _dt: float) -> None:
         """EN: Safety reset for in-flight auth flag in case callback chain is interrupted.
-        RU: Защитный сброс флага in-flight для auth, если цепочка колбэков была прервана.
+        RU: Р—Р°С‰РёС‚РЅС‹Р№ СЃР±СЂРѕСЃ С„Р»Р°РіР° in-flight РґР»СЏ auth, РµСЃР»Рё С†РµРїРѕС‡РєР° РєРѕР»Р±СЌРєРѕРІ Р±С‹Р»Р° РїСЂРµСЂРІР°РЅР°.
         """
         if self._auth_inflight:
             tglog("[AUTH] inflight safety reset action=login")
@@ -273,7 +282,7 @@ class LoginScreenView(MDScreen):
 
     def _clear_auth_inflight(self) -> None:
         """EN: Clear in-flight state after auth request completion.
-        RU: Сбросить состояние in-flight после завершения auth-запроса.
+        RU: РЎР±СЂРѕСЃРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ in-flight РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ auth-Р·Р°РїСЂРѕСЃР°.
         """
         if self._auth_inflight_reset_ev is not None:
             self._auth_inflight_reset_ev.cancel()
@@ -282,14 +291,29 @@ class LoginScreenView(MDScreen):
 
     def set_error(self, text: str) -> None:
         """EN: Set error text visibility.
-        RU: Установить видимость текста ошибки.
+        RU: РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РІРёРґРёРјРѕСЃС‚СЊ С‚РµРєСЃС‚Р° РѕС€РёР±РєРё.
         """
         self.ids.error_lbl.text = text
         self.ids.error_lbl.opacity = 1 if text else 0
 
     def _clear_fields(self) -> None:
         """EN: Clear login input fields after successful validation.
-        RU: Очистить поля входа после успешной проверки.
+        RU: РћС‡РёСЃС‚РёС‚СЊ РїРѕР»СЏ РІС…РѕРґР° РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕР№ РїСЂРѕРІРµСЂРєРё.
         """
         self.ids.email_field.text = ""
         self.ids.password_field.text = ""
+
+    def get_shell_content_widget(self):
+        """EN: Return the reusable content bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._contentbar_widget
+
+    def get_shell_bottom_widget(self):
+        """EN: Return the reusable bottom bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ bottom bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._bottombar_widget
+

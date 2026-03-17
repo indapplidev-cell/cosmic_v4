@@ -6,6 +6,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
+
+from manager.screen_tracker import ScreenTracker
+
+
+def generate_flow_id() -> str:
+    """EN: Generate a short stable flow identifier used to correlate one rewarded chain in logs.
+    RU: Сгенерировать короткий стабильный flow identifier для связки одной rewarded-цепочки в логах.
+    """
+
+    return uuid4().hex[:8]
+
+
+def get_current_screen_name(app=None) -> str:
+    """EN: Resolve the currently active app screen name for ads diagnostics.
+    RU: Определить имя текущего активного экрана приложения для ads-диагностики.
+    """
+
+    del app
+    return ScreenTracker.get_screen()
 
 
 def ads_log(message: str, **fields: object) -> None:
@@ -15,7 +35,37 @@ def ads_log(message: str, **fields: object) -> None:
 
     suffix = ""
     if fields:
-        suffix = " " + " ".join(f"{key}={value}" for key, value in fields.items())
+        ordered_keys = [
+            "flow_id",
+            "placement",
+            "screen",
+            "user_id",
+            "provider",
+            "debug",
+            "trigger",
+            "event",
+            "enabled",
+            "attached",
+            "granted",
+            "status",
+            "ok",
+            "reason",
+            "detail",
+            "context",
+            "locale_country",
+            "platform",
+        ]
+        rendered: list[str] = []
+        seen: set[str] = set()
+        for key in ordered_keys:
+            if key in fields:
+                rendered.append(f"{key}={fields[key]}")
+                seen.add(key)
+        for key, value in fields.items():
+            if key in seen:
+                continue
+            rendered.append(f"{key}={value}")
+        suffix = " " + " ".join(rendered)
     print(f"[ADS] {message}{suffix}", flush=True)
 
 
@@ -43,10 +93,17 @@ class AdsConfig:
     ok: bool
     region: str
     provider: str
+    configured: bool = False
     banner_enabled: bool = False
     rewarded_enabled: bool = False
+    admob_app_id: str | None = None
+    banner_ad_unit_id: str | None = None
+    rewarded_ad_unit_id: str | None = None
+    refresh_sec: int = 30
+    min_banner_sec: int = 5
+    debug: bool = False
+    error: str | None = None
     placements: dict[str, AdsPlacementConfig] = field(default_factory=dict)
-    ts: int = 0
 
 
 @dataclass(slots=True)
@@ -73,6 +130,7 @@ class RewardedResult:
     provider: str
     message: str = ""
     debug: bool = False
+    flow_id: str = ""
 
 
 @dataclass(slots=True)
@@ -85,5 +143,9 @@ class AdsEvent:
     provider: str
     placement: str
     event: str
-    ts: int
-    extra: dict[str, Any] = field(default_factory=dict)
+    screen: str | None = None
+    flow_id: str | None = None
+    ok: bool | None = None
+    detail: str | None = None
+    ts_client: float | None = None
+    meta: dict[str, Any] = field(default_factory=dict)

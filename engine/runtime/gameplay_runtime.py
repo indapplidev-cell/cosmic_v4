@@ -63,6 +63,7 @@ class GameplayRuntime:
         self.on_loss = None
         self._linear_speed_x = 0.0
         self._linear_active = False
+        self._paused_for_ad = False
 
         surface.bind_engines(
             self._road_grid,
@@ -104,6 +105,7 @@ class GameplayRuntime:
         self._ship_engine.reset_to_start(self._state)
         self._session.reset()
         self._state.mark_started()
+        self._paused_for_ad = False
         self._loop.start(self._tick, fps=self._fps)
 
     def receive_reward(self) -> None:
@@ -119,7 +121,7 @@ class GameplayRuntime:
         respawn_to_start(self._state, self._ship_engine, self._tiles, self._config)
         self._state.speed_y_factor = 1.0
         self._state.mark_started()
-        self._loop.start(self._tick, fps=self._fps)
+        self.resume_after_ad()
 
     def stop(self) -> None:
         """
@@ -128,6 +130,7 @@ class GameplayRuntime:
         EN: Cancels scheduled updates and detaches input bindings.
         RU: Останавливает цикл обновлений и отключает обработчики ввода.
         """
+        self._paused_for_ad = False
         self._loop.stop()
         self._input.detach()
 
@@ -138,6 +141,9 @@ class GameplayRuntime:
         EN: Updates perspective, renders, advances motion, and applies loss logic.
         RU: Обновляет перспективу, рендерит, двигает сцену и применяет логику проигрыша.
         """
+        if self._paused_for_ad:
+            return
+
         width = self._surface.width
         height = self._surface.height
         if width <= 0 or height <= 0:
@@ -193,16 +199,38 @@ class GameplayRuntime:
         self._perspective.set_perspective_point(width / 2, height * 0.75)
         self._surface.render()
 
+    def pause_for_ad(self) -> None:
+        """EN: Freeze the current run for rewarded ads without resetting score or attempts.
+        RU: ?????????? ??????? ????? ?? ????? rewarded-??????? ??? ?????? ????? ? ???????.
+        """
+        self._paused_for_ad = True
+        self._loop.stop()
+        self._linear_active = False
+        self._linear_speed_x = 0.0
+        self._state.current_speed_x = 0.0
+        self._state.speed_y_factor = 1.0
+
+    def resume_after_ad(self) -> None:
+        """EN: Resume the same run after rewarded flow is fully closed and continuation is allowed.
+        RU: ??????????? ??? ?? ????? ????? ??????? ???????? rewarded-flow ? ???????????? continue.
+        """
+        self._paused_for_ad = False
+        self._loop.start(self._tick, fps=self._fps)
+
     def brake_on(self) -> None:
         """EN: Enable vertical brake by applying slowdown factor.
         RU: Включить вертикальный тормоз, применив коэффициент замедления.
         """
+        if self._paused_for_ad:
+            return
         self._state.speed_y_factor = self._config.SPEED_Y_BRAKE_FACTOR
 
     def brake_off(self) -> None:
         """EN: Disable vertical brake and restore default factor.
         RU: Отключить вертикальный тормоз и вернуть коэффициент по умолчанию.
         """
+        if self._paused_for_ad:
+            return
         self._state.speed_y_factor = 1.0
 
     def _max_x_offset(self, width: float) -> float:
@@ -258,8 +286,10 @@ class GameplayRuntime:
 
     def input_left(self) -> None:
         """EN: Dispatch left input to the engine input controller.
-        RU: Передать команду влево контроллеру ввода движка.
+        RU: ???????? ??????? ????? ??????????? ????? ??????.
         """
+        if self._paused_for_ad:
+            return
         width = self._surface.width
         if width <= 0:
             return
@@ -275,8 +305,10 @@ class GameplayRuntime:
 
     def input_right(self) -> None:
         """EN: Dispatch right input to the engine input controller.
-        RU: Передать команду вправо контроллеру ввода движка.
+        RU: ???????? ??????? ?????? ??????????? ????? ??????.
         """
+        if self._paused_for_ad:
+            return
         width = self._surface.width
         if width <= 0:
             return
@@ -294,6 +326,8 @@ class GameplayRuntime:
         """EN: Dispatch stop input to the engine input controller.
         RU: Передать команду стоп контроллеру ввода движка.
         """
+        if self._paused_for_ad:
+            return
         self._state.current_speed_x = 0
 
     def input_left_step(self) -> None:
@@ -312,6 +346,8 @@ class GameplayRuntime:
         """EN: Set linear movement direction (-1 right, +1 left, 0 stop).
         RU: Установить направление линейного движения (-1 вправо, +1 влево, 0 стоп).
         """
+        if self._paused_for_ad:
+            return
         if direction == 0:
             self._linear_speed_x = 0.0
             self._linear_active = False
@@ -324,8 +360,10 @@ class GameplayRuntime:
 
     def apply_linear_x(self, dt: float) -> None:
         """EN: Apply linear horizontal movement using V3 formula.
-        RU: Применить линейное горизонтальное движение по формуле V3.
+        RU: ????????? ???????? ?????????????? ???????? ?? ??????? V3.
         """
+        if self._paused_for_ad:
+            return
         width = self._surface.width
         if width <= 0:
             return

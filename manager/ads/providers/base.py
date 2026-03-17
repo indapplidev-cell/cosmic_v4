@@ -1,4 +1,4 @@
-"""EN: Abstract provider contract for banner and rewarded ads operations.
+﻿"""EN: Abstract provider contract for banner and rewarded ads operations.
 RU: Абстрактный контракт провайдера для операций banner и rewarded ads.
 """
 
@@ -10,7 +10,7 @@ from typing import Callable
 from manager.ads.ads_types import AdsPlacementConfig, RewardedResult
 
 
-class AdProvider(ABC):
+class BaseAdsProvider(ABC):
     """EN: Provider interface consumed by `AdsManager` regardless of underlying SDK.
     RU: Интерфейс провайдера, который использует `AdsManager` независимо от базового SDK.
     """
@@ -32,7 +32,14 @@ class AdProvider(ABC):
         self,
         placement: AdsPlacementConfig,
         on_result: Callable[[RewardedResult], None],
+        *,
+        flow_id: str = "",
+        screen: str = "Unknown",
+        user_id: int = 0,
     ) -> None:
         """EN: Show rewarded flow and eventually return result into the UI callback.
         RU: Показать rewarded-flow и затем вернуть результат в UI callback.
         """
+
+
+AdProvider = BaseAdsProvider

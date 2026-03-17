@@ -244,6 +244,10 @@ def ads_config(payload: AdsConfigRequest, request: Request) -> dict:
         return {"ok": False, "error": "UNAUTHORIZED"}
     result = get_ads_config(auth_user_id, payload)
     result.pop("user_id", None)
+    result.pop("screen", None)
+    result.pop("platform", None)
+    result.pop("locale_country", None)
+    result.pop("ts", None)
     return AdsConfigResponse(**result).model_dump()
 
 
@@ -258,13 +262,20 @@ def ads_event(payload: AdsEventRequest, request: Request) -> dict:
         return {"ok": False, "error": "UNAUTHORIZED"}
     if int(auth_user_id) != int(payload.user_id):
         return {"ok": False, "error": "UNAUTHORIZED"}
+    meta_payload = dict(payload.meta or {})
+    if payload.extra:
+        meta_payload.setdefault("extra", dict(payload.extra))
     return log_ads_event(
         user_id=payload.user_id,
-        provider=payload.provider,
+        screen=str(payload.screen or "Unknown"),
         placement=payload.placement,
         event=payload.event,
-        ts=payload.ts,
-        extra=payload.extra,
+        provider=payload.provider,
+        flow_id=payload.flow_id,
+        ok=payload.ok,
+        detail=payload.detail,
+        ts_client=payload.ts_client if payload.ts_client is not None else float(payload.ts or 0),
+        meta=meta_payload,
     )
 
 

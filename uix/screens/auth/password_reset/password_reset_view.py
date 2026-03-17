@@ -1,5 +1,5 @@
 """EN: View for the password reset screen with request/confirm actions.
-RU: Представление экрана восстановления пароля с действиями запроса/подтверждения.
+RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЌРєСЂР°РЅР° РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїР°СЂРѕР»СЏ СЃ РґРµР№СЃС‚РІРёСЏРјРё Р·Р°РїСЂРѕСЃР°/РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.
 """
 
 from pathlib import Path
@@ -25,12 +25,12 @@ Builder.load_file(str(KV_PATH))
 
 class PasswordResetScreenView(MDScreen):
     """EN: Password reset screen view that binds VM texts and API actions.
-    RU: Представление экрана восстановления пароля, связывающее тексты VM и действия API.
+    RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЌРєСЂР°РЅР° РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїР°СЂРѕР»СЏ, СЃРІСЏР·С‹РІР°СЋС‰РµРµ С‚РµРєСЃС‚С‹ VM Рё РґРµР№СЃС‚РІРёСЏ API.
     """
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply responsive layout and shared field/button helpers after KV load.
-        RU: Применить адаптивную раскладку и общие хелперы полей/кнопок после загрузки KV.
+        RU: РџСЂРёРјРµРЅРёС‚СЊ Р°РґР°РїС‚РёРІРЅСѓСЋ СЂР°СЃРєР»Р°РґРєСѓ Рё РѕР±С‰РёРµ С…РµР»РїРµСЂС‹ РїРѕР»РµР№/РєРЅРѕРїРѕРє РїРѕСЃР»Рµ Р·Р°РіСЂСѓР·РєРё KV.
         """
 
         apply_password_reset_layout(self)
@@ -41,10 +41,15 @@ class PasswordResetScreenView(MDScreen):
         )
         self.ids.reset_channel_telegram.active = True
         apply_debug_borders_to_ids(self, PASSWORD_RESET_DEBUG_IDS)
+        self._ids_keepalive = dict(self.ids)
+        for _key, _widget in self._ids_keepalive.items():
+            self.ids[_key] = _widget
+        self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
+        self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
 
     def configure(self, vm: PasswordResetVM, controller: PasswordResetController) -> None:
         """EN: Configure UI texts and bind controller/API callbacks.
-        RU: Настроить тексты UI и привязать колбэки контроллера/API.
+        RU: РќР°СЃС‚СЂРѕРёС‚СЊ С‚РµРєСЃС‚С‹ UI Рё РїСЂРёРІСЏР·Р°С‚СЊ РєРѕР»Р±СЌРєРё РєРѕРЅС‚СЂРѕР»Р»РµСЂР°/API.
         """
 
         self.controller = controller
@@ -59,13 +64,17 @@ class PasswordResetScreenView(MDScreen):
         self.ids.reset_channel_email_lbl.text = t("reset.channel.email")
         self.set_error(vm.error_text)
 
-        self.ids.send_btn.on_release = self._on_send_code_pressed
-        self.ids.confirm_btn.on_release = self._on_confirm_pressed
-        self.ids.back_btn.on_release = controller.back
+        self._back_callback = lambda *_: controller.back()
+        self.ids.send_btn.unbind(on_release=self._on_send_code_pressed)
+        self.ids.send_btn.bind(on_release=self._on_send_code_pressed)
+        self.ids.confirm_btn.unbind(on_release=self._on_confirm_pressed)
+        self.ids.confirm_btn.bind(on_release=self._on_confirm_pressed)
+        self.ids.back_btn.unbind(on_release=self._back_callback)
+        self.ids.back_btn.bind(on_release=self._back_callback)
 
-    def _on_send_code_pressed(self) -> None:
+    def _on_send_code_pressed(self, *args) -> None:
         """EN: Request reset code while preserving anti-enumeration UX message.
-        RU: Запросить reset-код с UX-сообщением без раскрытия существования аккаунта.
+        RU: Р—Р°РїСЂРѕСЃРёС‚СЊ reset-РєРѕРґ СЃ UX-СЃРѕРѕР±С‰РµРЅРёРµРј Р±РµР· СЂР°СЃРєСЂС‹С‚РёСЏ СЃСѓС‰РµСЃС‚РІРѕРІР°РЅРёСЏ Р°РєРєР°СѓРЅС‚Р°.
         """
 
         email = (self.ids.email_field.text or "").strip()
@@ -83,9 +92,9 @@ class PasswordResetScreenView(MDScreen):
         else:
             self.set_error(t("reset.telegram_not_verified"))
 
-    def _on_confirm_pressed(self) -> None:
+    def _on_confirm_pressed(self, *args) -> None:
         """EN: Confirm one-time code and set new password, then return to login.
-        RU: Подтвердить одноразовый код и задать новый пароль, затем вернуться на вход.
+        RU: РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ РєРѕРґ Рё Р·Р°РґР°С‚СЊ РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ, Р·Р°С‚РµРј РІРµСЂРЅСѓС‚СЊСЃСЏ РЅР° РІС…РѕРґ.
         """
 
         email = (self.ids.email_field.text or "").strip()
@@ -127,7 +136,7 @@ class PasswordResetScreenView(MDScreen):
 
     def set_error(self, text: str) -> None:
         """EN: Set status text visibility in error/info label.
-        RU: Установить видимость текста статуса в лейбле ошибок/информации.
+        RU: РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РІРёРґРёРјРѕСЃС‚СЊ С‚РµРєСЃС‚Р° СЃС‚Р°С‚СѓСЃР° РІ Р»РµР№Р±Р»Рµ РѕС€РёР±РѕРє/РёРЅС„РѕСЂРјР°С†РёРё.
         """
 
         self.ids.error_lbl.text = text
@@ -135,7 +144,7 @@ class PasswordResetScreenView(MDScreen):
 
     def on_pre_enter(self, *args) -> None:
         """EN: Focus email field on desktop for faster keyboard flow.
-        RU: Ставить фокус на email на десктопе для быстрого ввода с клавиатуры.
+        RU: РЎС‚Р°РІРёС‚СЊ С„РѕРєСѓСЃ РЅР° email РЅР° РґРµСЃРєС‚РѕРїРµ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РІРІРѕРґР° СЃ РєР»Р°РІРёР°С‚СѓСЂС‹.
         """
 
         super().on_pre_enter(*args)
@@ -145,8 +154,23 @@ class PasswordResetScreenView(MDScreen):
 
     def _clear_fields(self) -> None:
         """EN: Clear all reset form fields after successful password update.
-        RU: Очистить все поля формы восстановления после успешной смены пароля.
+        RU: РћС‡РёСЃС‚РёС‚СЊ РІСЃРµ РїРѕР»СЏ С„РѕСЂРјС‹ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕР№ СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ.
         """
 
         self.ids.code_field.text = ""
         self.ids.new_password_field.text = ""
+
+    def get_shell_content_widget(self):
+        """EN: Return the reusable content bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._contentbar_widget
+
+    def get_shell_bottom_widget(self):
+        """EN: Return the reusable bottom bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ bottom bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._bottombar_widget
+

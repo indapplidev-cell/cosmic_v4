@@ -16,15 +16,22 @@ from uix.screens.layouts.layout_constants import (
 
 
 def set_hud_visible(view, *, top: bool, content: bool, bottom: bool) -> None:
-    """EN: Toggle HUD visibility for bars.
-    RU: Переключить видимость HUD для баров.
+    """EN: Toggle HUD visibility for bars and collapse hidden bars so they stop taking layout space.
+    RU: Переключить видимость HUD-баров и схлопнуть скрытые бары, чтобы они перестали занимать место в раскладке.
     """
+    shell = getattr(view, "_shell", None)
+    if shell is not None:
+        shell.set_bar_visibility(top=top, content=content, bottom=bottom)
+
     ids = view.ids
-    for bar, visible in (
-        (ids.topbar, top),
-        (ids.contentbar, content),
-        (ids.bottombar, bottom),
+    for bar_name, visible in (
+        ("topbar", top),
+        ("contentbar", content),
+        ("bottombar", bottom),
     ):
+        bar = ids.get(bar_name)
+        if bar is None:
+            continue
         bar.opacity = 1 if visible else 0
         bar.disabled = not visible
 
@@ -44,8 +51,6 @@ def apply_game_layout(view) -> None:
         ids.main_layout.size = (win_w, win_h)
         ids.main_layout.padding = (pad, pad, pad, pad)
         ids.main_layout.spacing = 0
-
-        inner_h = max(win_h - pad * 2, 0)
 
         ids.gameplay_layout.size_hint = (1, 1)
         ids.gameplay_layout.pos = (0, 0)
@@ -94,41 +99,18 @@ def apply_game_layout(view) -> None:
                     btn.disabled = False
 
                 if not swapped:
-                    _hide_btn(ids.btn_left)
                     _show_btn(ids.btn_brake_left, (side, bottom))
-                    _show_btn(ids.btn_brake_right, (win_w - side - btn_w, bottom))
-                    _show_btn(ids.btn_right, (win_w - side - btn_w, bottom + btn_h + gap))
+                    _hide_btn(ids.btn_brake_right)
+                    _show_btn(ids.btn_right, (win_w - side - btn_w, bottom))
+                    _show_btn(ids.btn_left, (win_w - side - btn_w, bottom + btn_h + gap))
                 else:
-                    _show_btn(ids.btn_brake_left, (side, bottom))
-                    _show_btn(ids.btn_left, (side, bottom + btn_h + gap))
-                    _hide_btn(ids.btn_right)
+                    _hide_btn(ids.btn_brake_left)
                     _show_btn(ids.btn_brake_right, (win_w - side - btn_w, bottom))
-
-        ids.topbar.orientation = "horizontal"
-        ids.topbar.size_hint_y = None
-        ids.topbar.size_hint_x = 1
-        ids.topbar.height = inner_h * 0.10
-        ids.topbar.size = (ids.main_layout.width - pad * 2, ids.topbar.height)
-
-        ids.contentbar.size_hint_y = None
-        ids.contentbar.size_hint_x = 1
-        ids.contentbar.height = inner_h * 0.50
-
-        ids.bottombar.size_hint_y = None
-        ids.bottombar.size_hint_x = 1
-        ids.bottombar.height = inner_h * 0.40
-
-        ids.lefttopbar.size_hint = (None, 1)
-        ids.lefttopbar.width = ids.topbar.width * 0.20
-
-        ids.midltopbar.size_hint = (None, 1)
-        ids.midltopbar.width = ids.topbar.width * 0.60
-
-        ids.righttopbar.size_hint = (None, 1)
-        ids.righttopbar.width = ids.topbar.width * 0.20
+                    _show_btn(ids.btn_left, (side, bottom))
+                    _show_btn(ids.btn_right, (side, bottom + btn_h + gap))
 
         ids.content_center.anchor_x = "center"
-        ids.content_center.anchor_y = "center"
+        ids.content_center.anchor_y = "top"
         ids.content_center.size_hint = (1, 1)
 
         styles = getattr(view.theme_cls, "font_styles", {})

@@ -1,5 +1,5 @@
 """EN: View for the register screen.
-RU: Представление экрана регистрации.
+RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЌРєСЂР°РЅР° СЂРµРіРёСЃС‚СЂР°С†РёРё.
 """
 
 from pathlib import Path
@@ -32,15 +32,15 @@ Builder.load_file(str(KV_PATH))
 
 class RegisterScreenView(MDScreen):
     """EN: Register screen view that wires layout, VM, and controller.
-    RU: Представление регистрации, связывающее раскладку, VM и контроллер.
+    RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЂРµРіРёСЃС‚СЂР°С†РёРё, СЃРІСЏР·С‹РІР°СЋС‰РµРµ СЂР°СЃРєР»Р°РґРєСѓ, VM Рё РєРѕРЅС‚СЂРѕР»Р»РµСЂ.
     """
 
     def __init__(self, **kwargs) -> None:
         """EN: Initialize register view state for duplicate-click protection.
-        RU: Инициализировать состояние экрана регистрации для защиты от двойных кликов.
+        RU: РРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°С‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ СЌРєСЂР°РЅР° СЂРµРіРёСЃС‚СЂР°С†РёРё РґР»СЏ Р·Р°С‰РёС‚С‹ РѕС‚ РґРІРѕР№РЅС‹С… РєР»РёРєРѕРІ.
 
         EN: The in-flight flag blocks repeated taps while the register request is being processed.
-        RU: Флаг in-flight блокирует повторные нажатия, пока обрабатывается запрос регистрации.
+        RU: Р¤Р»Р°Рі in-flight Р±Р»РѕРєРёСЂСѓРµС‚ РїРѕРІС‚РѕСЂРЅС‹Рµ РЅР°Р¶Р°С‚РёСЏ, РїРѕРєР° РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ Р·Р°РїСЂРѕСЃ СЂРµРіРёСЃС‚СЂР°С†РёРё.
         """
         super().__init__(**kwargs)
         self._auth_inflight = False
@@ -48,7 +48,7 @@ class RegisterScreenView(MDScreen):
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
-        RU: Применить раскладку после загрузки KV.
+        RU: РџСЂРёРјРµРЅРёС‚СЊ СЂР°СЃРєР»Р°РґРєСѓ РїРѕСЃР»Рµ Р·Р°РіСЂСѓР·РєРё KV.
         """
         apply_register_layout(self)
         wire_password_eye(self.ids.register_password_field, self.ids.password_eye_btn, start_hidden=True)
@@ -61,10 +61,15 @@ class RegisterScreenView(MDScreen):
             ],
         )
         apply_debug_borders_to_ids(self, REGISTER_DEBUG_IDS)
+        self._ids_keepalive = dict(self.ids)
+        for _key, _widget in self._ids_keepalive.items():
+            self.ids[_key] = _widget
+        self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
+        self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
 
     def configure(self, vm: RegisterVM, controller: RegisterController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать колбэки.
+        RU: РќР°СЃС‚СЂРѕРёС‚СЊ С‚РµРєСЃС‚С‹ Рё РїСЂРёРІСЏР·Р°С‚СЊ РєРѕР»Р±СЌРєРё.
         """
         self.controller = controller
         self.ids.title_lbl.text = vm.title_text
@@ -76,20 +81,23 @@ class RegisterScreenView(MDScreen):
         self.set_error(vm.error_text)
         self._wire_widgets()
 
-        self.ids.create_btn.on_release = self._on_create_pressed
-        self.ids.to_login_btn.on_release = controller.to_login
+        self._to_login_callback = lambda *_: controller.to_login()
+        self.ids.create_btn.unbind(on_release=self._on_create_pressed)
+        self.ids.create_btn.bind(on_release=self._on_create_pressed)
+        self.ids.to_login_btn.unbind(on_release=self._to_login_callback)
+        self.ids.to_login_btn.bind(on_release=self._to_login_callback)
 
     def _wire_widgets(self) -> None:
         """EN: Cache field widgets for validation and focus control.
-        RU: Сохранить ссылки на поля для валидации и управления фокусом.
+        RU: РЎРѕС…СЂР°РЅРёС‚СЊ СЃСЃС‹Р»РєРё РЅР° РїРѕР»СЏ РґР»СЏ РІР°Р»РёРґР°С†РёРё Рё СѓРїСЂР°РІР»РµРЅРёСЏ С„РѕРєСѓСЃРѕРј.
         """
         self.email_field = self.ids.register_email_field
         self.password_field = self.ids.register_password_field
         self.password2_field = self.ids.register_password2_field
 
-    def _on_create_pressed(self) -> None:
+    def _on_create_pressed(self, *args) -> None:
         """EN: Validate registration data, save cache, and dispatch create action.
-        RU: Проверить данные регистрации, сохранить кэш и перейти к созданию.
+        RU: РџСЂРѕРІРµСЂРёС‚СЊ РґР°РЅРЅС‹Рµ СЂРµРіРёСЃС‚СЂР°С†РёРё, СЃРѕС…СЂР°РЅРёС‚СЊ РєСЌС€ Рё РїРµСЂРµР№С‚Рё Рє СЃРѕР·РґР°РЅРёСЋ.
         """
         if self._auth_inflight:
             tglog("[AUTH] drop duplicate click action=register")
@@ -108,23 +116,23 @@ class RegisterScreenView(MDScreen):
             ok_input, error_code, input_field = validate_register(email, password)
             if not ok_input:
                 msg_map = {
-                    "EMAIL_FORMAT": "Invalid email format / Неверный формат email",
-                    "PASSWORD_LENGTH": "Password length must be 8..72 / Длина пароля должна быть 8..72",
-                    "CONTROL_CHARS": "Password contains forbidden chars / Пароль содержит запрещённые символы",
+                    "EMAIL_FORMAT": "Invalid email format / РќРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ email",
+                    "PASSWORD_LENGTH": "Password length must be 8..72 / Р”Р»РёРЅР° РїР°СЂРѕР»СЏ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ 8..72",
+                    "CONTROL_CHARS": "Password contains forbidden chars / РџР°СЂРѕР»СЊ СЃРѕРґРµСЂР¶РёС‚ Р·Р°РїСЂРµС‰С‘РЅРЅС‹Рµ СЃРёРјРІРѕР»С‹",
                 }
-                self._show_error_popup(msg_map.get(error_code, "Invalid input / Некорректный ввод"), input_field)
+                self._show_error_popup(msg_map.get(error_code, "Invalid input / РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РІРІРѕРґ"), input_field)
                 return
 
             ok_register, payload = auth_backend.register(email, password)
             if not ok_register:
                 if payload == "EMAIL_EXISTS":
-                    self._show_error_popup("Email already exists / Такой email уже зарегистрирован", "email")
+                    self._show_error_popup("Email already exists / РўР°РєРѕР№ email СѓР¶Рµ Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅ", "email")
                 elif payload == "DB_SCHEMA_OUTDATED":
-                    self._show_error_popup("Server DB migration required / Нужна миграция БД на сервере", "email")
+                    self._show_error_popup("Server DB migration required / РќСѓР¶РЅР° РјРёРіСЂР°С†РёСЏ Р‘Р” РЅР° СЃРµСЂРІРµСЂРµ", "email")
                 elif payload == "NETWORK":
-                    self._show_error_popup("Network error / Ошибка сети", "email")
+                    self._show_error_popup("Network error / РћС€РёР±РєР° СЃРµС‚Рё", "email")
                 else:
-                    self._show_error_popup("Registration failed / Ошибка регистрации", "email")
+                    self._show_error_popup("Registration failed / РћС€РёР±РєР° СЂРµРіРёСЃС‚СЂР°С†РёРё", "email")
                 return
 
             self._clear_fields()
@@ -134,7 +142,7 @@ class RegisterScreenView(MDScreen):
 
     def _reset_auth_inflight_safety(self, _dt: float) -> None:
         """EN: Safety reset for in-flight register flag in case callback chain is interrupted.
-        RU: Защитный сброс флага in-flight регистрации, если цепочка колбэков была прервана.
+        RU: Р—Р°С‰РёС‚РЅС‹Р№ СЃР±СЂРѕСЃ С„Р»Р°РіР° in-flight СЂРµРіРёСЃС‚СЂР°С†РёРё, РµСЃР»Рё С†РµРїРѕС‡РєР° РєРѕР»Р±СЌРєРѕРІ Р±С‹Р»Р° РїСЂРµСЂРІР°РЅР°.
         """
         if self._auth_inflight:
             tglog("[AUTH] inflight safety reset action=register")
@@ -143,7 +151,7 @@ class RegisterScreenView(MDScreen):
 
     def _clear_auth_inflight(self) -> None:
         """EN: Clear in-flight state after register request completion.
-        RU: Сбросить состояние in-flight после завершения запроса регистрации.
+        RU: РЎР±СЂРѕСЃРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ in-flight РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ Р·Р°РїСЂРѕСЃР° СЂРµРіРёСЃС‚СЂР°С†РёРё.
         """
         if self._auth_inflight_reset_ev is not None:
             self._auth_inflight_reset_ev.cancel()
@@ -152,7 +160,7 @@ class RegisterScreenView(MDScreen):
 
     def _show_error_popup(self, message: str, focus_field: str) -> None:
         """EN: Show validation error popup and set focus after closing.
-        RU: Показать попап с ошибкой и вернуть фокус после закрытия.
+        RU: РџРѕРєР°Р·Р°С‚СЊ РїРѕРїР°Рї СЃ РѕС€РёР±РєРѕР№ Рё РІРµСЂРЅСѓС‚СЊ С„РѕРєСѓСЃ РїРѕСЃР»Рµ Р·Р°РєСЂС‹С‚РёСЏ.
         """
         content = BoxLayout(orientation="vertical", spacing=10, padding=10)
         content.add_widget(Label(text=message))
@@ -170,7 +178,7 @@ class RegisterScreenView(MDScreen):
 
     def _focus_field(self, focus_field: str) -> None:
         """EN: Set focus to a field by its validation key.
-        RU: Установить фокус на поле по ключу валидации.
+        RU: РЈСЃС‚Р°РЅРѕРІРёС‚СЊ С„РѕРєСѓСЃ РЅР° РїРѕР»Рµ РїРѕ РєР»СЋС‡Сѓ РІР°Р»РёРґР°С†РёРё.
         """
         mapping = {
             "email": self.email_field,
@@ -189,7 +197,7 @@ class RegisterScreenView(MDScreen):
 
     def _clear_fields(self) -> None:
         """EN: Clear registration input fields after successful validation.
-        RU: Очистить поля регистрации после успешной проверки.
+        RU: РћС‡РёСЃС‚РёС‚СЊ РїРѕР»СЏ СЂРµРіРёСЃС‚СЂР°С†РёРё РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕР№ РїСЂРѕРІРµСЂРєРё.
         """
         self.email_field.text = ""
         self.password_field.text = ""
@@ -197,7 +205,22 @@ class RegisterScreenView(MDScreen):
 
     def set_error(self, text: str) -> None:
         """EN: Set error text visibility.
-        RU: Установить видимость текста ошибки.
+        RU: РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РІРёРґРёРјРѕСЃС‚СЊ С‚РµРєСЃС‚Р° РѕС€РёР±РєРё.
         """
         self.ids.error_lbl.text = text
         self.ids.error_lbl.opacity = 1 if text else 0
+
+    def get_shell_content_widget(self):
+        """EN: Return the reusable content bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._contentbar_widget
+
+    def get_shell_bottom_widget(self):
+        """EN: Return the reusable bottom bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ bottom bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._bottombar_widget
+

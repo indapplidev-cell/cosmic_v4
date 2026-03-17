@@ -1,4 +1,4 @@
-"""EN: Dummy provider used on desktop and current Android stub builds without SDK.
+﻿"""EN: Dummy provider used on desktop and current Android stub builds without SDK.
 RU: Dummy-провайдер для desktop и текущих Android stub-сборок без SDK.
 """
 
@@ -10,17 +10,17 @@ from kivy.clock import Clock
 
 from ads.rewarded.rewarded_modal import RewardedAdModal
 from manager.ads.ads_types import AdsPlacementConfig, RewardedResult, ads_log
-from manager.ads.providers.base import AdProvider
+from manager.ads.providers.base import BaseAdsProvider
 
 
-class DummyAdProvider(AdProvider):
-    """EN: Non-SDK provider that preserves UI flow with placeholder banner and debug rewarded result.
-    RU: Провайдер без SDK, сохраняющий UI-flow с placeholder-баннером и debug-результатом rewarded.
+class DummyAdProvider(BaseAdsProvider):
+    """EN: Non-SDK provider that preserves placeholder banner and rewarded modal flow.
+    RU: Провайдер без SDK, сохраняющий placeholder-баннер и rewarded modal flow.
     """
 
     def __init__(self, provider_name: str) -> None:
-        """EN: Store logical mediation provider name used only for logs and callbacks.
-        RU: Сохранить логическое имя mediation-провайдера, используемое только для логов и callback.
+        """EN: Store logical provider name used only for logs and callbacks.
+        RU: Сохранить логическое имя провайдера, используемое только в логах и callback.
         """
 
         self._provider_name = str(provider_name or "dummy")
@@ -29,31 +29,43 @@ class DummyAdProvider(AdProvider):
         self._rewarded_completed = False
 
     def attach_banner(self, slot_widget, placement: AdsPlacementConfig) -> None:
-        """EN: Keep slot placeholder unchanged because dummy provider renders no real banner.
-        RU: Оставить placeholder слота без изменений, потому что dummy-провайдер не рисует реальный баннер.
-        """
-
-        del slot_widget, placement
-        ads_log("banner provider attach noop", provider=self._provider_name)
-
-    def detach_banner(self, slot_widget) -> None:
-        """EN: Release dummy banner state without touching slot geometry or placeholder content.
-        RU: Освободить состояние dummy-баннера, не трогая геометрию слота и placeholder-контент.
+        """EN: Keep existing slot placeholder without changing size or layout.
+        RU: Оставить существующий placeholder слота без изменения размера или layout.
         """
 
         del slot_widget
-        ads_log("banner provider detach noop", provider=self._provider_name)
+        ads_log("banner provider attach noop", placement=placement.name, provider=self._provider_name)
+
+    def detach_banner(self, slot_widget) -> None:
+        """EN: Release dummy banner state without touching the slot widget geometry.
+        RU: Освободить состояние dummy-баннера, не трогая геометрию slot-виджета.
+        """
+
+        del slot_widget
+        ads_log("banner provider detach noop", placement="topbar_banner", provider=self._provider_name)
 
     def show_rewarded(
         self,
         placement: AdsPlacementConfig,
         on_result: Callable[[RewardedResult], None],
+        *,
+        flow_id: str = "",
+        screen: str = "Unknown",
+        user_id: int = 0,
     ) -> None:
-        """EN: Show rewarded popup, grant reward only after timer completion, and deny reward on early close.
-        RU: Показать rewarded-popup, выдавать награду только после завершения таймера и не выдавать при раннем закрытии.
+        """EN: Show rewarded modal, deny reward on close, and grant only on timer completion.
+        RU: Показать rewarded modal, не выдавать награду при закрытии и выдавать только по завершению таймера.
         """
 
-        ads_log("rewarded provider show", provider=self._provider_name, placement=placement.name)
+        ads_log(
+            "rewarded provider show",
+            flow_id=flow_id,
+            placement=placement.name,
+            screen=screen,
+            user_id=user_id,
+            provider=self._provider_name,
+            debug=False,
+        )
         self._rewarded_completed = False
 
         def _handle_close() -> None:
@@ -70,6 +82,7 @@ class DummyAdProvider(AdProvider):
                     provider=self._provider_name,
                     message="Реклама закрыта",
                     debug=False,
+                    flow_id=flow_id,
                 )
             )
 
@@ -91,7 +104,11 @@ class DummyAdProvider(AdProvider):
                     provider=self._provider_name,
                     message="",
                     debug=False,
+                    flow_id=flow_id,
                 )
             )
 
         self._rewarded_finish_ev = Clock.schedule_once(_finish, 10)
+
+
+DummyAdsProvider = DummyAdProvider

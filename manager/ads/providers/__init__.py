@@ -1,8 +1,15 @@
-"""EN: Ads provider implementations used by the client ads manager.
-RU: Реализации рекламных провайдеров, используемые клиентским ads manager.
+﻿"""EN: Ads providers package exports runtime-safe provider implementations.
+RU: Пакет ads-провайдеров экспортирует runtime-safe реализации провайдеров.
 """
 
-from manager.ads.providers.base import AdProvider
-from manager.ads.providers.dummy import DummyAdProvider
+from manager.ads.providers.admob import AdMobAdsProvider
+from manager.ads.providers.base import AdProvider, BaseAdsProvider
+from manager.ads.providers.dummy import DummyAdProvider, DummyAdsProvider
 
-__all__ = ["AdProvider", "DummyAdProvider"]
+__all__ = [
+    "BaseAdsProvider",
+    "AdProvider",
+    "DummyAdProvider",
+    "DummyAdsProvider",
+    "AdMobAdsProvider",
+]

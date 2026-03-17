@@ -1,5 +1,5 @@
 """EN: View for the settings screen.
-RU: Представление экрана настроек.
+RU: Р СџРЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘Р Вµ РЎРЊР С”РЎР‚Р В°Р Р…Р В° Р Р…Р В°РЎРѓРЎвЂљРЎР‚Р С•Р ВµР С”.
 """
 
 from pathlib import Path
@@ -21,7 +21,6 @@ from kivy.uix.scrollview import ScrollView
 from kivymd.app import MDApp
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
-from manager.ads import AdsManager
 from manager.auth.account_delete import confirm_delete_account
 from manager import auth_backend
 from manager.config import API_BASE_URL, PAYOUT_TELEGRAM_BOT_USERNAME, TG_LINK_STATUS_POLL_SEC, VERIFY_OPEN_TIMEOUT_SEC
@@ -47,7 +46,7 @@ DOC_KEY_ABOUT = "about"
 
 class ToggleIconButton(MDIconButton):
     """EN: Icon button that toggles between two icon names on every release.
-    RU: Кнопка-иконка, переключающаяся между двумя именами иконок при отпускании.
+    RU: Р С™Р Р…Р С•Р С—Р С”Р В°-Р С‘Р С”Р С•Р Р…Р С”Р В°, Р С—Р ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР В°РЎР‹РЎвЂ°Р В°РЎРЏРЎРѓРЎРЏ Р СР ВµР В¶Р Т‘РЎС“ Р Т‘Р Р†РЎС“Р СРЎРЏ Р С‘Р СР ВµР Р…Р В°Р СР С‘ Р С‘Р С”Р С•Р Р…Р С•Р С” Р С—РЎР‚Р С‘ Р С•РЎвЂљР С—РЎС“РЎРѓР С”Р В°Р Р…Р С‘Р С‘.
     """
 
     toggled = BooleanProperty(False)
@@ -56,14 +55,14 @@ class ToggleIconButton(MDIconButton):
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Initialize visible icon from current toggle state after KV binding.
-        RU: Инициализировать отображаемую иконку из текущего состояния после KV.
+        RU: Р ВР Р…Р С‘РЎвЂ Р С‘Р В°Р В»Р С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ Р С•РЎвЂљР С•Р В±РЎР‚Р В°Р В¶Р В°Р ВµР СРЎС“РЎР‹ Р С‘Р С”Р С•Р Р…Р С”РЎС“ Р С‘Р В· РЎвЂљР ВµР С”РЎС“РЎвЂ°Р ВµР С–Р С• РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘РЎРЏ Р С—Р С•РЎРѓР В»Р Вµ KV.
         """
         super().on_kv_post(base_widget)
         self._apply_icon()
 
     def on_release(self, *args) -> None:
         """EN: Toggle local icon state only; external callbacks may be added later.
-        RU: Переключить только локальное состояние иконки; внешние callback можно добавить позже.
+        RU: Р СџР ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР С‘РЎвЂљРЎРЉ РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В»Р С•Р С”Р В°Р В»РЎРЉР Р…Р С•Р Вµ РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘Р Вµ Р С‘Р С”Р С•Р Р…Р С”Р С‘; Р Р†Р Р…Р ВµРЎв‚¬Р Р…Р С‘Р Вµ callback Р СР С•Р В¶Р Р…Р С• Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.
         """
         self.toggled = not self.toggled
         self._apply_icon()
@@ -71,28 +70,28 @@ class ToggleIconButton(MDIconButton):
 
     def _apply_icon(self) -> None:
         """EN: Apply icon name according to the current toggle state.
-        RU: Применить имя иконки согласно текущему состоянию переключателя.
+        RU: Р СџРЎР‚Р С‘Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ Р С‘Р СРЎРЏ Р С‘Р С”Р С•Р Р…Р С”Р С‘ РЎРѓР С•Р С–Р В»Р В°РЎРѓР Р…Р С• РЎвЂљР ВµР С”РЎС“РЎвЂ°Р ВµР СРЎС“ РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘РЎР‹ Р С—Р ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР В°РЎвЂљР ВµР В»РЎРЏ.
         """
         self.icon = self.icon_off if self.toggled else self.icon_on
 
 
 class MirrorToggleIconButton(MDIconButton):
     """EN: Icon button that toggles horizontal mirroring using a canvas transform.
-    RU: Кнопка-иконка, переключающая горизонтальное зеркало через canvas-трансформацию.
+    RU: Р С™Р Р…Р С•Р С—Р С”Р В°-Р С‘Р С”Р С•Р Р…Р С”Р В°, Р С—Р ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР В°РЎР‹РЎвЂ°Р В°РЎРЏ Р С–Р С•РЎР‚Р С‘Р В·Р С•Р Р…РЎвЂљР В°Р В»РЎРЉР Р…Р С•Р Вµ Р В·Р ВµРЎР‚Р С”Р В°Р В»Р С• РЎвЂЎР ВµРЎР‚Р ВµР В· canvas-РЎвЂљРЎР‚Р В°Р Р…РЎРѓРЎвЂћР С•РЎР‚Р СР В°РЎвЂ Р С‘РЎР‹.
     """
 
     mirrored = BooleanProperty(False)
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Enforce the fixed icon used for keyboard-side placeholder toggle.
-        RU: Зафиксировать иконку заглушки для переключения стороны управления.
+        RU: Р вЂ”Р В°РЎвЂћР С‘Р С”РЎРѓР С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ Р С‘Р С”Р С•Р Р…Р С”РЎС“ Р В·Р В°Р С–Р В»РЎС“РЎв‚¬Р С”Р С‘ Р Т‘Р В»РЎРЏ Р С—Р ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР ВµР Р…Р С‘РЎРЏ РЎРѓРЎвЂљР С•РЎР‚Р С•Р Р…РЎвЂ№ РЎС“Р С—РЎР‚Р В°Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.
         """
         super().on_kv_post(base_widget)
         self.icon = "gamepad-square-outline"
 
     def on_release(self, *args) -> None:
         """EN: Dispatch release event; mirrored state is synced by settings view handler.
-        RU: Пробросить событие release; зеркальность синхронизируется в settings view.
+        RU: Р СџРЎР‚Р С•Р В±РЎР‚Р С•РЎРѓР С‘РЎвЂљРЎРЉ РЎРѓР С•Р В±РЎвЂ№РЎвЂљР С‘Р Вµ release; Р В·Р ВµРЎР‚Р С”Р В°Р В»РЎРЉР Р…Р С•РЎРѓРЎвЂљРЎРЉ РЎРѓР С‘Р Р…РЎвЂ¦РЎР‚Р С•Р Р…Р С‘Р В·Р С‘РЎР‚РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ Р Р† settings view.
         """
         return super().on_release(*args)
 
@@ -102,12 +101,12 @@ Builder.load_file(str(KV_PATH))
 
 class SettingsScreenView(MDScreen):
     """EN: Settings screen view that wires layout, VM, and controller.
-    RU: Представление настроек, связывающее раскладку, VM и контроллер.
+    RU: Р СџРЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎР‚Р С•Р ВµР С”, РЎРѓР Р†РЎРЏР В·РЎвЂ№Р Р†Р В°РЎР‹РЎвЂ°Р ВµР Вµ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”РЎС“, VM Р С‘ Р С”Р С•Р Р…РЎвЂљРЎР‚Р С•Р В»Р В»Р ВµРЎР‚.
     """
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
-        RU: Применить раскладку после загрузки KV.
+        RU: Р СџРЎР‚Р С‘Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”РЎС“ Р С—Р С•РЎРѓР В»Р Вµ Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С”Р С‘ KV.
         """
         apply_settings_layout(self)
         from manager.lang.lang_radio import bind_lang_radios
@@ -123,16 +122,20 @@ class SettingsScreenView(MDScreen):
             ],
         )
         apply_debug_borders_to_ids(self, SETTINGS_DEBUG_IDS)
+        self._ids_keepalive = dict(self.ids)
+        for _key, _widget in self._ids_keepalive.items():
+            self.ids[_key] = _widget
+        self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
+        self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
         self._pay_open_started_at = 0.0
         self._pay_status_poll_event = None
         self._pay_flow_active = False
 
     def on_pre_enter(self, *args) -> None:
         """EN: Update login button text based on auth state.
-        RU: Обновить текст/логин в верхней панели по состоянию авторизации.
+        RU: Р С›Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљ/Р В»Р С•Р С–Р С‘Р Р… Р Р† Р Р†Р ВµРЎР‚РЎвЂ¦Р Р…Р ВµР в„– Р С—Р В°Р Р…Р ВµР В»Р С‘ Р С—Р С• РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘РЎР‹ Р В°Р Р†РЎвЂљР С•РЎР‚Р С‘Р В·Р В°РЎвЂ Р С‘Р С‘.
         """
         super().on_pre_enter(*args)
-        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
         no_data = t("common.no_data")
         app = MDApp.get_running_app()
         if hasattr(app, "is_logged_in"):
@@ -146,16 +149,9 @@ class SettingsScreenView(MDScreen):
             self.ids.settings_top_right_login.text = no_data
         self._sync_hud_layout_icon()
 
-    def on_pre_leave(self, *args) -> None:
-        """EN: Detach the shared top-bar banner slot before leaving the screen.
-        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
-        """
-        AdsManager.detach_banner()
-        return super().on_pre_leave(*args)
-
     def _sync_hud_layout_icon(self) -> None:
         """EN: Sync settings gamepad icon mirror state with persisted HUD layout flag.
-        RU: Синхронизировать зеркальность иконки gamepad с сохранённым флагом раскладки HUD.
+        RU: Р РЋР С‘Р Р…РЎвЂ¦РЎР‚Р С•Р Р…Р С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ Р В·Р ВµРЎР‚Р С”Р В°Р В»РЎРЉР Р…Р С•РЎРѓРЎвЂљРЎРЉ Р С‘Р С”Р С•Р Р…Р С”Р С‘ gamepad РЎРѓ РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…РЎвЂР Р…Р Р…РЎвЂ№Р С РЎвЂћР В»Р В°Р С–Р С•Р С РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”Р С‘ HUD.
         """
         gamepad_icon = self.ids.get("middle_card_keyboard_side_icon")
         if gamepad_icon is not None:
@@ -163,7 +159,7 @@ class SettingsScreenView(MDScreen):
 
     def toggle_hud_layout(self) -> None:
         """EN: Toggle persisted HUD touch-layout swap flag and refresh gamepad icon state.
-        RU: Переключить флаг перестановки тач-раскладки HUD и обновить иконку gamepad.
+        RU: Р СџР ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР С‘РЎвЂљРЎРЉ РЎвЂћР В»Р В°Р С– Р С—Р ВµРЎР‚Р ВµРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р С”Р С‘ РЎвЂљР В°РЎвЂЎ-РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”Р С‘ HUD Р С‘ Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р С‘Р С”Р С•Р Р…Р С”РЎС“ gamepad.
         """
         new_val = toggle_swapped()
         gamepad_icon = self.ids.get("middle_card_keyboard_side_icon")
@@ -172,10 +168,10 @@ class SettingsScreenView(MDScreen):
 
     def open_doc_popup(self, text: str) -> None:
         """EN: Open "About" document loaded from backend API.
-        RU: Открыть документ "О нас", загруженный из backend API.
+        RU: Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљ "Р С› Р Р…Р В°РЎРѓ", Р В·Р В°Р С–РЎР‚РЎС“Р В¶Р ВµР Р…Р Р…РЎвЂ№Р в„– Р С‘Р В· backend API.
 
         EN: `text` argument is kept only for KV backward compatibility.
-        RU: Аргумент `text` сохранён только для обратной совместимости с KV.
+        RU: Р С’РЎР‚Р С–РЎС“Р СР ВµР Р…РЎвЂљ `text` РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…РЎвЂР Р… РЎвЂљР С•Р В»РЎРЉР С”Р С• Р Т‘Р В»РЎРЏ Р С•Р В±РЎР‚Р В°РЎвЂљР Р…Р С•Р в„– РЎРѓР С•Р Р†Р СР ВµРЎРѓРЎвЂљР С‘Р СР С•РЎРѓРЎвЂљР С‘ РЎРѓ KV.
         """
         _ = text
         self.open_text_doc(
@@ -186,10 +182,10 @@ class SettingsScreenView(MDScreen):
 
     def _read_text_doc(self, doc_key: str, missing_message: str) -> str:
         """EN: Read localized markdown document text from backend API.
-        RU: Считать локализованный markdown-текст документа из backend API.
+        RU: Р РЋРЎвЂЎР С‘РЎвЂљР В°РЎвЂљРЎРЉ Р В»Р С•Р С”Р В°Р В»Р С‘Р В·Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– markdown-РЎвЂљР ВµР С”РЎРѓРЎвЂљ Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљР В° Р С‘Р В· backend API.
 
         EN: Network timeout is limited to keep UI responsive.
-        RU: Таймаут сети ограничен, чтобы не блокировать UI надолго.
+        RU: Р СћР В°Р в„–Р СР В°РЎС“РЎвЂљ РЎРѓР ВµРЎвЂљР С‘ Р С•Р С–РЎР‚Р В°Р Р…Р С‘РЎвЂЎР ВµР Р…, РЎвЂЎРЎвЂљР С•Р В±РЎвЂ№ Р Р…Р Вµ Р В±Р В»Р С•Р С”Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ UI Р Р…Р В°Р Т‘Р С•Р В»Р С–Р С•.
         """
         try:
             response = requests.get(
@@ -211,7 +207,7 @@ class SettingsScreenView(MDScreen):
 
     def open_text_doc(self, title: str, doc_key: str, missing_message: str) -> None:
         """EN: Open a scrollable popup with text fetched from backend API.
-        RU: Открыть прокручиваемый popup с текстом, полученным из backend API.
+        RU: Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р С—РЎР‚Р С•Р С”РЎР‚РЎС“РЎвЂЎР С‘Р Р†Р В°Р ВµР СРЎвЂ№Р в„– popup РЎРѓ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С, Р С—Р С•Р В»РЎС“РЎвЂЎР ВµР Р…Р Р…РЎвЂ№Р С Р С‘Р В· backend API.
         """
         text = self._read_text_doc(doc_key, missing_message)
 
@@ -229,7 +225,7 @@ class SettingsScreenView(MDScreen):
         scroller.add_widget(text_lbl)
         content.add_widget(scroller)
 
-        close_btn = Button(text="Закрыть", size_hint_y=None, height=dp(40))
+        close_btn = Button(text="Р вЂ”Р В°Р С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ", size_hint_y=None, height=dp(40))
         content.add_widget(close_btn)
 
         popup = Popup(
@@ -243,7 +239,7 @@ class SettingsScreenView(MDScreen):
 
     def open_privacy_policy(self) -> None:
         """EN: Open localized policy document fetched from backend API.
-        RU: Открыть локализованный документ политики из backend API.
+        RU: Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р В»Р С•Р С”Р В°Р В»Р С‘Р В·Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљ Р С—Р С•Р В»Р С‘РЎвЂљР С‘Р С”Р С‘ Р С‘Р В· backend API.
         """
         self.open_text_doc(
             t("settings.docs.policy"),
@@ -253,7 +249,7 @@ class SettingsScreenView(MDScreen):
 
     def open_game_rules(self) -> None:
         """EN: Open localized rules document fetched from backend API.
-        RU: Открыть локализованный документ правил из backend API.
+        RU: Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р В»Р С•Р С”Р В°Р В»Р С‘Р В·Р С•Р Р†Р В°Р Р…Р Р…РЎвЂ№Р в„– Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљ Р С—РЎР‚Р В°Р Р†Р С‘Р В» Р С‘Р В· backend API.
         """
         self.open_text_doc(
             t("settings.docs.rules"),
@@ -263,7 +259,7 @@ class SettingsScreenView(MDScreen):
 
     def on_delete_account_pressed(self) -> None:
         """EN: Ask for delete-account confirmation and delegate to controller on success.
-        RU: Попросить подтверждение удаления аккаунта и делегировать контроллеру при успехе.
+        RU: Р СџР С•Р С—РЎР‚Р С•РЎРѓР С‘РЎвЂљРЎРЉ Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ РЎС“Р Т‘Р В°Р В»Р ВµР Р…Р С‘РЎРЏ Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљР В° Р С‘ Р Т‘Р ВµР В»Р ВµР С–Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ Р С”Р С•Р Р…РЎвЂљРЎР‚Р С•Р В»Р В»Р ВµРЎР‚РЎС“ Р С—РЎР‚Р С‘ РЎС“РЎРѓР С—Р ВµРЎвЂ¦Р Вµ.
         """
         confirm_delete_account(
             on_deleted=lambda: self._controller.logout(),
@@ -272,7 +268,7 @@ class SettingsScreenView(MDScreen):
 
     def configure(self, vm: SettingsScreenVM, controller: SettingsScreenController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать callback-и.
+        RU: Р СњР В°РЎРѓРЎвЂљРЎР‚Р С•Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљРЎвЂ№ Р С‘ Р С—РЎР‚Р С‘Р Р†РЎРЏР В·Р В°РЎвЂљРЎРЉ callback-Р С‘.
         """
         self._controller = controller
         self.ids.left_text.text = vm.title
@@ -280,13 +276,19 @@ class SettingsScreenView(MDScreen):
         self.ids.action_btn_text.text = caps(vm.action_text)
         self.ids.back_btn_text.text = caps(vm.back_text)
 
-        self.ids.login_btn.on_release = controller.payout
-        self.ids.action_btn.on_release = controller.logout
-        self.ids.back_btn.on_release = controller.back
+        self._payout_callback = lambda *_: controller.payout()
+        self._logout_callback = lambda *_: controller.logout()
+        self._back_callback = lambda *_: controller.back()
+        self.ids.login_btn.unbind(on_release=self._payout_callback)
+        self.ids.login_btn.bind(on_release=self._payout_callback)
+        self.ids.action_btn.unbind(on_release=self._logout_callback)
+        self.ids.action_btn.bind(on_release=self._logout_callback)
+        self.ids.back_btn.unbind(on_release=self._back_callback)
+        self.ids.back_btn.bind(on_release=self._back_callback)
 
     def start_payout_flow(self) -> None:
         """EN: Start payout bot open flow from Settings button.
-        RU: Запустить flow открытия payout-бота по кнопке из Настроек.
+        RU: Р вЂ”Р В°Р С—РЎС“РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ flow Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљР С‘РЎРЏ payout-Р В±Р С•РЎвЂљР В° Р С—Р С• Р С”Р Р…Р С•Р С—Р С”Р Вµ Р С‘Р В· Р СњР В°РЎРѓРЎвЂљРЎР‚Р С•Р ВµР С”.
         """
 
         tglog("[PAY] step1 click PAYOUT")
@@ -335,7 +337,7 @@ class SettingsScreenView(MDScreen):
 
     def _start_payout_status_polling(self, user_id: int) -> None:
         """EN: Poll `/payout/link/status` until bot ack marks code used or timeout is reached.
-        RU: Опрашивать `/payout/link/status`, пока bot ack не пометит код used или не выйдет timeout.
+        RU: Р С›Р С—РЎР‚Р В°РЎв‚¬Р С‘Р Р†Р В°РЎвЂљРЎРЉ `/payout/link/status`, Р С—Р С•Р С”Р В° bot ack Р Р…Р Вµ Р С—Р С•Р СР ВµРЎвЂљР С‘РЎвЂљ Р С”Р С•Р Т‘ used Р С‘Р В»Р С‘ Р Р…Р Вµ Р Р†РЎвЂ№Р в„–Р Т‘Р ВµРЎвЂљ timeout.
         """
 
         if self._pay_status_poll_event is not None:
@@ -381,7 +383,7 @@ class SettingsScreenView(MDScreen):
 
     def _show_session_expired_popup(self) -> None:
         """EN: Show session-expired popup, force logout, and route to Login.
-        RU: Показать popup об истечении сессии, выполнить logout и перейти на Login.
+        RU: Р СџР С•Р С”Р В°Р В·Р В°РЎвЂљРЎРЉ popup Р С•Р В± Р С‘РЎРѓРЎвЂљР ВµРЎвЂЎР ВµР Р…Р С‘Р С‘ РЎРѓР ВµРЎРѓРЎРѓР С‘Р С‘, Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ logout Р С‘ Р С—Р ВµРЎР‚Р ВµР в„–РЎвЂљР С‘ Р Р…Р В° Login.
         """
 
         def _go_login(_instance) -> None:
@@ -401,7 +403,7 @@ class SettingsScreenView(MDScreen):
 
     def _show_info_popup(self, message: str) -> None:
         """EN: Show compact informational popup for payout flow messages.
-        RU: Показать компактный информационный popup для сообщений payout flow.
+        RU: Р СџР С•Р С”Р В°Р В·Р В°РЎвЂљРЎРЉ Р С”Р С•Р СР С—Р В°Р С”РЎвЂљР Р…РЎвЂ№Р в„– Р С‘Р Р…РЎвЂћР С•РЎР‚Р СР В°РЎвЂ Р С‘Р С•Р Р…Р Р…РЎвЂ№Р в„– popup Р Т‘Р В»РЎРЏ РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р в„– payout flow.
         """
 
         content = BoxLayout(orientation="vertical", spacing=10, padding=10)
@@ -411,3 +413,19 @@ class SettingsScreenView(MDScreen):
         popup = Popup(title="", content=content, size_hint=(0.82, 0.35), auto_dismiss=False)
         btn.bind(on_release=lambda *_: popup.dismiss())
         popup.open()
+
+    def get_shell_content_widget(self):
+        """EN: Return the reusable content bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._contentbar_widget
+
+    def get_shell_bottom_widget(self):
+        """EN: Return the reusable bottom bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ bottom bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._bottombar_widget
+
+

@@ -94,12 +94,12 @@ def build_auth_flow(manager: AppScreenManager) -> None:
         login_text=t("settings.btn_logout"),
         action_text=t("settings.btn_action"),
     )
+    settings_view = SettingsScreenView(name=SETTINGS)
     settings_controller = SettingsScreenController(
         on_back=manager.back,
-        on_payout=lambda: None,
+        on_payout=lambda: settings_view.start_payout_flow(),
         on_logout=lambda: manager.go(LOGIN),
     )
-    settings_view = SettingsScreenView(name=SETTINGS)
     settings_view.configure(settings_vm, settings_controller)
 
     login_vm = LoginVM(

@@ -1,5 +1,5 @@
 """EN: View for the profile screen.
-RU: Представление экрана профиля.
+RU: Р СџРЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘Р Вµ РЎРЊР С”РЎР‚Р В°Р Р…Р В° Р С—РЎР‚Р С•РЎвЂћР С‘Р В»РЎРЏ.
 """
 
 from pathlib import Path
@@ -19,7 +19,6 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog, MDDialogContentContainer, MDDialogHeadlineText
 from kivymd.uix.label import MDLabel
 from kivymd.uix.screen import MDScreen
-from manager.ads import AdsManager
 from manager import auth_backend
 from manager.lang.lang_manager import t
 from uix.debug.debug_borders import apply_debug_borders_to_ids
@@ -45,7 +44,7 @@ Builder.load_file(str(KV_PATH))
 
 class ProfileScreenView(MDScreen):
     """EN: Profile screen view that wires layout, VM, and controller.
-    RU: Представление профиля, связывающее раскладку, VM и контроллер.
+    RU: Р СџРЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘Р Вµ Р С—РЎР‚Р С•РЎвЂћР С‘Р В»РЎРЏ, РЎРѓР Р†РЎРЏР В·РЎвЂ№Р Р†Р В°РЎР‹РЎвЂ°Р ВµР Вµ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”РЎС“, VM Р С‘ Р С”Р С•Р Р…РЎвЂљРЎР‚Р С•Р В»Р В»Р ВµРЎР‚.
     """
 
     best_score_text = StringProperty("0")
@@ -57,7 +56,7 @@ class ProfileScreenView(MDScreen):
 
     def __init__(self, **kwargs):
         """EN: Initialize view state used by the rating dialog.
-        RU: Инициализировать состояние представления для диалога рейтинга.
+        RU: Р ВР Р…Р С‘РЎвЂ Р С‘Р В°Р В»Р С‘Р В·Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘Р Вµ Р С—РЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ Р Т‘Р В»РЎРЏ Р Т‘Р С‘Р В°Р В»Р С•Р С–Р В° РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р В°.
         """
         super().__init__(**kwargs)
         self._rating_dialog: MDDialog | None = None
@@ -66,24 +65,16 @@ class ProfileScreenView(MDScreen):
 
     def on_pre_enter(self, *args):
         """EN: Refresh profile data before showing the screen.
-        RU: Обновить данные профиля перед показом экрана.
+        RU: Р С›Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С—РЎР‚Р С•РЎвЂћР С‘Р В»РЎРЏ Р С—Р ВµРЎР‚Р ВµР Т‘ Р С—Р С•Р С”Р В°Р В·Р С•Р С РЎРЊР С”РЎР‚Р В°Р Р…Р В°.
         """
-        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
         if hasattr(self, "vm"):
             self.ids.profile_top_left_title.text = self.vm.title
         self.controller.refresh_profile_cards(self)
         return super().on_pre_enter(*args)
 
-    def on_pre_leave(self, *args):
-        """EN: Detach the shared top-bar banner slot before leaving the screen.
-        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
-        """
-        AdsManager.detach_banner()
-        return super().on_pre_leave(*args)
-
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
-        RU: Применить раскладку после загрузки KV.
+        RU: Р СџРЎР‚Р С‘Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”РЎС“ Р С—Р С•РЎРѓР В»Р Вµ Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С”Р С‘ KV.
         """
         apply_profile_layout(self)
         apply_button_text_style(
@@ -95,10 +86,15 @@ class ProfileScreenView(MDScreen):
             ],
         )
         apply_debug_borders_to_ids(self, PROFILE_DEBUG_IDS)
+        self._ids_keepalive = dict(self.ids)
+        for _key, _widget in self._ids_keepalive.items():
+            self.ids[_key] = _widget
+        self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
+        self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
 
     def configure(self, vm: ProfileScreenVM, controller: ProfileScreenController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать колбэки.
+        RU: Р СњР В°РЎРѓРЎвЂљРЎР‚Р С•Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљРЎвЂ№ Р С‘ Р С—РЎР‚Р С‘Р Р†РЎРЏР В·Р В°РЎвЂљРЎРЉ Р С”Р С•Р В»Р В±РЎРЊР С”Р С‘.
         """
         self.vm = vm
         self.controller = controller
@@ -106,14 +102,20 @@ class ProfileScreenView(MDScreen):
         self.ids.payout_label.text = caps(vm.payout_text)
         self.ids.login_label.text = caps(vm.login_text)
 
-        self.ids.back_btn.on_release = controller.back
-        self.ids.payout_btn.on_release = lambda *_: self.open_rating_dialog()
-        self.ids.login_btn.on_release = controller.login
+        self._back_callback = lambda *_: controller.back()
+        self._open_rating_dialog_callback = lambda *_: self.open_rating_dialog()
+        self._login_callback = lambda *_: controller.login()
+        self.ids.back_btn.unbind(on_release=self._back_callback)
+        self.ids.back_btn.bind(on_release=self._back_callback)
+        self.ids.payout_btn.unbind(on_release=self._open_rating_dialog_callback)
+        self.ids.payout_btn.bind(on_release=self._open_rating_dialog_callback)
+        self.ids.login_btn.unbind(on_release=self._login_callback)
+        self.ids.login_btn.bind(on_release=self._login_callback)
         self.best_score_text = str(RecordStorage().get_best_score())
 
     def open_rating_dialog(self) -> None:
         """EN: Open rating dialog and asynchronously load top-100 rows.
-        RU: Открыть диалог рейтинга и асинхронно загрузить топ-100 строк.
+        RU: Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р Т‘Р С‘Р В°Р В»Р С•Р С– РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р В° Р С‘ Р В°РЎРѓР С‘Р Р…РЎвЂ¦РЎР‚Р С•Р Р…Р Р…Р С• Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С‘РЎвЂљРЎРЉ РЎвЂљР С•Р С—-100 РЎРѓРЎвЂљРЎР‚Р С•Р С”.
         """
         self._close_rating_dialog()
         content, rows_grid = self._build_rating_content()
@@ -133,7 +135,7 @@ class ProfileScreenView(MDScreen):
 
     def _build_rating_content(self) -> tuple[MDBoxLayout, GridLayout]:
         """EN: Build fixed header + scrollable rows layout for rating table.
-        RU: Создать раскладку с фиксированной шапкой и скроллируемыми строками рейтинга.
+        RU: Р РЋР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”РЎС“ РЎРѓ РЎвЂћР С‘Р С”РЎРѓР С‘РЎР‚Р С•Р Р†Р В°Р Р…Р Р…Р С•Р в„– РЎв‚¬Р В°Р С—Р С”Р С•Р в„– Р С‘ РЎРѓР С”РЎР‚Р С•Р В»Р В»Р С‘РЎР‚РЎС“Р ВµР СРЎвЂ№Р СР С‘ РЎРѓРЎвЂљРЎР‚Р С•Р С”Р В°Р СР С‘ РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р В°.
         """
         dialog_height = max(dp(300), Window.height * RATING_DIALOG_HEIGHT_RATIO)
         self._rating_row_height = max(dp(28), dialog_height * RATING_TABLE_ROW_HEIGHT_RATIO)
@@ -206,7 +208,7 @@ class ProfileScreenView(MDScreen):
 
     def _make_table_label(self, text_value: str, halign: str, *, bold: bool = False) -> MDLabel:
         """EN: Create table cell label with consistent sizing/alignment rules.
-        RU: Создать label-ячейку таблицы с едиными правилами размера/выравнивания.
+        RU: Р РЋР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ label-РЎРЏРЎвЂЎР ВµР в„–Р С”РЎС“ РЎвЂљР В°Р В±Р В»Р С‘РЎвЂ РЎвЂ№ РЎРѓ Р ВµР Т‘Р С‘Р Р…РЎвЂ№Р СР С‘ Р С—РЎР‚Р В°Р Р†Р С‘Р В»Р В°Р СР С‘ РЎР‚Р В°Р В·Р СР ВµРЎР‚Р В°/Р Р†РЎвЂ№РЎР‚Р В°Р Р†Р Р…Р С‘Р Р†Р В°Р Р…Р С‘РЎРЏ.
         """
         label = MDLabel(
             text=f"[b]{text_value}[/b]" if bold else text_value,
@@ -230,7 +232,7 @@ class ProfileScreenView(MDScreen):
         cell_height: float | None = None,
     ) -> MDBoxLayout:
         """EN: Create one table cell wrapper with label.
-        RU: Создать одну ячейку таблицы с вложенным label.
+        RU: Р РЋР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ Р С•Р Т‘Р Р…РЎС“ РЎРЏРЎвЂЎР ВµР в„–Р С”РЎС“ РЎвЂљР В°Р В±Р В»Р С‘РЎвЂ РЎвЂ№ РЎРѓ Р Р†Р В»Р С•Р В¶Р ВµР Р…Р Р…РЎвЂ№Р С label.
         """
         cell = MDBoxLayout(
             orientation="vertical",
@@ -244,7 +246,7 @@ class ProfileScreenView(MDScreen):
 
     def _bind_grid_borders(self, grid: GridLayout, *, include_row_dividers: bool) -> None:
         """EN: Draw continuous grid borders for table header/body.
-        RU: Рисовать непрерывные границы сетки для шапки/тела таблицы.
+        RU: Р В Р С‘РЎРѓР С•Р Р†Р В°РЎвЂљРЎРЉ Р Р…Р ВµР С—РЎР‚Р ВµРЎР‚РЎвЂ№Р Р†Р Р…РЎвЂ№Р Вµ Р С–РЎР‚Р В°Р Р…Р С‘РЎвЂ РЎвЂ№ РЎРѓР ВµРЎвЂљР С”Р С‘ Р Т‘Р В»РЎРЏ РЎв‚¬Р В°Р С—Р С”Р С‘/РЎвЂљР ВµР В»Р В° РЎвЂљР В°Р В±Р В»Р С‘РЎвЂ РЎвЂ№.
         """
 
         def _redraw(*_):
@@ -275,7 +277,7 @@ class ProfileScreenView(MDScreen):
 
     def _set_rating_rows(self, rows: list[dict]) -> None:
         """EN: Fill rating rows area with provided data.
-        RU: Заполнить область строк рейтинга переданными данными.
+        RU: Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ Р С•Р В±Р В»Р В°РЎРѓРЎвЂљРЎРЉ РЎРѓРЎвЂљРЎР‚Р С•Р С” РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р В° Р С—Р ВµРЎР‚Р ВµР Т‘Р В°Р Р…Р Р…РЎвЂ№Р СР С‘ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р СР С‘.
         """
         if self._rating_rows_grid is None:
             return
@@ -297,7 +299,7 @@ class ProfileScreenView(MDScreen):
 
     def _load_rating_rows(self) -> None:
         """EN: Request rating data from bridge and update UI rows.
-        RU: Запросить данные рейтинга через bridge и обновить строки UI.
+        RU: Р вЂ”Р В°Р С—РЎР‚Р С•РЎРѓР С‘РЎвЂљРЎРЉ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р В° РЎвЂЎР ВµРЎР‚Р ВµР В· bridge Р С‘ Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ РЎРѓРЎвЂљРЎР‚Р С•Р С”Р С‘ UI.
         """
         def _worker() -> None:
             try:
@@ -317,7 +319,7 @@ class ProfileScreenView(MDScreen):
 
     def _close_rating_dialog(self) -> None:
         """EN: Close and clear rating dialog resources.
-        RU: Закрыть и очистить ресурсы диалога рейтинга.
+        RU: Р вЂ”Р В°Р С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р С‘ Р С•РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ РЎР‚Р ВµРЎРѓРЎС“РЎР‚РЎРѓРЎвЂ№ Р Т‘Р С‘Р В°Р В»Р С•Р С–Р В° РЎР‚Р ВµР в„–РЎвЂљР С‘Р Р…Р С–Р В°.
         """
         if self._rating_dialog is not None:
             try:
@@ -326,3 +328,19 @@ class ProfileScreenView(MDScreen):
                 pass
         self._rating_dialog = None
         self._rating_rows_grid = None
+
+    def get_shell_content_widget(self):
+        """EN: Return the reusable content bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._contentbar_widget
+
+    def get_shell_bottom_widget(self):
+        """EN: Return the reusable bottom bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ bottom bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._bottombar_widget
+
+

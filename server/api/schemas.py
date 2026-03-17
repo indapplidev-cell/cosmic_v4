@@ -448,10 +448,11 @@ class AdsConfigRequest(StrictBaseModel):
 
     user_id: int = Field(gt=0)
     platform: Annotated[str, MinLen(2), MaxLen(32)]
-    app_version: Annotated[str, MinLen(1), MaxLen(32)]
+    app_version: Annotated[str, MaxLen(32)] | None = None
     locale_country: Annotated[str, MinLen(2), MaxLen(8)]
-    tz_offset: Annotated[str, MinLen(1), MaxLen(8)]
-    device: Annotated[str, MinLen(1), MaxLen(128)]
+    tz_offset: Annotated[str, MaxLen(8)] | None = None
+    device: Annotated[str, MaxLen(128)] | None = None
+    screen: Annotated[str, MaxLen(32)] | None = None
 
 
 class AdsPlacementConfig(StrictBaseModel):
@@ -473,12 +474,18 @@ class AdsConfigResponse(StrictBaseModel):
     """
 
     ok: bool
-    region: Literal["cis", "world"]
-    provider: Literal["dummy", "yandex", "admob"]
+    provider: Literal["admob_mediation", "dummy"]
+    region: Literal["CIS", "WORLD"]
+    configured: bool
     banner_enabled: bool
     rewarded_enabled: bool
-    placements: dict[str, AdsPlacementConfig]
-    ts: int = Field(ge=0)
+    banner_ad_unit_id: Annotated[str, MaxLen(256)] | None = None
+    rewarded_ad_unit_id: Annotated[str, MaxLen(256)] | None = None
+    admob_app_id: Annotated[str, MaxLen(256)] | None = None
+    refresh_sec: int = Field(ge=0, default=30)
+    min_banner_sec: int = Field(ge=0, default=5)
+    debug: bool = False
+    error: Annotated[str, MaxLen(64)] | None = None
 
 
 class AdsEventRequest(StrictBaseModel):
@@ -487,8 +494,21 @@ class AdsEventRequest(StrictBaseModel):
     """
 
     user_id: int = Field(gt=0)
+    screen: Annotated[str, MaxLen(32)] | None = None
+    placement: Literal["topbar_banner", "rewarded_gameover"]
+    event: Literal[
+        "banner_attach",
+        "banner_detach",
+        "rewarded_click",
+        "rewarded_request",
+        "rewarded_show",
+        "rewarded_result",
+    ]
     provider: Annotated[str, MinLen(1), MaxLen(32)]
-    placement: Annotated[str, MinLen(1), MaxLen(64)]
-    event: Annotated[str, MinLen(1), MaxLen(64)]
-    ts: int = Field(ge=0)
+    flow_id: Annotated[str, MaxLen(32)] | None = None
+    ok: bool | None = None
+    detail: Annotated[str, MaxLen(512)] | None = None
+    ts_client: float | None = Field(default=None, ge=0)
+    meta: dict[str, object] = Field(default_factory=dict)
+    ts: int | None = Field(default=None, ge=0)
     extra: dict[str, object] = Field(default_factory=dict)

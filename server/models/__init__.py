@@ -3,7 +3,10 @@ RU: Экспортировать все модели, чтобы metadata вид
 """
 
 from server.models.balance import Balance
+from server.models.ads_event import AdsEvent
+from server.models.ads_setting import AdsSetting
 from server.models.password_reset import PasswordResetToken
+from server.models.payout_link_code import PayoutLinkCode
 from server.models.profile_game import ProfileGame
 from server.models.profile_user import ProfileUser
 from server.models.refresh_token import RefreshToken
@@ -17,11 +20,14 @@ from server.models.user import User
 
 __all__ = [
     "User",
+    "AdsSetting",
+    "AdsEvent",
     "ProfileUser",
     "ProfileGame",
     "Balance",
     "RefreshToken",
     "PasswordResetToken",
+    "PayoutLinkCode",
     "TelegramAccount",
     "TelegramLinkToken",
     "TelegramOutbox",

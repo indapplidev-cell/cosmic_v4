@@ -12,7 +12,7 @@ from typing import Any
 from kivy.utils import platform as kivy_platform
 
 from manager import auth_backend
-from manager.ads.ads_types import AdsConfig, AdsEvent, AdsPlacementConfig, ads_log
+from manager.ads.ads_types import AdsConfig, AdsEvent, AdsPlacementConfig, ads_log, get_current_screen_name
 from manager.session_manager import get_session_user_id
 
 
@@ -49,6 +49,7 @@ def _build_config_request() -> dict[str, Any]:
         "locale_country": _detect_locale_country(),
         "tz_offset": _detect_tz_offset(),
         "device": f"{platform.system()} {platform.machine()}".strip(),
+        "screen": get_current_screen_name(),
     }
 
 
@@ -76,10 +77,17 @@ def _parse_config(payload: dict[str, Any]) -> AdsConfig:
         ok=bool(payload.get("ok")),
         region=str(payload.get("region") or ""),
         provider=str(payload.get("provider") or ""),
+        configured=bool(payload.get("configured")),
         banner_enabled=bool(payload.get("banner_enabled")),
         rewarded_enabled=bool(payload.get("rewarded_enabled")),
+        admob_app_id=str(payload.get("admob_app_id") or "") or None,
+        banner_ad_unit_id=str(payload.get("banner_ad_unit_id") or "") or None,
+        rewarded_ad_unit_id=str(payload.get("rewarded_ad_unit_id") or "") or None,
+        refresh_sec=int(payload.get("refresh_sec") or 30),
+        min_banner_sec=int(payload.get("min_banner_sec") or 5),
+        debug=bool(payload.get("debug")),
+        error=str(payload.get("error") or "") or None,
         placements=placements,
-        ts=int(payload.get("ts") or 0),
     )
 
 
@@ -89,21 +97,41 @@ def fetch_config() -> AdsConfig | None:
     """
 
     payload = _build_config_request()
+    screen_name = get_current_screen_name()
     if int(payload["user_id"]) <= 0:
-        ads_log("config fetch skipped", reason="no_session")
+        ads_log("config fetch skipped", screen=screen_name, user_id=payload["user_id"], reason="no_session")
         return None
-    ads_log("config fetch request", platform=payload["platform"], locale_country=payload["locale_country"])
-    status_code, response = auth_backend.authorized_post_json(
-        "/ads/config",
-        payload,
-        tag="ADS_CONFIG",
+    ads_log(
+        "config fetch request",
+        screen=screen_name,
+        user_id=payload["user_id"],
+        platform=payload["platform"],
+        locale_country=payload["locale_country"],
     )
+    response = auth_backend.ads_config_fetch(
+        int(payload["user_id"]),
+        str(payload["platform"]),
+        str(payload["locale_country"]),
+        screen_name,
+        app_version=str(payload["app_version"]),
+    )
+    status_code = int(response.get("_status", 0))
+    response.pop("_status", None)
     ok = bool(isinstance(response, dict) and response.get("ok"))
     error_value = str(response.get("error") or "") if isinstance(response, dict) else "NETWORK"
-    ads_log("config fetch response", status=status_code, ok=ok, error=error_value or "-")
+    ads_log(
+        "config fetch response",
+        screen=screen_name,
+        user_id=payload["user_id"],
+        status=status_code,
+        ok=ok,
+        error=error_value or "-",
+    )
     if not ok or not isinstance(response, dict):
         ads_log(
             "config fetch disabled",
+            screen=screen_name,
+            user_id=payload["user_id"],
             status=status_code,
             error=error_value or "NETWORK",
         )
@@ -118,23 +146,42 @@ def post_event(event: AdsEvent) -> bool:
     """
 
     if int(event.user_id) <= 0:
-        ads_log("server event skipped", event=event.event, placement=event.placement, reason="no_session")
+        ads_log(
+            "server event skipped",
+            placement=event.placement,
+            screen=get_current_screen_name(),
+            user_id=event.user_id,
+            provider=event.provider,
+            event=event.event,
+            reason="no_session",
+        )
         return False
     payload = {
         "user_id": int(event.user_id),
-        "provider": str(event.provider),
+        "screen": str(event.screen or get_current_screen_name()),
         "placement": str(event.placement),
         "event": str(event.event),
-        "ts": int(event.ts),
-        "extra": dict(event.extra or {}),
+        "provider": str(event.provider),
+        "flow_id": str(event.flow_id or "") or None,
+        "ok": event.ok,
+        "detail": str(event.detail or "") or None,
+        "ts_client": float(event.ts_client or time.time()),
+        "meta": dict(event.meta or {}),
     }
-    status_code, response = auth_backend.authorized_post_json(
-        "/ads/event",
-        payload,
-        tag=f"ADS_EVENT_{event.event}",
-    )
+    response = auth_backend.ads_event_post(payload)
+    status_code = int(response.get("_status", 0))
+    response.pop("_status", None)
     posted = bool(isinstance(response, dict) and response.get("ok"))
-    ads_log("event post", event=event.event, placement=event.placement, ok=posted, status=status_code)
+    ads_log(
+        "event post",
+        placement=event.placement,
+        screen=str(event.screen or get_current_screen_name()),
+        user_id=event.user_id,
+        provider=event.provider,
+        event=event.event,
+        ok=posted,
+        status=status_code,
+    )
     return posted
 
 

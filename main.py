@@ -18,6 +18,7 @@ from kivy.properties import BooleanProperty, StringProperty
 from kivymd.app import MDApp
 
 from manager import app_focus_tracker
+from manager.ads import AdsManager
 from manager.trace import TraceManager, trace_log
 from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import enable_debug_borders
@@ -45,6 +46,8 @@ class CosmicApp(MDApp):
         RU: Создать и вернуть корневое представление.
         """
         apply_window_config()
+        self.title = "Escape to Mars"
+        Window.title = "Escape to Mars"
         TraceManager.instance()
         trace_log("SESSION", "APP_BUILD_START")
         enable_debug_borders(DEBUG_UI_BORDERS)
@@ -53,6 +56,7 @@ class CosmicApp(MDApp):
         self._manager = manager
         root = Path(__file__).resolve().parent
         Builder.load_file(str(root / "ads" / "banner" / "banner_slot.kv"))
+        AdsManager.init(app=self)
         build_auth_flow(manager)
         manager.go(LOAD_APP, push_history=False)
         Window.bind(on_focus=self._on_window_focus)

@@ -1,5 +1,5 @@
 """EN: View for the profile change screen.
-RU: Представление экрана редактирования профиля.
+RU: Р СџРЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘Р Вµ РЎРЊР С”РЎР‚Р В°Р Р…Р В° РЎР‚Р ВµР Т‘Р В°Р С”РЎвЂљР С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ Р С—РЎР‚Р С•РЎвЂћР С‘Р В»РЎРЏ.
 """
 
 from pathlib import Path
@@ -10,7 +10,6 @@ from kivy.lang import Builder
 from kivy.properties import ObjectProperty, StringProperty
 from kivymd.uix.screen import MDScreen
 
-from manager.ads import AdsManager
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
 
@@ -47,7 +46,7 @@ DEBUG_WIDGET_IDS = [
 
 class ProfileChangeView(MDScreen):
     """EN: Profile change screen view that wires VM and controller.
-    RU: Представление редактирования профиля, связывающее VM и контроллер.
+    RU: Р СџРЎР‚Р ВµР Т‘РЎРѓРЎвЂљР В°Р Р†Р В»Р ВµР Р…Р С‘Р Вµ РЎР‚Р ВµР Т‘Р В°Р С”РЎвЂљР С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ Р С—РЎР‚Р С•РЎвЂћР С‘Р В»РЎРЏ, РЎРѓР Р†РЎРЏР В·РЎвЂ№Р Р†Р В°РЎР‹РЎвЂ°Р ВµР Вµ VM Р С‘ Р С”Р С•Р Р…РЎвЂљРЎР‚Р С•Р В»Р В»Р ВµРЎР‚.
     """
 
     vm = ObjectProperty(None)
@@ -56,17 +55,22 @@ class ProfileChangeView(MDScreen):
 
     def on_kv_post(self, base_widget) -> None:
         """EN: Apply layout after KV is ready.
-        RU: Применить раскладку после загрузки KV.
+        RU: Р СџРЎР‚Р С‘Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”РЎС“ Р С—Р С•РЎРѓР В»Р Вµ Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С”Р С‘ KV.
         """
         self._apply_layout()
         apply_button_text_style(
             self,
             [self.ids.ok_label, self.ids.delete_label, self.ids.back_label],
         )
+        self._ids_keepalive = dict(self.ids)
+        for _key, _widget in self._ids_keepalive.items():
+            self.ids[_key] = _widget
+        self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
+        self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
 
     def configure(self, vm: ProfileChangeVM, controller: ProfileChangeController) -> None:
         """EN: Configure texts and bind callbacks.
-        RU: Настроить тексты и привязать колбэки.
+        RU: Р СњР В°РЎРѓРЎвЂљРЎР‚Р С•Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљРЎвЂ№ Р С‘ Р С—РЎР‚Р С‘Р Р†РЎРЏР В·Р В°РЎвЂљРЎРЉ Р С”Р С•Р В»Р В±РЎРЊР С”Р С‘.
         """
         self.vm = vm
         self.controller = controller
@@ -77,23 +81,15 @@ class ProfileChangeView(MDScreen):
 
     def on_pre_enter(self, *args) -> None:
         """EN: Prefill fields before showing the screen.
-        RU: Предзаполнить поля перед показом экрана.
+        RU: Р СџРЎР‚Р ВµР Т‘Р В·Р В°Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ Р С—Р С•Р В»РЎРЏ Р С—Р ВµРЎР‚Р ВµР Т‘ Р С—Р С•Р С”Р В°Р В·Р С•Р С РЎРЊР С”РЎР‚Р В°Р Р…Р В°.
         """
-        AdsManager.attach_banner(self.ids.get("ads_banner_slot"))
         if self.controller:
             self.controller.on_enter(self)
         return super().on_pre_enter(*args)
 
-    def on_pre_leave(self, *args) -> None:
-        """EN: Detach the shared top-bar banner slot before leaving the screen.
-        RU: Отсоединить общий banner-slot в верхней панели перед уходом с экрана.
-        """
-        AdsManager.detach_banner()
-        return super().on_pre_leave(*args)
-
     def _apply_layout(self) -> None:
         """EN: Apply simple layout proportions like Profile/Settings.
-        RU: Применить пропорции раскладки как у Profile/Settings.
+        RU: Р СџРЎР‚Р С‘Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ Р С—РЎР‚Р С•Р С—Р С•РЎР‚РЎвЂ Р С‘Р С‘ РЎР‚Р В°РЎРѓР С”Р В»Р В°Р Т‘Р С”Р С‘ Р С”Р В°Р С” РЎС“ Profile/Settings.
         """
         def _recalc(*_args) -> None:
             ids = self.ids
@@ -148,3 +144,19 @@ class ProfileChangeView(MDScreen):
             Window.bind(size=_recalc)
             self._layout_bound = True
         Clock.schedule_once(_recalc, 0)
+
+    def get_shell_content_widget(self):
+        """EN: Return the reusable content bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._contentbar_widget
+
+    def get_shell_bottom_widget(self):
+        """EN: Return the reusable bottom bar widget for the shared shell host.
+        RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ bottom bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
+        """
+
+        return self._bottombar_widget
+
+
