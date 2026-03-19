@@ -9,9 +9,9 @@
   "telegram_user_id": 1790839676,
   "telegram_linked": true,
   "telegram_verified": true,
-  "record": 48,
+  "record": 96,
   "rating": 736,
   "balance": 0.0,
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwiZW1haWwiOiJ6ZW5vbEB5YW5kZXgucnUiLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzczOTMzNzM5LCJleHAiOjE3NzM5MzQ2Mzl9.fNrERnzItlx9Vt2GsiWvzbu2cW-zAHrqo1J_TqYwBcI",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwidHlwZSI6InJlZnJlc2giLCJqdGkiOiIyODMyOWQ2NTUzYzA0NTc5YmI0NWRkMzI0YTA1NGVlMzIwMmVlMTJjNzMzMTU0MGYiLCJpYXQiOjE3NzM5MzM3MzksImV4cCI6MTc3NjUyNTczOX0.86rKBbpwsKD1GIUCCtR21oPuy4zogSpsaOcdyBuTXp0"
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwiZW1haWwiOiJ6ZW5vbEB5YW5kZXgucnUiLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzczOTM2NzQzLCJleHAiOjE3NzM5Mzc2NDN9.ckL42fV4pJ3gUBeIHGurKC94dlHEKD1zxsZBfpyvDuA",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwidHlwZSI6InJlZnJlc2giLCJqdGkiOiIzYjI1Yzk1N2E3N2Y0N2Y4YjBlNmE5NWIwODhhZmJkMTk1ZWY0ZGYzMTRhMTRlN2IiLCJpYXQiOjE3NzM5MzY3NDMsImV4cCI6MTc3NjUyODc0M30.dLP7itjqYGgGoSeVMfLI7wxVrr_RleAezEeVnrPrvlA"
 }

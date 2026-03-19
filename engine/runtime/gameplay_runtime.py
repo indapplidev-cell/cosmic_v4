@@ -66,7 +66,7 @@ class GameplayRuntime:
         self._linear_speed_x = 0.0
         self._linear_active = False
         self._paused_for_ad = False
-        self._x_smoothing_speed = 4.0
+        self._x_smoothing_ratio = 0.3
         self._x_snap_epsilon = 0.5
 
         surface.bind_engines(
@@ -426,7 +426,8 @@ class GameplayRuntime:
             self._state.target_offset_x = offset_max
 
         diff = self._state.target_offset_x - self._state.current_offset_x
-        max_delta = self._x_smoothing_speed * width * dt
+        step_x = self._step_x(width)
+        max_delta = step_x * self._x_smoothing_ratio * (dt * 60)
         if abs(diff) <= self._x_snap_epsilon:
             self._state.current_offset_x = self._state.target_offset_x
         else:
