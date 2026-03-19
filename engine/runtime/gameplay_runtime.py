@@ -214,7 +214,7 @@ class GameplayRuntime:
         self._linear_active = False
         self._linear_speed_x = 0.0
         self._state.current_speed_x = 0.0
-        self._state.speed_y_factor = 1.0
+        self._state.speed_y_factor = self._get_active_level_speed_y_factor()
 
     def resume_after_ad(self) -> None:
         """EN: Resume the same run after rewarded flow is fully closed and continuation is allowed.
@@ -238,8 +238,17 @@ class GameplayRuntime:
         EN: Reads the active level profile once at runtime initialization points.
         RU: Читает профиль активного уровня один раз в точках инициализации runtime.
         """
+        self._state.speed_y_factor = self._get_active_level_speed_y_factor()
+
+    def _get_active_level_speed_y_factor(self) -> float:
+        """
+        Read the cruising vertical speed factor for the active level.
+
+        EN: Returns the base speed factor defined by the active level profile.
+        RU: Возвращает базовый коэффициент скорости, заданный профилем активного уровня.
+        """
         profile = self._level_runtime.get_active_profile()
-        self._state.speed_y_factor = profile.initial_speed_y_factor
+        return profile.initial_speed_y_factor
 
     def brake_off(self) -> None:
         """EN: Disable vertical brake and restore default factor.
@@ -247,7 +256,7 @@ class GameplayRuntime:
         """
         if self._paused_for_ad:
             return
-        self._state.speed_y_factor = 1.0
+        self._state.speed_y_factor = self._get_active_level_speed_y_factor()
 
     def _max_x_offset(self, width: float) -> float:
         """
