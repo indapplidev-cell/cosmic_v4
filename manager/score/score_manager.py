@@ -39,7 +39,7 @@ class ScoreManager:
         """
         Reset score to zero.
 
-        EN: Forces the label to show SCORE: 0.
-        RU: Принудительно показывает SCORE: 0.
+        EN: Forces the label to show localized score text with zero value.
+        RU: Принудительно показывает локализованный счёт со значением ноль.
         """
         self.set_score(0)

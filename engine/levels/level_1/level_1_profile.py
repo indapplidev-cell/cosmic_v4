@@ -3,7 +3,7 @@
 Runtime profile builder for level 1.
 
 EN: Defines the default local level profile used on gameplay startup.
-RU: Определяет профиль локального уровня по умолчанию для старта gameplay.
+RU: ?????????? ??????? ?????????? ?????? ?? ????????? ??? ?????? gameplay.
 """
 
 from __future__ import annotations
@@ -15,8 +15,13 @@ def build_level_1_profile() -> LevelRuntimeProfile:
     """
     Build the runtime profile for the default first level.
 
-    EN: Returns level_1 with half of the current base vertical speed factor.
-    RU: Возвращает level_1 с половиной текущего базового коэффициента вертикальной скорости.
+    EN: Returns level_1 with half base vertical speed and a timed max-score goal.
+    RU: ?????????? level_1 ? ?????????? ??????? ???????????? ????????? ? timed max-score ?????.
     """
-    return LevelRuntimeProfile(level_id="level_1", initial_speed_y_factor=0.5)
-
+    return LevelRuntimeProfile(
+        level_id="level_1",
+        initial_speed_y_factor=0.5,
+        goal_type="timed_max_score",
+        time_limit_sec=60,
+        target_score=None,
+    )

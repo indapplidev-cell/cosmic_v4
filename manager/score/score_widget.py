@@ -9,6 +9,8 @@ RU: Лёгкий лейбл, который форматирует счёт ка
 from kivy.properties import NumericProperty, StringProperty
 from kivymd.uix.label import MDLabel
 
+from manager.lang.lang_manager import t
+
 
 class ScoreLabel(MDLabel):
     """
@@ -19,7 +21,7 @@ class ScoreLabel(MDLabel):
     """
 
     score_value = NumericProperty(0)
-    score_text = StringProperty("SCORE: 0")
+    score_text = StringProperty("")
 
     def on_kv_post(self, *_args) -> None:
         """
@@ -52,10 +54,10 @@ class ScoreLabel(MDLabel):
         """
         Update score value and label text.
 
-        EN: Formats score as 'SCORE: N'.
-        RU: Форматирует счёт как 'SCORE: N'.
+        EN: Formats score via the language manager and dictionaries.
+        RU: Форматирует счёт через менеджер языка и словари.
         """
         self.score_value = int(value)
-        self.score_text = f"SCORE: {self.score_value}"
+        self.score_text = f"{t('game.score')}: {self.score_value}"
         self.text = self.score_text
         self._sync_text_size()

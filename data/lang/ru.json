@@ -125,6 +125,7 @@
   "profile_change.popup.changed": "Данные изменены",
   "profile_change.btn_back": "Назад",
   "game.title": "Старт",
+  "game.score": "Счёт",
   "game.btn_start": "Старт",
   "game.btn_receive": "Получить",
   "game.reward_prompt": "Хотите продолжить? Получите жизни прямо сейчас.",
@@ -161,5 +162,6 @@
   "pay.return_hint": "Если ссылка не открылась, переключитесь обратно в приложение Cosmic.",
   "tg.open_timeout": "Не удалось открыть Telegram. Откройте Telegram и нажмите Start в чате бота.",
   "pay.open_timeout": "Не удалось открыть Telegram. Откройте Telegram и нажмите Start в чате бота.",
-  "tg.verify_timeout": "Подтверждение Telegram не завершено. Откройте Telegram и нажмите Start в чате бота."
+  "tg.verify_timeout": "Подтверждение Telegram не завершено. Откройте Telegram и нажмите Start в чате бота.",
+  "game.level_complete": "Уровень завершён"
 }

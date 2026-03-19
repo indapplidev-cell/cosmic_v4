@@ -32,6 +32,7 @@ from manager.game_control.hud_layout_store import get_swapped
 from manager.score.score_manager import ScoreManager
 from manager.score.score_widget import ScoreLabel
 from manager.time.time_manager import TimeManager
+from manager.levels.level_runtime_manager import LevelRuntimeManager
 from data.gameplay.rating.rating_session import RatingSession
 from data.gameplay.rating_storage import RatingStorage
 from data.gameplay.record_store import RecordStore
@@ -68,6 +69,7 @@ class GameScreenView(MDScreen):
         self._record_store = RecordStore()
         self._balance_store = BalanceStore()
         self._game_over_flag = False
+        self._level_completed_flag = False
         self._time_manager = TimeManager()
         self._session_started = False
         self._receive_click_start = 0
@@ -88,6 +90,9 @@ class GameScreenView(MDScreen):
         self._rewarded_flow_active = False
         self._rewarded_focus_lost = False
         self._pending_rewarded_result = None
+        self._level_runtime_manager = LevelRuntimeManager()
+        self._active_level_profile = None
+        self._level_completed_flag = False
         Window.bind(on_focus=self._on_window_focus)
 
     def on_kv_post(self, base_widget) -> None:
@@ -109,7 +114,7 @@ class GameScreenView(MDScreen):
             self._inject_hud_widgets()
             self._hud_injected = True
         if not hasattr(self, "_gameplay_runtime"):
-            host = self.ids.gameplay_layout
+            host = self.ids.game_surface_host
             surface = GameplaySurface(size_hint=(1, 1))
             host.add_widget(surface)
             runtime = GameplayRuntime(surface)
@@ -224,7 +229,7 @@ class GameScreenView(MDScreen):
             self._shell.refresh_user_info()
             self._shell.set_user_info_visible(True)
 
-        if self._session_started and not self._game_over_flag:
+        if self._session_started and not self._game_over_flag and not self._level_completed_flag:
             self._shell.set_bar_visibility(top=True, content=False, bottom=False)
             return
 
@@ -360,23 +365,25 @@ class GameScreenView(MDScreen):
 
     def _sync_hud(self, _dt) -> None:
         """EN: Sync score and lives from the current runtime state.
-        RU: 21383d45403e3d383738403e3230424c 41475142 38 3638373d38 3837 42353a434935333e 413e41423e4f3d384f runtime.
+        RU: 1C8CdD5D0CeCdC8C7C8D0CeC2C0D2Dc D1D7E1D2 C8 C6C8C7CdC8 C8C7 D2C5CaD3D9C5C3Ce D1CeD1D2CeDfCdC8Df runtime.
         """
         state = getattr(self, "_state", None)
+        current_score = 0
         if state:
-            score = int(getattr(state, "current_y_loop", 0))
-            if score != self._last_score:
-                self._score.set_score(score)
+            current_score = int(getattr(state, "current_y_loop", 0))
+            if current_score != self._last_score:
+                self._score.set_score(current_score)
                 if hasattr(self, "_rating_session"):
-                    self._rating_session.on_score_changed(score)
-                self._record_sis_max = max(int(self._record_sis_max), int(score))
+                    self._rating_session.on_score_changed(current_score)
+                self._record_sis_max = max(int(self._record_sis_max), int(current_score))
                 if not self._reward_used:
-                    self._record_pure_max = max(int(self._record_pure_max), int(score))
-                self._register_score_point_and_check_fast_cheat(int(score))
-                self._last_score = score
+                    self._record_pure_max = max(int(self._record_pure_max), int(current_score))
+                self._register_score_point_and_check_fast_cheat(int(current_score))
+                self._last_score = current_score
         if hasattr(self, "_life"):
             self._life.sync()
-
+        self._sync_level_timer_overlay()
+        self._check_level_completion(current_score)
     def _register_score_point_and_check_fast_cheat(self, score: int) -> None:
         """EN: Push (time, score) point into rolling window and detect fast-cheat by 20-score jumps.
         RU: Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р РЋРЎв„ўР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В±Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’ВР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В° Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎС™Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎв„ў (time, score) Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В  rolling-Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎС™Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В¦Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂє Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’ВµР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’ВР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В° Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В±Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР Р†Р вЂљРІР‚СљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р Р‹Р Р†Р вЂљРЎС™Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР Р†Р вЂљРІР‚СљР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р вЂ Р В РІР‚С™Р РЋРІР‚С”Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎС™ Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’ВР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС› Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂє Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР Р†Р вЂљРІР‚СљР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В¶Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎС™Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В¦Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В° 20 Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎС™Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В .
@@ -494,7 +501,77 @@ class GameScreenView(MDScreen):
         self.ids.game_btn_text.text = caps(t("game.btn_receive"))
         self._bind_game_button(self.receive_reward)
         self._game_over_flag = True
+        self._level_completed_flag = False
         self._sync_shell_state()
+
+    def _complete_level(self) -> None:
+        """EN: Complete the active level without using the loss/rewarded game-over flow.
+        RU: ????????? ???????? ??????? ??? ????????????? loss/rewarded game-over ????????.
+        """
+        if self._level_completed_flag:
+            return
+        self._level_completed_flag = True
+        self._game_over_flag = False
+        self._session_started = False
+        self._time_manager.time_gameplay(stop=True)
+        if hasattr(self, "_gameplay_runtime"):
+            self._gameplay_runtime.stop()
+        if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
+            self._game_control.detach(self._gameplay_surface)
+        if hasattr(self, "_stop_hud_sync"):
+            self._stop_hud_sync()
+        self.touch_controls_hide()
+        set_hud_visible(self, top=True, content=True, bottom=True)
+        self.ids.title_lbl.text = t("game.level_complete")
+        self.ids.game_btn_text.text = caps(t("game.btn_start"))
+        self._bind_game_button(self._on_start_pressed)
+        self._sync_level_timer_overlay()
+        self._sync_shell_state()
+
+    def _sync_level_timer_overlay(self) -> None:
+        """EN: Sync the gameplay timer overlay for timed levels inside the gameplay area.
+        RU: ???????????????? overlay-?????? gameplay ??? timed-??????? ?????? ??????? ???????.
+        """
+        timer = self.ids.gameplay_timer_lbl
+        profile = getattr(self, "_active_level_profile", None)
+        is_timed = bool(
+            self._session_started
+            and not self._game_over_flag
+            and not self._level_completed_flag
+            and profile is not None
+            and profile.goal_type == "timed_max_score"
+            and profile.time_limit_sec is not None
+        )
+        if not is_timed:
+            timer.text = ""
+            timer.opacity = 0
+            return
+        elapsed = float(self._time_manager.time_gameplay() or 0.0)
+        remaining = max(0, int(profile.time_limit_sec - elapsed))
+        minutes, seconds = divmod(remaining, 60)
+        timer.text = f"{minutes:02d}:{seconds:02d}"
+        timer.opacity = 1
+
+    def _check_level_completion(self, current_score: int) -> None:
+        """EN: Complete the active level when its goal condition is reached.
+        RU: ????????? ???????? ???????, ????? ????????? ??? ??????? ???????.
+        """
+        if (
+            not self._session_started
+            or self._game_over_flag
+            or self._level_completed_flag
+            or self._active_level_profile is None
+        ):
+            return
+        profile = self._active_level_profile
+        if profile.goal_type == "timed_max_score" and profile.time_limit_sec is not None:
+            elapsed = float(self._time_manager.time_gameplay() or 0.0)
+            remaining = max(0.0, float(profile.time_limit_sec) - elapsed)
+            if remaining <= 0.0:
+                self._complete_level()
+        elif profile.goal_type == "target_score" and profile.target_score is not None:
+            if int(current_score) >= int(profile.target_score):
+                self._complete_level()
 
     def _on_window_focus(self, _window, focused: bool) -> None:
         """EN: Finalize rewarded flow on focus return when fullscreen ads temporarily steal app focus.
@@ -684,6 +761,7 @@ class GameScreenView(MDScreen):
             self._stop_hud_sync()
 
         self._reset_hud_state()
+        self._sync_level_timer_overlay()
         if hasattr(self, "_gameplay_runtime"):
             Clock.schedule_once(lambda *_: self._gameplay_runtime.prepare_scene(), 0)
         self._session_started = False
@@ -698,6 +776,9 @@ class GameScreenView(MDScreen):
         self._attempts_total = int(ATTEMPTS_BASE)
         self._cheat_flag = False
         self._cheat_points_window.clear()
+        self._active_level_profile = None
+        self._level_completed_flag = False
+        self._sync_level_timer_overlay()
         self._sync_shell_state()
 
     def _reset_hud_state(self) -> None:
@@ -851,6 +932,7 @@ class GameScreenView(MDScreen):
         self._time_manager.time_gameplay(reset=True)
         self._time_manager.time_game_session(start=True)
         self._time_manager.time_gameplay(start=True)
+        self._active_level_profile = self._level_runtime_manager.get_active_profile()
         self._session_started = True
         self._receive_click_start = counters.receive_click_count
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):

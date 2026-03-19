@@ -50,7 +50,7 @@ def bind_lang_radios(ru_radio, en_radio) -> None:
 
     def apply_language(code: str) -> None:
         old_no_data = t("common.no_data")
-        lang.set_lang(code)
+        lang.set_lang(code, persist=True)
         _refresh_all_screens(old_no_data)
         sync_radios_from_lang()
 

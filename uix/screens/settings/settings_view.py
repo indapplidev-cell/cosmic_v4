@@ -7,6 +7,7 @@ from threading import Thread
 from time import monotonic
 
 import requests
+from data.user_cache.user_cache_profile import get_user_setting, set_user_setting
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_session import UserSession
 from kivy.clock import Clock
@@ -68,6 +69,13 @@ class ToggleIconButton(MDIconButton):
         self._apply_icon()
         return super().on_release(*args)
 
+    def set_toggled(self, value: bool) -> None:
+        """EN: Explicitly synchronize toggle state without a user click.
+        RU: Явно синхронизировать состояние toggle без пользовательского клика.
+        """
+        self.toggled = bool(value)
+        self._apply_icon()
+
     def _apply_icon(self) -> None:
         """EN: Apply icon name according to the current toggle state.
         RU: Р СџРЎР‚Р С‘Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ Р С‘Р СРЎРЏ Р С‘Р С”Р С•Р Р…Р С”Р С‘ РЎРѓР С•Р С–Р В»Р В°РЎРѓР Р…Р С• РЎвЂљР ВµР С”РЎС“РЎвЂ°Р ВµР СРЎС“ РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘РЎР‹ Р С—Р ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР В°РЎвЂљР ВµР В»РЎРЏ.
@@ -113,6 +121,8 @@ class SettingsScreenView(MDScreen):
 
         bind_lang_radios(self.ids.lang_ru_radio, self.ids.lang_en_radio)
         self._sync_hud_layout_icon()
+        self._bind_sound_toggle()
+        self._sync_sound_icon()
         apply_button_text_style(
             self,
             [
@@ -148,6 +158,34 @@ class SettingsScreenView(MDScreen):
         else:
             self.ids.settings_top_right_login.text = no_data
         self._sync_hud_layout_icon()
+        self._sync_sound_icon()
+
+    def _bind_sound_toggle(self) -> None:
+        """EN: Bind the settings sound icon to unified profile settings persistence.
+        RU: Привязать иконку звука в настройках к сохранению в единый профиль настроек.
+        """
+        sound_icon = self.ids.get("middle_card_sound_icon")
+        if sound_icon is None or getattr(sound_icon, "_sound_bound", False):
+            return
+        sound_icon._sound_bound = True
+        sound_icon.bind(on_release=self._on_sound_toggle)
+
+    def _sync_sound_icon(self) -> None:
+        """EN: Synchronize sound icon state from unified profile settings.
+        RU: Синхронизировать состояние иконки звука из единого профиля настроек.
+        """
+        sound_icon = self.ids.get("middle_card_sound_icon")
+        if sound_icon is not None:
+            sound_icon.set_toggled(bool(get_user_setting("sound_enabled", True)))
+
+    def _on_sound_toggle(self, *_args) -> None:
+        """EN: Persist sound toggle state after the icon changes locally.
+        RU: Сохранить состояние звука после локального переключения иконки.
+        """
+        sound_icon = self.ids.get("middle_card_sound_icon")
+        if sound_icon is None:
+            return
+        set_user_setting("sound_enabled", bool(sound_icon.toggled))
 
     def _sync_hud_layout_icon(self) -> None:
         """EN: Sync settings gamepad icon mirror state with persisted HUD layout flag.
@@ -426,5 +464,4 @@ class SettingsScreenView(MDScreen):
         """
 
         return self._bottombar_widget
-
 

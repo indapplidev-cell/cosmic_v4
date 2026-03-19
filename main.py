@@ -16,6 +16,7 @@ from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.properties import BooleanProperty, StringProperty
 from kivymd.app import MDApp
+from manager.lang.lang_manager import lang
 
 from manager import app_focus_tracker
 from manager.ads import AdsManager
@@ -28,6 +29,8 @@ from uix.window_config import apply_window_config
 from uix.screens.builders.auth_builder import build_auth_flow
 from uix.screens.root_view import RootView
 from uix.screens.screen_manager import AppScreenManager
+
+lang.bootstrap_from_profile()
 
 # Pillow (PIL) не должен шуметь в DEBUG
 logging.getLogger("PIL").setLevel(logging.WARNING)
