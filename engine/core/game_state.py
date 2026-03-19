@@ -19,10 +19,11 @@ class GameState:
         """
         self.state_game_over = False
         self.state_game_has_started = False
-        self.current_offset_x = 0
+        self.current_offset_x = 0.0
+        self.target_offset_x = 0.0
         self.current_offset_y = 0
         self.current_y_loop = 0
-        self.current_speed_x = 0
+        self.current_speed_x = 0.0
         self.speed_y_factor = 1.0
 
     def reset(self):
@@ -31,10 +32,11 @@ class GameState:
 
         RU: Сбрасывает смещения, скорость и флаги для нового запуска.
         """
-        self.current_offset_x = 0
+        self.current_offset_x = 0.0
+        self.target_offset_x = 0.0
         self.current_offset_y = 0
         self.current_y_loop = 0
-        self.current_speed_x = 0
+        self.current_speed_x = 0.0
         self.speed_y_factor = 1.0
         self.state_game_over = False
         self.state_game_has_started = False

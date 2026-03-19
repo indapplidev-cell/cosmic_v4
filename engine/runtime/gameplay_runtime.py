@@ -25,6 +25,7 @@ from engine.renderers.road_grid import RoadGridRenderer
 from engine.renderers.tiles_renderer import TilesRenderer
 from engine.ship.ship_engine import ShipEngine
 from engine.widgets.gameplay_surface import GameplaySurface
+from manager.levels.level_runtime_manager import LevelRuntimeManager
 
 
 class GameplayRuntime:
@@ -58,12 +59,15 @@ class GameplayRuntime:
         self._tiles_renderer = TilesRenderer(surface.canvas, self._config)
         self._ship_engine = ShipEngine(surface.canvas, self._config)
         self._input = InputController(self._state, self._config)
+        self._level_runtime = LevelRuntimeManager()
         self._loop = GameLoop()
         self.on_game_over = None
         self.on_loss = None
         self._linear_speed_x = 0.0
         self._linear_active = False
         self._paused_for_ad = False
+        self._x_smoothing_speed = 4.0
+        self._x_snap_epsilon = 0.5
 
         surface.bind_engines(
             self._road_grid,
@@ -101,6 +105,7 @@ class GameplayRuntime:
         RU: Сбрасывает состояние и запускает обновления с заданной частотой кадров.
         """
         self._state.reset()
+        self._apply_active_level_profile()
         self._tiles.reset(self._state, self._config)
         self._ship_engine.reset_to_start(self._state)
         self._session.reset()
@@ -119,7 +124,7 @@ class GameplayRuntime:
         """
         self._session.reset()
         respawn_to_start(self._state, self._ship_engine, self._tiles, self._config)
-        self._state.speed_y_factor = 1.0
+        self._apply_active_level_profile()
         self._state.mark_started()
         self.resume_after_ad()
 
@@ -161,6 +166,7 @@ class GameplayRuntime:
         motion = self._motion.step(dt, self._state, (width, height), self._config)
         if self._linear_active:
             self._state.current_speed_x = saved_speed_x
+        self._smooth_offset_x(dt, width)
         for _ in range(motion.advanced_rows):
             self._tiles.prune_passed_tiles(self._state)
             self._tiles.generate_more(self._state, self._config)
@@ -225,6 +231,16 @@ class GameplayRuntime:
             return
         self._state.speed_y_factor = self._config.SPEED_Y_BRAKE_FACTOR
 
+    def _apply_active_level_profile(self) -> None:
+        """
+        Apply the active level runtime profile to the gameplay state.
+
+        EN: Reads the active level profile once at runtime initialization points.
+        RU: Читает профиль активного уровня один раз в точках инициализации runtime.
+        """
+        profile = self._level_runtime.get_active_profile()
+        self._state.speed_y_factor = profile.initial_speed_y_factor
+
     def brake_off(self) -> None:
         """EN: Disable vertical brake and restore default factor.
         RU: Отключить вертикальный тормоз и вернуть коэффициент по умолчанию.
@@ -244,15 +260,35 @@ class GameplayRuntime:
         ship_half = (self._config.SHIP_WIDTH * width) / 2
         return max(tile_half - ship_half, 0)
 
+    def _tile_width_world(self, width: float) -> float:
+        """
+        Compute road tile width in world-space units.
+
+        EN: Uses vertical line spacing multiplied by the current surface width.
+        RU: Использует шаг вертикальных линий, умноженный на текущую ширину поверхности.
+        """
+        return self._config.V_LINES_SPACING * width
+
+    def _ship_width_world(self, width: float) -> float:
+        """
+        Compute ship width in world-space units.
+
+        EN: Uses ship width factor multiplied by the current surface width.
+        RU: Использует коэффициент ширины корабля, умноженный на текущую ширину поверхности.
+        """
+        return self._config.SHIP_WIDTH * width
+
     def _step_x(self, width: float) -> float:
         """
         Compute per-input step size toward the edge.
 
-        EN: Divides max offset by INPUT_STEPS_TO_EDGE.
-        RU: Делит максимальный сдвиг на INPUT_STEPS_TO_EDGE.
+        EN: Uses tile width and ship width while preserving the previous step size.
+        RU: Использует ширину тайла и корабля, сохраняя прежнюю величину шага.
         """
         steps = max(int(getattr(self._config, "INPUT_STEPS_TO_EDGE", 1)), 1)
-        return (self._max_x_offset(width) / steps) * 2
+        tile_width = self._tile_width_world(width)
+        ship_width = self._ship_width_world(width)
+        return (tile_width - ship_width) / steps
 
     def _dynamic_offset_bounds(self, width: float) -> tuple[float, float]:
         """
@@ -295,11 +331,11 @@ class GameplayRuntime:
             return
         step = self._step_x(width)
         offset_min, offset_max = self._dynamic_offset_bounds(width)
-        self._state.current_offset_x = min(
-            offset_max, self._state.current_offset_x + step
+        self._state.target_offset_x = min(
+            offset_max, self._state.target_offset_x + step
         )
-        self._state.current_offset_x = max(
-            offset_min, self._state.current_offset_x
+        self._state.target_offset_x = max(
+            offset_min, self._state.target_offset_x
         )
         self._state.current_speed_x = 0
 
@@ -314,11 +350,11 @@ class GameplayRuntime:
             return
         step = self._step_x(width)
         offset_min, offset_max = self._dynamic_offset_bounds(width)
-        self._state.current_offset_x = max(
-            offset_min, self._state.current_offset_x - step
+        self._state.target_offset_x = max(
+            offset_min, self._state.target_offset_x - step
         )
-        self._state.current_offset_x = min(
-            offset_max, self._state.current_offset_x
+        self._state.target_offset_x = min(
+            offset_max, self._state.target_offset_x
         )
         self._state.current_speed_x = 0
 
@@ -368,9 +404,35 @@ class GameplayRuntime:
         if width <= 0:
             return
         time_factor = dt * 60
-        speed_x = (self._linear_speed_x * width) / 100
-        self._state.current_offset_x += speed_x * time_factor
+        tile_width = self._tile_width_world(width)
+        speed_x = (self._linear_speed_x * tile_width) / (
+            100 * self._config.V_LINES_SPACING
+        )
+        self._state.target_offset_x += speed_x * time_factor
         offset_min, offset_max = self._dynamic_offset_bounds(width)
+        if self._state.target_offset_x < offset_min:
+            self._state.target_offset_x = offset_min
+        elif self._state.target_offset_x > offset_max:
+            self._state.target_offset_x = offset_max
+
+    def _smooth_offset_x(self, dt: float, width: float) -> None:
+        """EN: Smoothly move current X offset toward target using dt-based max delta.
+        RU: Плавно двигать текущий X-offset к target через dt-зависимое ограничение шага.
+        """
+        offset_min, offset_max = self._dynamic_offset_bounds(width)
+        if self._state.target_offset_x < offset_min:
+            self._state.target_offset_x = offset_min
+        elif self._state.target_offset_x > offset_max:
+            self._state.target_offset_x = offset_max
+
+        diff = self._state.target_offset_x - self._state.current_offset_x
+        max_delta = self._x_smoothing_speed * width * dt
+        if abs(diff) <= self._x_snap_epsilon:
+            self._state.current_offset_x = self._state.target_offset_x
+        else:
+            delta = max(-max_delta, min(diff, max_delta))
+            self._state.current_offset_x += delta
+
         if self._state.current_offset_x < offset_min:
             self._state.current_offset_x = offset_min
         elif self._state.current_offset_x > offset_max:
