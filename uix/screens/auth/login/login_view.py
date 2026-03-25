@@ -34,6 +34,21 @@ KV_PATH = Path(__file__).with_name("login.kv")
 Builder.load_file(str(KV_PATH))
 
 
+def _login_error_text(error_code: object) -> str:
+    """EN: Map backend login error codes to user-facing messages without masking server failures as bad credentials.
+    RU: Сопоставить backend-коды ошибок входа с пользовательскими сообщениями, не маскируя server failures под неверные credentials.
+    """
+
+    code = str((error_code or "")).strip().upper()
+    if code in {"BAD_PASSWORD", "NOT_FOUND", "EMPTY_FIELDS"}:
+        return t("login.error.invalid_credentials")
+    if code == "NETWORK":
+        return "Server unavailable. Check connection / Сервер недоступен. Проверьте соединение"
+    if code in {"DB_ERROR", "CONFIG_INVALID", "API_ERROR"}:
+        return "Server error. Try again later / Ошибка сервера. Попробуйте позже"
+    return "Login failed. Try again / Ошибка входа. Попробуйте снова"
+
+
 class LoginScreenView(MDScreen):
     """EN: Login screen view that wires layout, VM, and controller.
     RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ РІС…РѕРґР°, СЃРІСЏР·С‹РІР°СЋС‰РµРµ СЂР°СЃРєР»Р°РґРєСѓ, VM Рё РєРѕРЅС‚СЂРѕР»Р»РµСЂ.
@@ -123,7 +138,7 @@ class LoginScreenView(MDScreen):
                 return
             ok_login, payload = auth_backend.login(email, password)
             if not ok_login:
-                self.set_error(t("login.error.invalid_credentials"))
+                self.set_error(_login_error_text(payload))
                 return
             self.set_error("")
             self.controller.login()
@@ -306,4 +321,3 @@ class LoginScreenView(MDScreen):
         """
 
         return self._bottombar_widget
-

@@ -17,6 +17,7 @@ from server.models.telegram_reset_challenge import TelegramResetChallenge
 from server.models.telegram_reset_request import TelegramResetRequest
 from server.models.telegram_verify_challenge import TelegramVerifyChallenge
 from server.models.user import User
+from server.models.user_level_score_record import UserLevelScoreRecord
 
 __all__ = [
     "User",
@@ -34,4 +35,5 @@ __all__ = [
     "TelegramResetRequest",
     "TelegramResetChallenge",
     "TelegramVerifyChallenge",
+    "UserLevelScoreRecord",
 ]

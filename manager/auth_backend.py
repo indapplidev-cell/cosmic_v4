@@ -353,6 +353,91 @@ def authorized_post_json(path: str, payload: dict, *, tag: str) -> tuple[int, di
     return int(status_code), data
 
 
+def authorized_get_json(path: str, *, tag: str, params: dict | None = None, timeout: int = 10) -> tuple[int, dict]:
+    """EN: Execute one authorized GET JSON request with one refresh+retry cycle on auth failure.
+    RU: Выполнить один authorized GET JSON-запрос с одним refresh+retry циклом при auth-ошибке.
+    """
+
+    ok, response, status_code = _authorized_request_with_retry(
+        "GET",
+        path,
+        params=dict(params or {}),
+        timeout=timeout,
+    )
+    data = response if isinstance(response, dict) else {"ok": False, "error": "BAD_RESPONSE"}
+    trace_log(
+        "SESSION",
+        "SESSION.AUTHORIZED_GET_JSON",
+        tag=str(tag),
+        path=str(path),
+        status=int(status_code),
+        ok=bool(ok and data.get("ok")),
+        error=str(data.get("error") or ""),
+        user_id=int(get_session_user_id()),
+    )
+    return int(status_code), data
+
+
+def _needs_legacy_auth_me_user_id(status_code: int, payload: object) -> bool:
+    """EN: Detect legacy `/auth/me` validation that still requires query `user_id` for session bootstrap.
+    RU: Определить legacy-валидацию `/auth/me`, которая всё ещё требует query `user_id` для bootstrap сессии.
+    """
+
+    if int(status_code or 0) != 422 or not isinstance(payload, dict):
+        return False
+    details = payload.get("detail")
+    if not isinstance(details, list):
+        return False
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        if list(item.get("loc") or []) == ["query", "user_id"]:
+            return True
+    return False
+
+
+def get_current_user_snapshot(timeout: int = 8) -> Tuple[bool, dict]:
+    """EN: Request current authenticated user snapshot via the central auth retry wrapper.
+    RU: Запросить snapshot текущего пользователя через центральный auth wrapper с retry.
+    """
+
+    _ensure_healthcheck_once()
+    status_code, payload = authorized_get_json("/auth/me", tag="AUTH_ME", timeout=timeout)
+    if _needs_legacy_auth_me_user_id(status_code, payload):
+        session_user_id = int(get_session_user_id() or 0)
+        if session_user_id > 0:
+            status_code, payload = authorized_get_json(
+                "/auth/me",
+                tag="AUTH_ME_LEGACY_QUERY",
+                params={"user_id": session_user_id},
+                timeout=timeout,
+            )
+    if int(status_code) == 200 and isinstance(payload, dict):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "NETWORK"}
+
+
+def get_current_user_id(timeout: int = 8) -> Tuple[bool, str | int]:
+    """EN: Resolve current authenticated user id from the protected /auth/me snapshot endpoint.
+    RU: Определить user_id текущего пользователя через защищённый endpoint /auth/me.
+    """
+
+    ok, payload = get_current_user_snapshot(timeout=timeout)
+    if not ok:
+        return False, _error_code(payload, "NETWORK")
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return False, _error_code(payload, "API_ERROR")
+    user = payload.get("user") if isinstance(payload, dict) else None
+    if not isinstance(user, dict):
+        return False, "API_ERROR"
+    try:
+        return True, int(user["user_id"])
+    except Exception:
+        return False, "API_ERROR"
+
+
 def ads_config_fetch(
     user_id: int,
     platform: str,
@@ -450,35 +535,19 @@ def login(email: str, psw: str) -> Tuple[bool, str | int]:
     return False, _error_code(payload, "API_ERROR")
 
 
-def resolve_user_id(email: str) -> Tuple[bool, str | int]:
-    """EN: Resolve user id by email for legacy cache fallback.
-    RU: Получить user_id по email для fallback со старым кешем.
-    """
-    _ensure_healthcheck_once()
-    ok, payload = api_client.auth_exists(email)
-    if not ok:
-        return False, _error_code(payload, "NETWORK")
-    if not isinstance(payload, dict) or not payload.get("ok"):
-        return False, _error_code(payload, "API_ERROR")
-    user = payload.get("user") if isinstance(payload, dict) else None
-    if not isinstance(user, dict):
-        return False, "API_ERROR"
-    try:
-        return True, int(user["user_id"])
-    except Exception:
-        return False, "API_ERROR"
-
-
 def delete_account(user_id: int) -> bool:
-    """EN: Delete account by user id.
-    RU: Удалить аккаунт по user_id.
+    """EN: Delete account by user id through the authorized request wrapper.
+    RU: ??????? ??????? ?? user_id ????? ?????????????? wrapper ???????.
     """
     if not _backend_ready():
         return False
-    ok, payload = api_client.request("POST", "/auth/delete", json={"user_id": int(user_id)})
-    if not ok:
-        return False
-    return bool(isinstance(payload, dict) and payload.get("ok"))
+    ok, payload, _status = _authorized_request_with_retry(
+        "POST",
+        "/auth/delete",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    return bool(ok and isinstance(payload, dict) and payload.get("ok"))
 
 
 def save_profile_user(
@@ -634,20 +703,17 @@ def finish_session_metrics(payload: dict, timeout: int = 10) -> Tuple[bool, dict
     """
 
     _ensure_healthcheck_once()
-    ok, response = api_client.request(
-        "POST",
+    status_code, response = authorized_post_json(
         "/game/session/finish",
-        json=payload,
-        timeout=int(timeout),
+        dict(payload or {}),
+        tag="GAME_SESSION_FINISH",
     )
-    if not ok or not isinstance(response, dict) or not response.get("ok"):
+    if int(status_code) != 200 or not isinstance(response, dict) or not response.get("ok"):
         return False, response if isinstance(response, dict) else {"error": "NETWORK"}
 
-    user_id = int(payload.get("user_id") or 0)
-    if user_id > 0:
-        me_ok, me_payload = api_client.auth_me(user_id, timeout=timeout)
-        if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
-            sync_user_snapshot_from_payload(me_payload)
+    me_ok, me_payload = get_current_user_snapshot(timeout=timeout)
+    if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
+        sync_user_snapshot_from_payload(me_payload)
 
     if bool(response.get("cheat")):
         UserSnapshotStore().patch_game(record=0, rating=0, balance=0.0)
@@ -655,18 +721,34 @@ def finish_session_metrics(payload: dict, timeout: int = 10) -> Tuple[bool, dict
     return True, response
 
 
+def submit_level_score_record(payload: dict, timeout: int = 10) -> Tuple[bool, dict]:
+    """EN: Submit one finished level-run result to the authenticated per-level score-record endpoint.
+    RU: ????????? ???? ???? ???????????? run ?????? ? ??????????????????? endpoint ??????? ???????? ?? ???????.
+    """
+
+    _ensure_healthcheck_once()
+    status_code, data = authorized_post_json(
+        "/game/level-score-record",
+        dict(payload or {}),
+        tag="LEVEL_SCORE_RECORD",
+    )
+    is_ok = bool(int(status_code) == 200 and isinstance(data, dict) and data.get("ok"))
+    return is_ok, data if isinstance(data, dict) else {"ok": False, "error": "BAD_RESPONSE"}
+
+
 def password_reset_request(email: str, channel: str = "telegram") -> Tuple[bool, dict]:
-    """EN: Request Telegram reset_link_code from backend for forgot-password flow.
-    RU: ????????? Telegram reset_link_code ? backend ??? flow ??????? ???????.
+    """EN: Request Telegram-only reset_link_code from backend for forgot-password flow.
+    RU: Запросить только Telegram reset_link_code у backend для flow восстановления пароля.
     """
 
     _ensure_healthcheck_once()
     email_value = str((email or "").strip())
-    tglog(f"[TGDBG][RESET] request email_mask={mask_token(email_value)} channel={str(channel or '').strip().lower()}")
+    channel_value = "telegram"
+    tglog(f"[TGDBG][RESET] request email_mask={mask_token(email_value)} channel={channel_value}")
     ok, payload = api_client.request(
         "POST",
         "/auth/password/reset/request",
-        json={"email": email_value, "channel": str(channel or "telegram").strip().lower()},
+        json={"email": email_value, "channel": channel_value},
         timeout=10,
     )
     has_link = bool(isinstance(payload, dict) and payload.get("reset_link_code"))

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from server.models.profile_game import ProfileGame
     from server.models.profile_user import ProfileUser
     from server.models.telegram_account import TelegramAccount
+    from server.models.user_level_score_record import UserLevelScoreRecord
 
 
 class User(Base):
@@ -49,6 +50,11 @@ class User(Base):
     telegram_account: Mapped["TelegramAccount"] = relationship(
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    level_score_records: Mapped[list["UserLevelScoreRecord"]] = relationship(
+        back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
