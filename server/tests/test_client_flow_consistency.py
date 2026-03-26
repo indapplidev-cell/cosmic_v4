@@ -8,6 +8,7 @@ from pathlib import Path
 
 from manager import auth_backend
 from manager.lang import lang_radio
+from manager.lang.lang_manager import topbar_value_text, user_value_for_storage, user_value_text
 from manager.profile_change.profile_change_manager import ProfileChangeManager
 from manager.session_manager import has_valid_session, sync_user_snapshot, validate_cached_session
 from uix.screens.profile.profile_controller import ProfileScreenController
@@ -15,6 +16,28 @@ from uix.screens.auth.login.login_view import _login_error_text
 from uix.screens.profile_change.profile_change_controller import ProfileChangeController
 from uix.screens.profile_change.profile_change_view import ProfileChangeView
 from uix.screens.screen_manager import _TITLE_KEYS
+
+
+def test_topbar_value_text_uses_dictionary_no_data_for_legacy_placeholder() -> None:
+    """EN: Top-right user text must normalize legacy `No data` placeholders via language dictionaries.
+    RU: Текст пользователя в правом верхнем баре должен нормализовать legacy-заглушку `No data` через словари языка.
+    """
+
+    assert topbar_value_text("no data") == topbar_value_text("")
+    assert topbar_value_text("No data") == topbar_value_text("")
+    assert topbar_value_text("new_login") == topbar_value_text("")
+    assert topbar_value_text("demo_login") == "demo_login"
+
+
+def test_user_value_helpers_treat_legacy_placeholders_as_missing() -> None:
+    """EN: Unified user-value helpers must collapse legacy placeholders to the single localized fallback.
+    RU: Единые helper-функции пользовательских значений должны схлопывать legacy placeholder в единый локализованный fallback.
+    """
+
+    assert user_value_for_storage("new_login") == ""
+    assert user_value_for_storage("None") == ""
+    assert user_value_text("Нет данных") == user_value_text("")
+    assert user_value_text("real_user") == "real_user"
 
 
 def test_has_valid_session_allows_refresh_only_bootstrap() -> None:

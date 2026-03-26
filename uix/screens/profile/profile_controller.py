@@ -14,8 +14,8 @@ from data.gameplay.record_store import RecordStore
 from data.format.phone import format_phone, normalize_phone
 from data.user_cache.user_session import UserSession
 from kivymd.app import MDApp
-from manager import api_client
-from manager.lang.lang_manager import t
+from manager import auth_backend
+from manager.lang.lang_manager import t, user_value_text
 from manager.user_snapshot_store import UserSnapshotStore
 from uix.screens.routes import PROFILE_CHANGE
 
@@ -69,11 +69,10 @@ class ProfileScreenController:
         if hasattr(self._app, "is_logged_in"):
             self._app.is_logged_in = UserSession().is_logged_in()
         if getattr(self._app, "is_logged_in", False):
-            login_raw = snapshot.get("login") or ""
-            login_val = login_raw.strip() or no_data
-            phone_val = snapshot.get("phone") or no_data
-            tg_val = snapshot.get("telegram") or snapshot.get("telegram_username") or no_data
-            val_email = str((snapshot.get("email") or UserSession().get_email() or "").strip()) or no_data
+            login_val = user_value_text(snapshot.get("login"))
+            phone_val = user_value_text(snapshot.get("phone"))
+            tg_val = user_value_text(snapshot.get("telegram") or snapshot.get("telegram_username"))
+            val_email = user_value_text(snapshot.get("email") or UserSession().get_email())
             view.ids.profile_top_right_login.text = login_val
         else:
             login_val = no_data
@@ -110,13 +109,8 @@ class ProfileScreenController:
         RU: Фоново получить актуальный snapshot профиля с сервера и обновить UI.
         """
 
-        snapshot = self._snapshot_store.load()
-        user_id = int(snapshot.get("user_id") or 0)
-        if user_id <= 0:
-            return
-
         def _worker() -> None:
-            ok, payload = api_client.auth_me(user_id, timeout=6)
+            ok, payload = auth_backend.get_current_user_snapshot(timeout=6)
             if not ok or not isinstance(payload, dict) or not payload.get("ok"):
                 Clock.schedule_once(lambda *_: setattr(view, "is_offline_profile", True), 0)
                 return
@@ -150,10 +144,10 @@ class ProfileScreenController:
         no_data = t("common.no_data")
         snapshot = self._snapshot_store.load()
         record, rating, balance = self._snapshot_store.get_game()
-        login_val = str((snapshot.get("login") or "").strip()) or no_data
-        phone_val = str((snapshot.get("phone") or "").strip()) or no_data
-        tg_val = str((snapshot.get("telegram") or snapshot.get("telegram_username") or "").strip()) or no_data
-        email_val = str((snapshot.get("email") or "").strip()) or no_data
+        login_val = user_value_text(snapshot.get("login"))
+        phone_val = user_value_text(snapshot.get("phone"))
+        tg_val = user_value_text(snapshot.get("telegram") or snapshot.get("telegram_username"))
+        email_val = user_value_text(snapshot.get("email"))
 
         view.ids.profile_top_right_login.text = login_val
         view.ids.val_record.text = str(int(record))

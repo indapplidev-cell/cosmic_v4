@@ -66,6 +66,7 @@ class ProfileChangeView(MDScreen):
         self._ids_keepalive = dict(self.ids)
         for _key, _widget in self._ids_keepalive.items():
             self.ids[_key] = _widget
+        self._disable_password_edit_ui()
         self._contentbar_widget = getattr(self.ids.contentbar, "__self__", self.ids.contentbar)
         self._bottombar_widget = getattr(self.ids.bottombar, "__self__", self.ids.bottombar)
 
@@ -148,6 +149,20 @@ class ProfileChangeView(MDScreen):
             self._layout_bound = True
         Clock.schedule_once(_recalc, 0)
 
+    def _disable_password_edit_ui(self) -> None:
+        """EN: Hide and disable unsupported password-edit widgets on the profile-change screen.
+        RU: Скрыть и отключить неподдерживаемые виджеты редактирования пароля на экране profile-change.
+        """
+
+        self.ids.inp_password.text = ""
+        self.ids.inp_password.disabled = True
+        self.ids.inp_password.opacity = 0
+        self.ids.chk_password.active = False
+        self.ids.chk_password.disabled = True
+        self.ids.chk_password.opacity = 0
+        self.ids.edit_password_eye_btn.disabled = True
+        self.ids.edit_password_eye_btn.opacity = 0
+
     def get_shell_content_widget(self):
         """EN: Return the reusable content bar widget for the shared shell host.
         RU: Р’РµСЂРЅСѓС‚СЊ РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ content bar-РІРёРґР¶РµС‚ РґР»СЏ РѕР±С‰РµРіРѕ host-РєРѕРЅС‚РµР№РЅРµСЂР° shell.
@@ -161,5 +176,3 @@ class ProfileChangeView(MDScreen):
         """
 
         return self._bottombar_widget
-
-

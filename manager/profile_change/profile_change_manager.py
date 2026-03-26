@@ -9,7 +9,7 @@ from manager.input_validation import validate_profile_user
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_cache_writer import update_user_cache_fields
 from data.user_cache.user_session import UserSession
-from manager.lang.lang_manager import t
+from manager.lang.lang_manager import t, user_value_text
 
 
 class ProfileChangeManager:
@@ -22,13 +22,12 @@ class ProfileChangeManager:
         RU: Загрузить текущие данные пользователя с дефолтами.
         """
         cache = get_user_cache() or {}
-        no_data = t("common.no_data")
         return {
-            "login": cache.get("login") or no_data,
-            "email": cache.get("email") or no_data,
-            "phone": cache.get("phone") or no_data,
-            "tg": cache.get("tg") or no_data,
-            "password": cache.get("password") or no_data,
+            "login": user_value_text(cache.get("login")),
+            "email": user_value_text(cache.get("email")),
+            "phone": user_value_text(cache.get("phone")),
+            "tg": user_value_text(cache.get("tg") or cache.get("telegram") or cache.get("telegram_username")),
+            "password": t("common.no_data"),
         }
 
     def apply_patch(self, patch: dict) -> dict:
@@ -44,27 +43,26 @@ class ProfileChangeManager:
 
         self._sync_profile_user_db(patch or {})
         if patch:
-            update_user_cache_fields(patch)
-            if "email" in patch:
-                UserSession().set_email(patch.get("email", ""))
+            cache_patch = {key: value for key, value in patch.items() if key != "password"}
+            if cache_patch:
+                update_user_cache_fields(cache_patch)
+                if "email" in cache_patch:
+                    UserSession().set_email(cache_patch.get("email", ""))
         merged = get_user_cache() or {}
         return {"ok": True, "data": merged}
 
     def _resolve_user_id(self) -> int | None:
-        """EN: Resolve current user id from cache or session-email fallback.
-        RU: Определить текущий user_id из кеша или fallback через email сессии.
+        """EN: Resolve current user id from cache or protected current-session snapshot.
+        RU: Определить текущий user_id из кэша или через защищённый snapshot текущей сессии.
         """
         cache = get_user_cache() or {}
         raw_user_id = cache.get("user_id")
-        if isinstance(raw_user_id, int):
+        if isinstance(raw_user_id, int) and raw_user_id > 0:
             return raw_user_id
-        if isinstance(raw_user_id, str) and raw_user_id.isdigit():
+        if isinstance(raw_user_id, str) and raw_user_id.isdigit() and int(raw_user_id) > 0:
             return int(raw_user_id)
 
-        email = (cache.get("email") or "").strip() or (UserSession().get_email() or "").strip()
-        if not email:
-            return None
-        ok, payload = auth_backend.resolve_user_id(email)
+        ok, payload = auth_backend.get_current_user_id()
         if not ok:
             return None
         user_id = int(payload)

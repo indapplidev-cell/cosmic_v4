@@ -10,7 +10,7 @@ from manager.lang.hint_text_refresh import (
     refresh_kivy_textinput_hint,
     refresh_md_textfield_hint,
 )
-from manager.lang.lang_manager import lang, t
+from manager.lang.lang_manager import lang, t, topbar_value_text
 from uix.screens import routes
 from uix.screens.common.button_text_style import caps
 
@@ -18,7 +18,6 @@ from uix.screens.common.button_text_style import caps
 _SHELL_TITLE_KEYS = {
     routes.LOGIN: "shell.title.login",
     routes.REGISTER: "shell.title.register",
-    routes.PASSWORD_RESET: "shell.title.password_reset",
     routes.START: "shell.title.start",
     routes.PROFILE: "shell.title.profile",
     routes.PROFILE_CHANGE: "shell.title.profile_change",
@@ -93,8 +92,6 @@ def _refresh_all_screens(old_no_data: str) -> None:
     game = get_screen_safe(routes.GAME)
     login = get_screen_safe(routes.LOGIN)
     register = get_screen_safe(routes.REGISTER)
-    password_reset = get_screen_safe(routes.PASSWORD_RESET)
-
     # --- START ---
     if start and hasattr(start, "ids"):
         if "title_lbl" in start.ids:
@@ -237,10 +234,6 @@ def _refresh_all_screens(old_no_data: str) -> None:
                 ids.hint_tg.text = t("profile_change.field.tg")
                 if "inp_tg" in ids:
                     _sync_hint_to_textinput(ids.inp_tg, ids.hint_tg)
-            if "hint_password" in ids:
-                ids.hint_password.text = t("profile_change.field.password")
-                if "inp_password" in ids:
-                    _sync_hint_to_textinput(ids.inp_password, ids.hint_password)
             if "ok_label" in ids:
                 ids.ok_label.text = caps(t("profile_change.btn_ok"))
             if "delete_label" in ids:
@@ -272,40 +265,13 @@ def _refresh_all_screens(old_no_data: str) -> None:
 
         _refresh_banner_slot(game)
 
-    # --- PASSWORD RESET ---
-    if password_reset and hasattr(password_reset, "ids"):
-        if "title_lbl" in password_reset.ids:
-            password_reset.ids.title_lbl.text = t("reset.title")
-        if "email_hint" in password_reset.ids:
-            password_reset.ids.email_hint.text = t("reset.hint_email")
-            if "email_field" in password_reset.ids:
-                _sync_hint_to_textinput(password_reset.ids.email_field, password_reset.ids.email_hint)
-        if "code_hint" in password_reset.ids:
-            password_reset.ids.code_hint.text = t("reset.hint_code")
-            if "code_field" in password_reset.ids:
-                _sync_hint_to_textinput(password_reset.ids.code_field, password_reset.ids.code_hint)
-        if "new_password_hint" in password_reset.ids:
-            password_reset.ids.new_password_hint.text = t("reset.hint_new_password")
-            if "new_password_field" in password_reset.ids:
-                _sync_hint_to_textinput(password_reset.ids.new_password_field, password_reset.ids.new_password_hint)
-        if "send_btn_text" in password_reset.ids:
-            password_reset.ids.send_btn_text.text = caps(t("reset.btn_send_code"))
-        if "reset_channel_telegram_lbl" in password_reset.ids:
-            password_reset.ids.reset_channel_telegram_lbl.text = t("reset.channel.telegram")
-        if "reset_channel_email_lbl" in password_reset.ids:
-            password_reset.ids.reset_channel_email_lbl.text = t("reset.channel.email")
-        if "confirm_btn_text" in password_reset.ids:
-            password_reset.ids.confirm_btn_text.text = caps(t("reset.btn_confirm"))
-        if "back_btn_text" in password_reset.ids:
-            password_reset.ids.back_btn_text.text = caps(t("common.back"))
-        _force_refresh_screen_hints(password_reset)
-
     _refresh_current_shell_title(manager)
 
     # --- FORCE HINT REFRESH VIA FOCUS-WALK ---
     try:
-        screens = [start, settings, profile, profile_change, game, login, register, password_reset]
+        screens = [start, settings, profile, profile_change, game, login, register]
         _force_focus_walk_mdtextfields(screens)
+        _force_focus_walk_all_inputs(screens)
     except Exception:
         pass
 
@@ -325,15 +291,28 @@ def _refresh_current_shell_title(manager) -> None:
         return
 
     shell.set_title(t(title_key))
+    try:
+        if "top_right_user" in shell.ids:
+            shell.ids.top_right_user.text = topbar_value_text(shell.ids.top_right_user.text)
+    except Exception:
+        pass
 
 
 def _refresh_banner_slot(screen) -> None:
     """
-    EN: Refresh AdsBannerSlot placeholder text in the top middle bar.
-    RU: Обновляет текст плейсхолдера AdsBannerSlot в центральном верхнем баре.
+    EN: Refresh AdsBannerSlot placeholder text in both screen-local and shared shell top-bar banner slots.
+    RU: ????????? ????? ???????????? AdsBannerSlot ? ? ????????? ??????, ? ? ????? banner slot ?????? shell.
     """
     try:
-        mid = screen.ids.get("midltopbar")
+        app = MDApp.get_running_app()
+        manager = getattr(app, "_manager", None)
+        shell = getattr(manager, "_shell", None) if manager is not None else None
+        if shell is not None:
+            slot = shell.ids.get("ads_banner_slot")
+            if slot is not None and hasattr(slot, "ids") and "banner_text" in slot.ids:
+                slot.ids.banner_text.text = t("ads.banner.placeholder")
+
+        mid = screen.ids.get("midltopbar") if hasattr(screen, "ids") else None
         if not mid:
             return
         for child in mid.children:
@@ -454,6 +433,80 @@ def _focus_pulse_textfield(tf, delay: float = 0.0) -> None:
         try:
             tf.do_layout()
             tf.canvas.ask_update()
+        except Exception:
+            pass
+
+    Clock.schedule_once(_do, delay)
+
+
+def _force_focus_walk_all_inputs(screens) -> None:
+    """
+    EN: Force a focus on/off pulse for every text input reachable from the provided screens after language switch.
+    RU: ????????????? ????????? ????? ????? ??? ????????? ???? ?? ?????????? ??????? ????? ????? ?????.
+
+    EN: This complements MDTextField-specific refresh and updates plain TextInput widgets that redraw their hint
+    text only after focus transitions.
+    RU: ??? ????????? refresh ??? MDTextField ? ????????? ??????? TextInput, ??????? ?????????????? hint
+    ?????? ????? ????? ??????.
+    """
+    fields = []
+    focused_before = None
+    seen_ids = set()
+    for scr in screens:
+        if not scr:
+            continue
+        for widget in scr.walk(restrict=True):
+            if not isinstance(widget, TextInput):
+                continue
+            widget_id = id(widget)
+            if widget_id in seen_ids:
+                continue
+            seen_ids.add(widget_id)
+            fields.append(widget)
+            try:
+                if focused_before is None and getattr(widget, "focus", False):
+                    focused_before = widget
+            except Exception:
+                pass
+
+    if not fields:
+        return
+
+    step = 0.03
+    for i, field in enumerate(fields):
+        _focus_pulse_any_textinput(field, delay=i * step)
+
+    if focused_before is not None:
+        def _restore_focus(_dt):
+            try:
+                focused_before.focus = True
+            except Exception:
+                pass
+
+        Clock.schedule_once(_restore_focus, len(fields) * step + 0.03)
+
+
+
+def _focus_pulse_any_textinput(field, delay: float = 0.0) -> None:
+    """
+    EN: Briefly set focus on/off for one generic text input to force hint redraw after a language switch.
+    RU: ?????? ???????? ? ????????? ????? ? ???????? ?????????? ????, ????? ????????? ??????????? hint ????? ????? ?????.
+    """
+
+    def _do(_dt):
+        if field is None:
+            return
+        try:
+            field.focus = True
+            field.focus = False
+        except Exception:
+            pass
+        try:
+            field.do_layout()
+        except Exception:
+            pass
+        try:
+            field.canvas.ask_update()
         except Exception:
             pass
 

@@ -8,6 +8,7 @@ from typing import Any
 
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_cache_writer import update_user_cache_fields
+from manager.lang.lang_manager import user_value_for_storage
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -43,15 +44,15 @@ class UserSnapshotStore:
         """
 
         cache = get_user_cache() or {}
-        telegram_value = str((cache.get("telegram") or cache.get("tg") or "").strip())
-        telegram_username_value = str((cache.get("telegram_username") or "").strip())
+        telegram_value = user_value_for_storage(cache.get("telegram") or cache.get("tg"))
+        telegram_username_value = user_value_for_storage(cache.get("telegram_username"))
         if not telegram_value and telegram_username_value:
             telegram_value = telegram_username_value
         return {
             "user_id": _as_int(cache.get("user_id"), 0),
-            "email": str((cache.get("email") or "").strip()),
-            "login": str((cache.get("login") or "").strip()),
-            "phone": str((cache.get("phone") or "").strip()),
+            "email": user_value_for_storage(cache.get("email")),
+            "login": user_value_for_storage(cache.get("login")),
+            "phone": user_value_for_storage(cache.get("phone")),
             "telegram": telegram_value,
             "telegram_username": telegram_username_value,
             "telegram_user_id": _as_int(cache.get("telegram_user_id"), 0),
@@ -67,15 +68,15 @@ class UserSnapshotStore:
         RU: Сохранить полный payload snapshot в поля user cache.
         """
 
-        telegram_value = str((snapshot.get("telegram") or "").strip())
-        telegram_username_value = str((snapshot.get("telegram_username") or "").strip())
+        telegram_value = user_value_for_storage(snapshot.get("telegram"))
+        telegram_username_value = user_value_for_storage(snapshot.get("telegram_username"))
         if not telegram_value and telegram_username_value:
             telegram_value = telegram_username_value
         patch = {
             "user_id": _as_int(snapshot.get("user_id"), 0),
-            "email": str((snapshot.get("email") or "").strip()),
-            "login": str((snapshot.get("login") or "").strip()),
-            "phone": str((snapshot.get("phone") or "").strip()),
+            "email": user_value_for_storage(snapshot.get("email")),
+            "login": user_value_for_storage(snapshot.get("login")),
+            "phone": user_value_for_storage(snapshot.get("phone")),
             "telegram": telegram_value,
             "telegram_username": telegram_username_value,
             "telegram_user_id": _as_int(snapshot.get("telegram_user_id"), 0),

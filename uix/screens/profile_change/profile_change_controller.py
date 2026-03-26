@@ -16,18 +16,16 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
-from manager import api_client, auth_backend
+from manager import auth_backend
 from manager.config import TG_DEBUG_FLOW, TELEGRAM_BOT_USERNAME, TG_VERIFY_TIMEOUT_SEC
 from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
 from manager.trace import trace_exception, trace_log
-from data.user_cache.user_cache_reader import get_user_cache
-from manager.lang.lang_manager import t
+from manager.lang.lang_manager import t, user_value_text
 from manager.session_manager import sync_user_snapshot_from_payload
 from manager.tg_debug_log import tglog
 
 from data.format.phone import attach_phone_mask, format_phone, normalize_phone
 from manager.profile_change.profile_change_manager import ProfileChangeManager
-from uix.screens.common.password_eye import wire_password_eye
 from uix.screens.common.bottom_bar_buttons import apply_bottom_buttons
 from uix.screens.layouts.layout_constants import ZONE_SPACING
 from uix.screens.routes import LOGIN, PROFILE
@@ -80,7 +78,6 @@ class ProfileChangeController:
         ids.inp_tg.bind(focus=self._on_tg_input_focus)
         ids.chk_tg.bind(active=self._on_tg_checkbox_active)
         attach_phone_mask(ids.inp_phone)
-        wire_password_eye(ids.inp_password, ids.edit_password_eye_btn, start_hidden=True)
 
     def on_enter(self, view) -> None:
         """EN: Prefill fields from cache and show session email in right top bar.
@@ -93,9 +90,7 @@ class ProfileChangeController:
         raw_phone = current.get("phone", "")
         view.ids.inp_phone.text = "" if raw_phone == no_data else format_phone(normalize_phone(raw_phone))
         view.ids.inp_tg.text = "" if current.get("tg") == no_data else current.get("tg", "")
-        view.ids.inp_password.text = "" if current.get("password") == no_data else current.get("password", "")
-        login = (current.get("login") or "").strip()
-        view.right_text = login if login else no_data
+        view.right_text = user_value_text(current.get("login"))
 
     def _on_tg_input_focus(self, widget, focused: bool) -> None:
         """EN: Log Telegram input value when focus leaves the field.
@@ -136,14 +131,12 @@ class ProfileChangeController:
                 changes["phone"] = phone_digits
         if view.ids.chk_tg.active and view.ids.inp_tg.text.strip():
             changes["tg"] = view.ids.inp_tg.text.strip()
-        if view.ids.chk_password.active and view.ids.inp_password.text.strip():
-            changes["password"] = view.ids.inp_password.text.strip()
         if not changes:
             return
         if view.ids.chk_tg.active:
             if not self._apply_changes_and_show_result(changes, show_success_popup=False):
                 return
-            user_id = self._resolve_user_id_from_cache()
+            user_id = self._resolve_current_user_id()
             if user_id <= 0:
                 tglog("[TGDBG] step10 DONE fail error=NO_USER_ID")
                 return
@@ -219,7 +212,7 @@ class ProfileChangeController:
 
         def _worker() -> None:
             try:
-                user_id = self._resolve_user_id_from_cache()
+                user_id = self._resolve_current_user_id()
                 trace_log("STATE", "FLOW.USER_ID_RESOLVED", user_id=user_id)
                 if user_id <= 0:
                     tglog("[TGDBG] step10 DONE fail error=NO_USER_ID")
@@ -323,26 +316,19 @@ class ProfileChangeController:
             telegram=tg_value,
             auth_present=True,
         )
-        ok, payload, status_code = api_client.request_with_meta(
-            "POST",
-            "/profile/user/update",
-            json=req_body,
-            timeout=10,
-        )
-        body_short = str(payload)[:200]
-        tglog(f"[TGDBG] step5 /profile/user/update status={status_code} ok={ok} body={body_short}")
+        ok = auth_backend.save_profile_user(user_id=int(user_id), telegram=tg_value)
+        tglog(f"[TGDBG] step5 /profile/user/update ok={ok}")
         trace_log(
             "HTTP",
             "FLOW.STEP5_PROFILE_UPDATE_RESPONSE",
             endpoint="/profile/user/update",
-            status_code=int(status_code),
             ok=bool(ok),
-            response_ok=bool(isinstance(payload, dict) and payload.get("ok")),
-            response_error=(payload.get("error") if isinstance(payload, dict) else None),
+            response_ok=bool(ok),
+            response_error=None if ok else "API_ERROR",
         )
         if not ok:
             tglog("[TGDBG] step5 FAIL save_profile")
-        return bool(ok and isinstance(payload, dict) and payload.get("ok"))
+        return bool(ok)
 
     def _show_tg_instruction_popup(self) -> None:
         """EN: Show instructions after Telegram open attempt.
@@ -465,7 +451,7 @@ class ProfileChangeController:
                 cancel_open_flow("TGVERIFY")
                 self._cancel_tg_events()
                 tglog("[TGVERIFY] confirm ok, syncing /auth/me")
-                me_ok, me_payload = api_client.get_me(user_id=int(user_id), timeout=10)
+                me_ok, me_payload = auth_backend.get_current_user_snapshot(timeout=10)
                 if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
                     sync_user_snapshot_from_payload(me_payload)
                 user_payload = me_payload.get("user") if isinstance(me_payload, dict) else {}
@@ -522,7 +508,7 @@ class ProfileChangeController:
         def _poll(_dt) -> bool:
             if not self._tg_verify_active:
                 return False
-            ok, payload = api_client.get_me(user_id=user_id, timeout=8)
+            ok, payload = auth_backend.get_current_user_snapshot(timeout=8)
             if not ok or not isinstance(payload, dict) or not payload.get("ok"):
                 self._dbg("[TG] poll telegram_verified=unknown (network/api error)")
                 return True
@@ -580,14 +566,16 @@ class ProfileChangeController:
         ok_btn.bind(on_release=_on_ok)
         popup.open()
 
-    def _resolve_user_id_from_cache(self) -> int:
-        """EN: Resolve numeric user_id from cache for Telegram verification requests.
-        RU: РџРѕР»СѓС‡РёС‚СЊ С‡РёСЃР»РѕРІРѕР№ user_id РёР· РєСЌС€Р° РґР»СЏ Р·Р°РїСЂРѕСЃРѕРІ РІРµСЂРёС„РёРєР°С†РёРё Telegram.
+    def _resolve_current_user_id(self) -> int:
+        """EN: Resolve numeric current user_id from cache or the protected current-session snapshot.
+        RU: Получить числовой текущий user_id из кэша или через защищённый snapshot текущей сессии.
         """
 
-        cache = get_user_cache() or {}
+        ok, payload = auth_backend.get_current_user_id()
+        if not ok:
+            return 0
         try:
-            return int(cache.get("user_id") or 0)
+            return int(payload)
         except Exception:
             return 0
 
@@ -633,7 +621,7 @@ class ProfileChangeController:
         if view.ids.chk_tg.active:
             delete_patch["tg"] = ""
 
-        blocked_selected = view.ids.chk_email.active or view.ids.chk_password.active
+        blocked_selected = view.ids.chk_email.active
         if blocked_selected:
             self._show_popup(t("profile_change.popup.delete_forbidden"))
             if not delete_patch:
@@ -669,7 +657,6 @@ class ProfileChangeController:
         view.ids.inp_email.text = ""
         view.ids.inp_phone.text = ""
         view.ids.inp_tg.text = ""
-        view.ids.inp_password.text = ""
         self._app.change_screen(PROFILE)
 
     def _refresh_right_login(self) -> None:
@@ -677,8 +664,7 @@ class ProfileChangeController:
         RU: РџРµСЂРµС‡РёС‚Р°С‚СЊ С‚РµРєСѓС‰РёР№ РєСЌС€ Рё РѕР±РЅРѕРІРёС‚СЊ right top С‚РµРєСЃС‚ Р»РѕРіРёРЅРѕРј РёР»Рё Р»РѕРєР°Р»РёР·РѕРІР°РЅРЅС‹Рј fallback no-data.
         """
         current = self._manager.load_current_user_data() or {}
-        login_val = (current.get("login") or "").strip()
-        self._view.right_text = login_val if login_val else t("common.no_data")
+        self._view.right_text = user_value_text(current.get("login"))
 
     def _show_popup(self, message: str) -> None:
         """EN: Show modal popup with a message and one OK button, matching register popup style.
@@ -745,7 +731,7 @@ class ProfileChangeController:
         RU: РЎРЅСЏС‚СЊ РІСЃРµ С‡РµРєР±РѕРєСЃС‹ СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёСЏ РЅР° СЌРєСЂР°РЅРµ РёР·РјРµРЅРµРЅРёСЏ РїСЂРѕС„РёР»СЏ.
         """
         ids = self._view.ids
-        for name in ("chk_login", "chk_email", "chk_phone", "chk_tg", "chk_password"):
+        for name in ("chk_login", "chk_email", "chk_phone", "chk_tg"):
             cb = ids.get(name)
             if cb is not None:
                 cb.active = False

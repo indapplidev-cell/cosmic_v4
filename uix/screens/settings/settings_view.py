@@ -27,7 +27,7 @@ from manager import auth_backend
 from manager.config import API_BASE_URL, PAYOUT_TELEGRAM_BOT_USERNAME, TG_LINK_STATUS_POLL_SEC, VERIFY_OPEN_TIMEOUT_SEC
 from manager.docs.doc_locale import get_lang_code
 from manager.game_control.hud_layout_store import get_swapped, toggle_swapped
-from manager.lang.lang_manager import t
+from manager.lang.lang_manager import t, topbar_value_text
 from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
 from manager.trace import trace_log
 from manager.tg_debug_log import tglog
@@ -146,17 +146,14 @@ class SettingsScreenView(MDScreen):
         RU: Р С›Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљ/Р В»Р С•Р С–Р С‘Р Р… Р Р† Р Р†Р ВµРЎР‚РЎвЂ¦Р Р…Р ВµР в„– Р С—Р В°Р Р…Р ВµР В»Р С‘ Р С—Р С• РЎРѓР С•РЎРѓРЎвЂљР С•РЎРЏР Р…Р С‘РЎР‹ Р В°Р Р†РЎвЂљР С•РЎР‚Р С‘Р В·Р В°РЎвЂ Р С‘Р С‘.
         """
         super().on_pre_enter(*args)
-        no_data = t("common.no_data")
         app = MDApp.get_running_app()
         if hasattr(app, "is_logged_in"):
             app.is_logged_in = UserSession().is_logged_in()
         if getattr(app, "is_logged_in", False):
             cache = get_user_cache() or {}
-            login_raw = cache.get("login") or ""
-            login_val = login_raw.strip() or no_data
-            self.ids.settings_top_right_login.text = login_val
+            self.ids.settings_top_right_login.text = topbar_value_text(cache.get("login"))
         else:
-            self.ids.settings_top_right_login.text = no_data
+            self.ids.settings_top_right_login.text = t("common.no_data")
         self._sync_hud_layout_icon()
         self._sync_sound_icon()
 
@@ -309,7 +306,7 @@ class SettingsScreenView(MDScreen):
         """
         self._controller = controller
         self.ids.left_text.text = vm.title
-        self.ids.login_btn_text.text = caps(vm.login_text)
+        self.ids.login_btn_text.text = ""
         self.ids.action_btn_text.text = caps(vm.action_text)
         self.ids.back_btn_text.text = caps(vm.back_text)
 
@@ -317,7 +314,9 @@ class SettingsScreenView(MDScreen):
         self._logout_callback = lambda *_: controller.logout()
         self._back_callback = lambda *_: controller.back()
         self.ids.login_btn.unbind(on_release=self._payout_callback)
-        self.ids.login_btn.bind(on_release=self._payout_callback)
+        self.ids.login_btn.disabled = True
+        self.ids.payout_card_icon.unbind(on_release=self._payout_callback)
+        self.ids.payout_card_icon.bind(on_release=self._payout_callback)
         self.ids.action_btn.unbind(on_release=self._logout_callback)
         self.ids.action_btn.bind(on_release=self._logout_callback)
         self.ids.back_btn.unbind(on_release=self._back_callback)
@@ -464,4 +463,3 @@ class SettingsScreenView(MDScreen):
         """
 
         return self._bottombar_widget
-

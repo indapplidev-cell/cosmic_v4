@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 
+from manager.lang.lang_manager import user_value_for_storage
 from data.user_cache.user_cache_reader import get_user_cache
 
 
@@ -59,7 +60,11 @@ def update_user_cache_fields(fields: dict) -> None:
     cache_path = _cache_path()
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     data = get_user_cache() or {}
-    data.update(fields)
+    patch = dict(fields or {})
+    for key in ("login", "email", "phone", "tg", "telegram", "telegram_username"):
+        if key in patch:
+            patch[key] = user_value_for_storage(patch.get(key))
+    data.update(patch)
     tmp_path = cache_path.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2)

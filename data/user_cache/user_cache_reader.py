@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from manager.lang.lang_manager import user_value_for_storage
+
 
 def _cache_path() -> Path:
     """EN: Resolve the user cache JSON file path.
@@ -37,7 +39,14 @@ def get_user_cache() -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
 
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+
+    sanitized = dict(data)
+    for key in ("login", "email", "phone", "tg", "telegram", "telegram_username"):
+        if key in sanitized:
+            sanitized[key] = user_value_for_storage(sanitized.get(key))
+    return sanitized
 
 
 def is_credentials_valid(email: str, password: str) -> bool:
