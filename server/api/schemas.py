@@ -225,45 +225,6 @@ class BotResetIssueRequest(StrictBaseModel):
     tg_username: Annotated[str, MaxLen(64)] | None = None
 
 
-class TelegramVerifyRequest(StrictBaseModel):
-    """EN: Telegram verification request payload initiated by app user.
-    RU: Payload запроса верификации Telegram, инициируемого пользователем приложения.
-    """
-
-    user_id: int = Field(gt=0)
-
-
-class TelegramVerifySend(StrictBaseModel):
-    """EN: Bot-to-API payload for issuing one-time verification code to Telegram user.
-    RU: Payload бота в API для выдачи одноразового кода верификации Telegram-пользователю.
-    """
-
-    request_id: Annotated[str, MinLen(10), MaxLen(32)]
-    telegram_user_id: int = Field(gt=0)
-    bot_secret: Annotated[str, MinLen(1), MaxLen(256)]
-
-
-class TelegramVerifyConfirm(StrictBaseModel):
-    """EN: Telegram verification confirmation payload with request_id and 6-digit code.
-    RU: Payload подтверждения Telegram-верификации с request_id и 6-значным кодом.
-    """
-
-    user_id: int = Field(gt=0)
-    request_id: Annotated[str, MinLen(10), MaxLen(32)]
-    code: Annotated[str, MinLen(6), MaxLen(6)]
-
-    @field_validator("code")
-    @classmethod
-    def validate_verify_code(cls, value: str) -> str:
-        """EN: Accept only numeric 6-digit verification code.
-        RU: Принимать только цифровой 6-значный код верификации.
-        """
-
-        if not value.isdigit():
-            raise ValueError("FORMAT")
-        return value
-
-
 class DeleteUserRequest(StrictBaseModel):
     """EN: Account deletion payload by positive user identifier.
     RU: Payload удаления аккаунта по положительному идентификатору пользователя.

@@ -895,39 +895,3 @@ def telegram_link_confirm(user_id: int, confirm_code: str) -> Tuple[bool, dict]:
         return False, payload
     return False, {"ok": False, "error": "API_ERROR"}
 
-
-def telegram_verify_request(user_id: int) -> Tuple[bool, dict]:
-    """EN: Request Telegram verification challenge for given user and return request_id/ttl.
-    RU: Запросить challenge верификации Telegram для указанного пользователя и вернуть request_id/ttl.
-    """
-
-    _ensure_healthcheck_once()
-    body: dict = {"user_id": int(user_id)}
-    ok, payload, _status = _authorized_request_with_retry(
-        "POST",
-        "/telegram/verify/request",
-        json=body,
-        timeout=10,
-    )
-    if ok and isinstance(payload, dict) and payload.get("ok"):
-        return True, payload
-    if isinstance(payload, dict):
-        return False, payload
-    return False, {"ok": False, "error": "API_ERROR"}
-
-
-def telegram_verify_confirm(user_id: int, request_id: str, code: str) -> Tuple[bool, str]:
-    """EN: Confirm Telegram verification challenge code for given user.
-    RU: Подтвердить код challenge верификации Telegram для указанного пользователя.
-    """
-
-    _ensure_healthcheck_once()
-    ok, payload, _status = _authorized_request_with_retry(
-        "POST",
-        "/telegram/verify/confirm",
-        json={"user_id": int(user_id), "request_id": request_id, "code": code},
-        timeout=10,
-    )
-    if ok and isinstance(payload, dict) and payload.get("ok"):
-        return True, ""
-    return False, _error_code(payload, "INVALID_CODE")

@@ -113,33 +113,31 @@ RU:
 ## Telegram Password Reset (EN/RU)
 
 EN:
-- Password reset delivery uses Telegram bot outbox (no SMTP required).
+- Telegram account linking/confirmation uses the canonical link flow.
 - Required env vars in `server/.env`:
   - `TELEGRAM_BOT_TOKEN`
   - `JWT_SECRET` (>=32 chars)
   - `RESET_SECRET`
-  - `RESET_TOKEN_TTL_MIN`, `RESET_THROTTLE_SEC`, `RESET_MAX_ATTEMPTS`
 - Start stack with bot:
   - `docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build postgres api bot`
 - Flow:
-  1) Authorized user calls `POST /telegram/verify/request` and gets `request_id`.
-  2) User sends `/verify <request_id>` to bot.
-  3) Bot sends a 6-digit verification code to Telegram.
-  4) App calls `POST /telegram/verify/confirm` with `{request_id, code}`.
-  5) After verification, `POST /auth/password/reset/request` with `{email, channel:"telegram"}` can queue reset code.
+  1) Authorized user calls `POST /telegram/link/request`.
+  2) App opens bot deep-link with one-time start token.
+  3) Bot confirms latest link and returns 6-digit confirm code through `POST /telegram/link/confirm_latest`.
+  4) App calls `POST /telegram/link/confirm` with `{user_id, confirm_code}`.
+  5) After Telegram is linked, password reset stays a separate Telegram reset flow.
 
 RU:
-- Доставка кода восстановления пароля работает через Telegram-бота и outbox (SMTP не нужен).
+- Привязка и подтверждение Telegram работают через канонический link-flow.
 - Обязательные переменные в `server/.env`:
   - `TELEGRAM_BOT_TOKEN`
   - `JWT_SECRET` (>=32 символов)
   - `RESET_SECRET`
-  - `RESET_TOKEN_TTL_MIN`, `RESET_THROTTLE_SEC`, `RESET_MAX_ATTEMPTS`
 - Запуск стека с ботом:
   - `docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build postgres api bot`
 - Поток работы:
-  1) Авторизованный пользователь вызывает `POST /telegram/verify/request` и получает `request_id`.
-  2) Пользователь отправляет боту `/verify <request_id>`.
-  3) Бот присылает 6-значный код подтверждения в Telegram.
-  4) Приложение вызывает `POST /telegram/verify/confirm` с `{request_id, code}`.
-  5) После подтверждения `POST /auth/password/reset/request` с `{email, channel:"telegram"}` ставит код восстановления в Telegram outbox.
+  1) Авторизованный пользователь вызывает `POST /telegram/link/request`.
+  2) Приложение открывает deep-link бота с одноразовым start-token.
+  3) Бот подтверждает последний link-запрос и возвращает 6-значный confirm-code через `POST /telegram/link/confirm_latest`.
+  4) Приложение вызывает `POST /telegram/link/confirm` с `{user_id, confirm_code}`.
+  5) После привязки Telegram восстановление пароля остаётся отдельным Telegram reset-flow.

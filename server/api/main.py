@@ -31,9 +31,6 @@ from server.api.schemas import (
     TelegramLinkConfirmLatestRequest,
     TelegramLinkConfirmRequest,
     TelegramLinkStatusRequest,
-    TelegramVerifyConfirm,
-    TelegramVerifyRequest,
-    TelegramVerifySend,
     ProfileGameClearRequest,
     ProfileGameUpdateRequest,
     ProfileUserClearRequest,
@@ -69,7 +66,6 @@ from server.services.telegram_service import (
     request_link_code,
     request_password_reset as request_password_reset_telegram,
 )
-from server.services.telegram_verify_service import bot_send_code, confirm_verify, request_verify
 from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
 from server.services.docs_service import get_doc_content
@@ -526,50 +522,6 @@ def telegram_link_confirm_latest(payload: TelegramLinkConfirmLatestRequest, requ
         str(payload.tg_username or "-"),
         str(bool(result.get("confirm_code"))).lower(),
     )
-    return _service_result_to_response(result)
-
-
-@app.post("/telegram/verify/request")
-def telegram_verify_request(payload: TelegramVerifyRequest, request: Request) -> dict:
-    """EN: Create Telegram verification challenge for provided user_id and return request_id.
-    RU: Создать challenge верификации Telegram для переданного user_id и вернуть request_id.
-    """
-
-    client_ip = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    result = request_verify(
-        user_id=payload.user_id,
-        user_agent=user_agent,
-        request_ip=client_ip,
-    )
-    return _service_result_to_response(result)
-
-
-@app.post("/telegram/verify/send")
-def telegram_verify_send(payload: TelegramVerifySend) -> dict:
-    """EN: Accept bot request and send 6-digit code for verification challenge.
-    RU: Принять запрос от бота и отправить 6-значный код для challenge верификации.
-    """
-
-    expected_secret = os.getenv("BOT_SHARED_SECRET", "").strip()
-    provided_secret = str(payload.bot_secret or "").strip()
-    if not expected_secret or provided_secret != expected_secret:
-        return JSONResponse(status_code=403, content={"ok": False, "error": "FORBIDDEN"})
-    result = bot_send_code(
-        request_id=payload.request_id,
-        telegram_user_id=payload.telegram_user_id,
-    )
-    return _service_result_to_response(result)
-
-
-@app.post("/telegram/verify/confirm")
-def telegram_verify_confirm(payload: TelegramVerifyConfirm, request: Request) -> dict:
-    """EN: Confirm Telegram verification challenge code for provided user_id.
-    RU: Подтвердить код challenge верификации Telegram для переданного user_id.
-    """
-
-    del request
-    result = confirm_verify(user_id=payload.user_id, request_id=payload.request_id, code=payload.code)
     return _service_result_to_response(result)
 
 
