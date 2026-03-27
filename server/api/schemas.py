@@ -170,6 +170,14 @@ class PayoutLinkRequest(StrictBaseModel):
     user_id: int = Field(gt=0)
 
 
+class PayoutMiniAppSessionRequest(StrictBaseModel):
+    """EN: Authenticated request payload for issuing one-time payout Mini App verification session.
+    RU: Payload авторизованного запроса на выдачу одноразовой payout Mini App verification-session.
+    """
+
+    user_id: int = Field(gt=0)
+
+
 class TelegramLinkStatusRequest(StrictBaseModel):
     """EN: Authenticated status request for latest Telegram deep-link code.
     RU: Авторизованный запрос статуса последнего Telegram deep-link кода.
@@ -186,6 +194,14 @@ class PayoutLinkStatusRequest(StrictBaseModel):
     user_id: int = Field(gt=0)
 
 
+class PayoutMiniAppSessionStatusRequest(StrictBaseModel):
+    """EN: Authenticated request payload for polling current payout Mini App session status.
+    RU: Payload авторизованного запроса для polling текущего статуса payout Mini App session.
+    """
+
+    user_id: int = Field(gt=0)
+
+
 class PayoutLinkAckRequest(StrictBaseModel):
     """EN: Paybot acknowledgement payload for one-time payout link code.
     RU: Payload подтверждения paybot для одноразового payout link-кода.
@@ -194,6 +210,15 @@ class PayoutLinkAckRequest(StrictBaseModel):
     code: Annotated[str, MinLen(1), MaxLen(128)]
     telegram_user_id: int = Field(gt=0)
     telegram_username: Annotated[str, MaxLen(64)] | None = None
+
+
+class PayoutMiniAppSessionConfirmRequest(StrictBaseModel):
+    """EN: Mini App payload with raw initData and opaque start_param for server-side verification.
+    RU: Payload Mini App с raw initData и непрозрачным start_param для серверной проверки.
+    """
+
+    init_data_raw: Annotated[str, MinLen(1), MaxLen(8192)]
+    start_param: Annotated[str, MinLen(1), MaxLen(128)]
 
 
 class TelegramLinkConfirmByCodeRequest(StrictBaseModel):
@@ -400,6 +425,19 @@ class GameSessionFinishRequest(StrictBaseModel):
         if record_sis is not None and int(value) > int(record_sis):
             raise ValueError("FORMAT")
         return int(value)
+
+
+class LevelScoreRecordUpsertRequest(StrictBaseModel):
+    """EN: Authenticated payload for one finished run that should update the per-level score record table.
+    RU: ??????????????????? payload ?????? ???????????? run, ??????? ?????? ???????? ??????? ???????? ?? ???????.
+    """
+
+    level_number: int = Field(ge=1)
+    score: int = Field(ge=0)
+    elapsed_ms: int = Field(ge=0)
+    result: Literal["completed", "lives_fail", "timeout"]
+    attempts_used: int | None = Field(default=None, ge=0)
+    reward_used: bool
 
 
 class AdsConfigRequest(StrictBaseModel):

@@ -677,7 +677,7 @@ def get_top_ratings(limit: int = 100, timeout: int = 8) -> list[dict]:
             continue
         user_value = str((row.get("user") or row.get("email") or "").strip())
         if not user_value:
-            user_value = "no data"
+            user_value = ""
         try:
             record_value = int(row.get("record") or 0)
         except Exception:
@@ -846,6 +846,33 @@ def payout_link_request(user_id: int) -> Tuple[bool, dict]:
     return False, {"ok": False, "error": "API_ERROR"}
 
 
+def payout_miniapp_session_request(user_id: int) -> Tuple[bool, dict]:
+    """EN: Request one-time payout Mini App verification session for authenticated user.
+    RU: Запросить одноразовую payout Mini App verification-session для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    token = ensure_access_token(force_refresh=False)
+    if not token:
+        tglog("[PAY] miniapp request status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
+        return False, {"ok": False, "error": "NO_SESSION"}
+
+    ok, payload, status_code = _authorized_request_with_retry(
+        "POST",
+        "/payout/miniapp/session/request",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    body_short = str(payload)[:200]
+    tglog(f"[PAY] miniapp request status={status_code} ok={ok} body={body_short}")
+    miniapp_url = str((payload.get('miniapp_url') or "").strip()) if isinstance(payload, dict) else ""
+    if ok and isinstance(payload, dict) and payload.get("ok") and miniapp_url:
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
 def payout_link_status(user_id: int) -> Tuple[bool, dict]:
     """EN: Poll latest payout link status for authenticated user.
     RU: Опрашивать статус последнего payout link-кода для авторизованного пользователя.
@@ -855,6 +882,25 @@ def payout_link_status(user_id: int) -> Tuple[bool, dict]:
     ok, payload, _status = _authorized_request_with_retry(
         "POST",
         "/payout/link/status",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def payout_miniapp_session_status(user_id: int) -> Tuple[bool, dict]:
+    """EN: Poll current payout Mini App verification status for authenticated user.
+    RU: Опрашивать текущий статус payout Mini App verification для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload, _status = _authorized_request_with_retry(
+        "POST",
+        "/payout/miniapp/session/status",
         json={"user_id": int(user_id)},
         timeout=10,
     )
@@ -894,4 +940,5 @@ def telegram_link_confirm(user_id: int, confirm_code: str) -> Tuple[bool, dict]:
     if isinstance(payload, dict):
         return False, payload
     return False, {"ok": False, "error": "API_ERROR"}
+
 

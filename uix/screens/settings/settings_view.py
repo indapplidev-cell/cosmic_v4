@@ -24,11 +24,11 @@ from kivymd.uix.button import MDIconButton
 from kivymd.uix.screen import MDScreen
 from manager.auth.account_delete import confirm_delete_account
 from manager import auth_backend
-from manager.config import API_BASE_URL, PAYOUT_TELEGRAM_BOT_USERNAME, TG_LINK_STATUS_POLL_SEC, VERIFY_OPEN_TIMEOUT_SEC
+from manager.config import API_BASE_URL, TG_LINK_STATUS_POLL_SEC, VERIFY_OPEN_TIMEOUT_SEC
 from manager.docs.doc_locale import get_lang_code
 from manager.game_control.hud_layout_store import get_swapped, toggle_swapped
 from manager.lang.lang_manager import t, topbar_value_text
-from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
+from manager.telegram_deeplink import open_telegram_miniapp
 from manager.trace import trace_log
 from manager.tg_debug_log import tglog
 from uix.debug.debug_borders import apply_debug_borders_to_ids
@@ -323,8 +323,8 @@ class SettingsScreenView(MDScreen):
         self.ids.back_btn.bind(on_release=self._back_callback)
 
     def start_payout_flow(self) -> None:
-        """EN: Start payout bot open flow from Settings button.
-        RU: Р вЂ”Р В°Р С—РЎС“РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ flow Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљР С‘РЎРЏ payout-Р В±Р С•РЎвЂљР В° Р С—Р С• Р С”Р Р…Р С•Р С—Р С”Р Вµ Р С‘Р В· Р СњР В°РЎРѓРЎвЂљРЎР‚Р С•Р ВµР С”.
+        """EN: Start payout Mini App verification flow from Settings button.
+        RU: Запустить payout Mini App verification-flow по кнопке из экрана настроек.
         """
 
         tglog("[PAY] step1 click PAYOUT")
@@ -343,28 +343,28 @@ class SettingsScreenView(MDScreen):
             return
 
         def _worker() -> None:
-            ok, payload = auth_backend.payout_link_request(user_id)
+            ok, payload = auth_backend.payout_miniapp_session_request(user_id)
             error_code = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
-            code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
-            if not ok or not code:
+            miniapp_url = str((payload.get("miniapp_url") or "").strip()) if isinstance(payload, dict) else ""
+            if not ok or not miniapp_url:
                 if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
                     Clock.schedule_once(lambda _dt: self._show_session_expired_popup(), 0)
+                elif error_code == "CONFIG_INVALID":
+                    Clock.schedule_once(lambda _dt: self._show_info_popup(t("pay.config_invalid")), 0)
                 else:
                     Clock.schedule_once(lambda _dt: self._show_info_popup(t("pay.request_fail")), 0)
                 return
 
-            tglog(f"[PAY] step4 open scheduled code={auth_backend.mask_token(code)}")
+            tglog("[PAY] step4 miniapp open scheduled")
             self._pay_flow_active = True
             self._pay_open_started_at = float(monotonic())
 
             def _open_and_poll(_dt: float) -> None:
-                open_bot_two_stage(
-                    PAYOUT_TELEGRAM_BOT_USERNAME,
-                    code,
-                    "PAY",
-                    warmup=True,
-                    retry_always=True,
-                )
+                attempted, _error = open_telegram_miniapp(miniapp_url)
+                if not attempted:
+                    self._pay_flow_active = False
+                    self._show_info_popup(t("pay.open_fail"))
+                    return
                 self._start_payout_status_polling(user_id=int(user_id))
 
             Clock.schedule_once(_open_and_poll, 0)
@@ -372,8 +372,8 @@ class SettingsScreenView(MDScreen):
         Thread(target=_worker, daemon=True).start()
 
     def _start_payout_status_polling(self, user_id: int) -> None:
-        """EN: Poll `/payout/link/status` until bot ack marks code used or timeout is reached.
-        RU: Р С›Р С—РЎР‚Р В°РЎв‚¬Р С‘Р Р†Р В°РЎвЂљРЎРЉ `/payout/link/status`, Р С—Р С•Р С”Р В° bot ack Р Р…Р Вµ Р С—Р С•Р СР ВµРЎвЂљР С‘РЎвЂљ Р С”Р С•Р Т‘ used Р С‘Р В»Р С‘ Р Р…Р Вµ Р Р†РЎвЂ№Р в„–Р Т‘Р ВµРЎвЂљ timeout.
+        """EN: Poll payout Mini App session status until verification succeeds or timeout is reached.
+        RU: Poll-ить статус payout Mini App session, пока verification не завершится успехом или timeout не истечёт.
         """
 
         if self._pay_status_poll_event is not None:
@@ -387,13 +387,12 @@ class SettingsScreenView(MDScreen):
             if not self._pay_flow_active:
                 return False
             elapsed = float(monotonic() - float(self._pay_open_started_at or 0.0))
-            ok, payload = auth_backend.payout_link_status(int(user_id))
-            used = bool(isinstance(payload, dict) and payload.get("used"))
+            ok, payload = auth_backend.payout_miniapp_session_status(int(user_id))
+            verified = bool(isinstance(payload, dict) and payload.get("verified"))
             ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
-            tglog(f"[PAY] status used={used} ttl={ttl_sec} elapsed={elapsed:.1f}")
-            if used:
+            tglog(f"[PAY] status verified={verified} ttl={ttl_sec} elapsed={elapsed:.1f}")
+            if verified:
                 self._pay_flow_active = False
-                cancel_open_flow("PAY")
                 if self._pay_status_poll_event is not None:
                     try:
                         self._pay_status_poll_event.cancel()
@@ -403,7 +402,6 @@ class SettingsScreenView(MDScreen):
                 return False
             if elapsed >= float(VERIFY_OPEN_TIMEOUT_SEC):
                 self._pay_flow_active = False
-                cancel_open_flow("PAY")
                 if self._pay_status_poll_event is not None:
                     try:
                         self._pay_status_poll_event.cancel()

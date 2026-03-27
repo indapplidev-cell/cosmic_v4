@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>Payout Verify</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #10131a;
+      color: #eef3ff;
+    }
+    .card {
+      width: min(92vw, 28rem);
+      padding: 1.5rem;
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.08);
+      text-align: center;
+    }
+    .status {
+      font-size: 1.1rem;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div id="status" class="status">Проверка...</div>
+  </main>
+  <script>
+    const statusNode = document.getElementById("status");
+
+    function setStatus(text) {
+      statusNode.textContent = text;
+    }
+
+    async function confirmMiniApp() {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg) {
+        setStatus("Ошибка: Telegram WebApp недоступен");
+        return;
+      }
+
+      tg.ready();
+      if (typeof tg.expand === "function") {
+        tg.expand();
+      }
+
+      const initDataRaw = String(tg.initData || "").trim();
+      const startParam = String(
+        (tg.initDataUnsafe && tg.initDataUnsafe.start_param) ||
+        new URLSearchParams(window.location.search).get("tgWebAppStartParam") ||
+        ""
+      ).trim();
+
+      if (!initDataRaw || !startParam) {
+        setStatus("Ошибка");
+        return;
+      }
+
+      try {
+        const response = await fetch("/payout/miniapp/session/confirm", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            init_data_raw: initDataRaw,
+            start_param: startParam,
+          }),
+        });
+        const payload = await response.json();
+        if (payload && payload.ok) {
+          setStatus("Подтверждено");
+          setTimeout(() => {
+            try {
+              tg.close();
+            } catch (_err) {
+            }
+          }, 900);
+          return;
+        }
+        setStatus("Ошибка");
+      } catch (_err) {
+        setStatus("Ошибка");
+      }
+    }
+
+    confirmMiniApp();
+  </script>
+</body>
+</html>

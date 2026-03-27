@@ -1,5 +1,5 @@
-"""EN: Services for payout bot deep-link issuance and acknowledgement.
-RU: Сервисы выдачи и подтверждения payout bot deep-link кодов.
+"""EN: Legacy services for payout bot deep-link issuance and acknowledgement.
+RU: Legacy-сервисы выдачи и подтверждения payout bot deep-link кодов.
 """
 
 from __future__ import annotations
@@ -62,8 +62,8 @@ def _gen_payout_code() -> str:
 
 
 def request_payout_link_code(user_id: int) -> dict:
-    """EN: Issue or reuse active payout link code for authenticated user.
-    RU: Выдать или переиспользовать активный payout link-код для авторизованного пользователя.
+    """EN: Issue or reuse legacy payout deep-link code for non-security fallback UX only.
+    RU: Выдать или переиспользовать legacy payout deep-link код только для non-security fallback UX.
     """
 
     secret = _reset_secret()
@@ -122,8 +122,13 @@ def request_payout_link_code(user_id: int) -> dict:
 
 
 def ack_payout_link_code(code: str, telegram_user_id: int, telegram_username: str | None) -> dict:
-    """EN: Consume payout link code after bot `/start <code>` acknowledgement.
-    RU: Поглотить payout link-код после подтверждения ботом через `/start <code>`.
+    """EN: Consume legacy payout link code after bot `/start <code>` acknowledgement.
+    RU: Поглотить legacy payout link-код после подтверждения ботом через `/start <code>`.
+
+    EN: This flow is kept only as legacy UX fallback and must not be used as a
+    security boundary for payout identity verification.
+    RU: Этот flow оставлен только как legacy UX fallback и не должен использоваться
+    как security boundary для payout identity verification.
     """
 
     secret = _reset_secret()

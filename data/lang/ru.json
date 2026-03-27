@@ -157,11 +157,15 @@
   "reset.popup_instruction": "Откройте Telegram, нажмите СБРОСИТЬ в боте, получите 6-значный код и введите его здесь.",
   "reset.success.password_changed": "Пароль изменён. Войдите заново.",
   "pay.open_fail": "Не удалось открыть Telegram. Попробуйте позже.",
+  "pay.config_invalid": "Проверка payout временно недоступна. Попробуйте позже.",
   "pay.request_fail": "Не удалось открыть. Попробуйте позже.",
   "pay.session_expired": "Сессия истекла. Войдите заново.",
   "pay.return_hint": "Если ссылка не открылась, переключитесь обратно в приложение Cosmic.",
   "tg.open_timeout": "Не удалось открыть Telegram. Откройте Telegram и нажмите Start в чате бота.",
   "pay.open_timeout": "Не удалось открыть Telegram. Откройте Telegram и нажмите Start в чате бота.",
   "tg.verify_timeout": "Подтверждение Telegram не завершено. Откройте Telegram и нажмите Start в чате бота.",
-  "game.level_complete": "Уровень завершён"
+  "game.level_complete": "Уровень завершён",
+  "game.level_intro": "Уровень {level_number}. Условие: наберите максимальное количество очков за отведенное время",
+  "game.level_victory": "Победа! Поздравляем! Вы справились!",
+  "game.level_timeout_fail": "Жаль! Вы не справились! Возможно вам повезет в другой раз!"
 }

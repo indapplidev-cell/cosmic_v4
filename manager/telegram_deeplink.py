@@ -305,6 +305,41 @@ def open_web(web_url: str) -> tuple[bool, str | None]:
         return False, str(exc)
 
 
+def open_telegram_miniapp(miniapp_url: str) -> tuple[bool, str | None]:
+    """EN: Open Telegram Mini App URL through a dedicated helper with explicit payout semantics.
+    RU: Открыть URL Telegram Mini App через отдельный helper с явной payout-семантикой.
+
+    EN: This helper keeps Mini App launch separate from generic web-opening logic so payout
+    flow can log and handle launch failures explicitly.
+    RU: Этот helper отделяет запуск Mini App от generic web-opening, чтобы payout-flow
+    мог явно логировать и обрабатывать ошибки запуска.
+    """
+
+    masked_url = _mask_url(str(miniapp_url or ""))
+    tglog(f"[MINIAPP] open stage=miniapp url={masked_url}")
+    trace_log(
+        "OPEN",
+        "OPEN.ATTEMPT",
+        stage="miniapp",
+        platform=kivy_platform,
+        url=masked_url,
+    )
+    attempted, error = open_web(str(miniapp_url or ""))
+    if attempted:
+        trace_log("OPEN", "OPEN.RESULT", stage="miniapp", platform=kivy_platform, attempted=True, result=True)
+        return True, None
+    trace_log(
+        "OPEN",
+        "OPEN.RESULT",
+        stage="miniapp",
+        platform=kivy_platform,
+        attempted=False,
+        result=False,
+        error="MINIAPP_OPEN_FAILED",
+    )
+    return False, "MINIAPP_OPEN_FAILED"
+
+
 def open_tg(bot_username: str, token: str = "") -> bool:
     """EN: Backward-compatible boolean tg:// open helper.
     RU: Обратносовместимый bool-хелпер открытия tg://.

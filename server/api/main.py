@@ -1,14 +1,15 @@
-"""EN: FastAPI entrypoint exposing HTTP endpoints over server services.
-RU: Точка входа FastAPI, публикующая HTTP-эндпоинты поверх server-сервисов.
+﻿"""EN: FastAPI entrypoint exposing HTTP endpoints over server services.
+RU: РўРѕС‡РєР° РІС…РѕРґР° FastAPI, РїСѓР±Р»РёРєСѓСЋС‰Р°СЏ HTTP-СЌРЅРґРїРѕРёРЅС‚С‹ РїРѕРІРµСЂС… server-СЃРµСЂРІРёСЃРѕРІ.
 """
 
 from __future__ import annotations
 
 import os
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 
 from server.api.schemas import (
@@ -17,10 +18,14 @@ from server.api.schemas import (
     AdsEventRequest,
     PayoutLinkAckRequest,
     PayoutLinkRequest,
+    PayoutMiniAppSessionConfirmRequest,
+    PayoutMiniAppSessionRequest,
+    PayoutMiniAppSessionStatusRequest,
     PayoutLinkStatusRequest,
     BotResetIssueRequest,
     DeleteUserRequest,
     GameSessionFinishRequest,
+    LevelScoreRecordUpsertRequest,
     LoginRequest,
     LogoutRequest,
     PasswordResetConfirm,
@@ -38,11 +43,15 @@ from server.api.schemas import (
     RegisterRequest,
 )
 from server.services.ads_service import get_ads_config, log_ads_event
+from server.services.payout_miniapp_service import (
+    confirm_payout_miniapp_session,
+    get_payout_miniapp_session_status,
+    request_payout_miniapp_session,
+)
 from server.services.payout_service import ack_payout_link_code, get_last_payout_link_status, request_payout_link_code
 from server.services.auth_service import (
     delete_user,
     get_user_snapshot,
-    get_user_snapshot_by_email,
     login_user,
     logout_user,
     refresh_auth,
@@ -55,7 +64,7 @@ from server.services.profile_service import (
     update_profile_game,
     update_profile_user,
 )
-from server.security.jwt import decode_access_token, extract_bearer_token
+from server.api.auth import get_authenticated_user_id, require_same_user
 from server.services.telegram_service import (
     confirm_link_by_code,
     confirm_link,
@@ -69,6 +78,7 @@ from server.services.telegram_service import (
 from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
 from server.services.docs_service import get_doc_content
+from server.services.level_score_record_service import upsert_level_score_record
 from server.config import get_jwt_secret, get_reset_secret
 from server.db import get_session
 
@@ -76,11 +86,12 @@ from server.db import get_session
 app = FastAPI(title="Cosmic API")
 _LOG = logging.getLogger("cosmic.api")
 _BOOT_CONFIG_OK = False
+_PAYBOT_MINIAPP_INDEX = Path(__file__).resolve().parents[1] / "static" / "paybot_miniapp" / "index.html"
 
 
 def _mask_code(code: str) -> str:
     """EN: Mask one-time code for logs without exposing full value.
-    RU: Маскировать одноразовый код в логах без раскрытия полного значения.
+    RU: РњР°СЃРєРёСЂРѕРІР°С‚СЊ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ РєРѕРґ РІ Р»РѕРіР°С… Р±РµР· СЂР°СЃРєСЂС‹С‚РёСЏ РїРѕР»РЅРѕРіРѕ Р·РЅР°С‡РµРЅРёСЏ.
     """
 
     value = str((code or "").strip())
@@ -94,7 +105,7 @@ def _mask_code(code: str) -> str:
 @app.middleware("http")
 async def ensure_db_schema_is_current(request: Request, call_next):
     """EN: Block non-diagnostic requests when DB schema is behind Alembic head.
-    RU: Блокировать недиагностические запросы, если схема БД отстаёт от Alembic head.
+    RU: Р‘Р»РѕРєРёСЂРѕРІР°С‚СЊ РЅРµРґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёРµ Р·Р°РїСЂРѕСЃС‹, РµСЃР»Рё СЃС…РµРјР° Р‘Р” РѕС‚СЃС‚Р°С‘С‚ РѕС‚ Alembic head.
     """
 
     path = request.url.path
@@ -133,7 +144,7 @@ async def ensure_db_schema_is_current(request: Request, call_next):
 
 def _config_secret_lengths() -> tuple[int, int]:
     """EN: Return lengths of JWT/RESET secrets without exposing values.
-    RU: Вернуть длины JWT/RESET секретов без раскрытия самих значений.
+    RU: Р’РµСЂРЅСѓС‚СЊ РґР»РёРЅС‹ JWT/RESET СЃРµРєСЂРµС‚РѕРІ Р±РµР· СЂР°СЃРєСЂС‹С‚РёСЏ СЃР°РјРёС… Р·РЅР°С‡РµРЅРёР№.
     """
 
     jwt_len = len(os.getenv("JWT_SECRET", "").strip())
@@ -143,7 +154,7 @@ def _config_secret_lengths() -> tuple[int, int]:
 
 def _validate_runtime_config() -> None:
     """EN: Validate required runtime secrets and raise on invalid config.
-    RU: Проверить обязательные runtime-секреты и поднять ошибку при невалидной конфигурации.
+    RU: РџСЂРѕРІРµСЂРёС‚СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ runtime-СЃРµРєСЂРµС‚С‹ Рё РїРѕРґРЅСЏС‚СЊ РѕС€РёР±РєСѓ РїСЂРё РЅРµРІР°Р»РёРґРЅРѕР№ РєРѕРЅС„РёРіСѓСЂР°С†РёРё.
     """
 
     jwt_secret = get_jwt_secret()
@@ -155,7 +166,7 @@ def _validate_runtime_config() -> None:
 @app.on_event("startup")
 def on_startup_validate_config() -> None:
     """EN: Fail-fast startup hook: refuse to run API with missing secrets.
-    RU: Fail-fast хук старта: запретить запуск API при отсутствии секретов.
+    RU: Fail-fast С…СѓРє СЃС‚Р°СЂС‚Р°: Р·Р°РїСЂРµС‚РёС‚СЊ Р·Р°РїСѓСЃРє API РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё СЃРµРєСЂРµС‚РѕРІ.
     """
 
     global _BOOT_CONFIG_OK
@@ -165,7 +176,7 @@ def on_startup_validate_config() -> None:
 
 def _service_result_to_response(result: dict) -> dict:
     """EN: Return service result as business payload with stable HTTP 200 style.
-    RU: Вернуть результат сервиса как business-payload со стабильным стилем HTTP 200.
+    RU: Р’РµСЂРЅСѓС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚ СЃРµСЂРІРёСЃР° РєР°Рє business-payload СЃРѕ СЃС‚Р°Р±РёР»СЊРЅС‹Рј СЃС‚РёР»РµРј HTTP 200.
     """
 
     if result.get("ok"):
@@ -173,28 +184,11 @@ def _service_result_to_response(result: dict) -> dict:
     return {"ok": False, "error": str(result.get("error", "DB_ERROR"))}
 
 
-def _resolve_user_id_from_bearer(request: Request) -> int | None:
-    """EN: Resolve user_id from Authorization Bearer token payload.
-    RU: Извлечь user_id из payload токена Authorization Bearer.
-    """
-
-    token = extract_bearer_token(request.headers.get("authorization"))
-    if not token:
-        return None
-    payload = decode_access_token(token)
-    if not isinstance(payload, dict):
-        return None
-    raw_sub = payload.get("sub")
-    try:
-        return int(raw_sub)
-    except Exception:
-        return None
-
 
 @app.get("/healthz")
 def healthz() -> JSONResponse:
     """EN: Liveness endpoint for local deployment checks.
-    RU: Эндпоинт проверки живости для локального развёртывания.
+    RU: Р­РЅРґРїРѕРёРЅС‚ РїСЂРѕРІРµСЂРєРё Р¶РёРІРѕСЃС‚Рё РґР»СЏ Р»РѕРєР°Р»СЊРЅРѕРіРѕ СЂР°Р·РІС‘СЂС‚С‹РІР°РЅРёСЏ.
     """
 
     if not _BOOT_CONFIG_OK:
@@ -220,7 +214,7 @@ def healthz() -> JSONResponse:
 @app.get("/meta/compat")
 def meta_compat() -> dict:
     """EN: Return runtime DB schema compatibility status for client-side readiness checks.
-    RU: Вернуть runtime-статус совместимости схемы БД для клиентской проверки готовности.
+    RU: Р’РµСЂРЅСѓС‚СЊ runtime-СЃС‚Р°С‚СѓСЃ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё СЃС…РµРјС‹ Р‘Р” РґР»СЏ РєР»РёРµРЅС‚СЃРєРѕР№ РїСЂРѕРІРµСЂРєРё РіРѕС‚РѕРІРЅРѕСЃС‚Рё.
     """
 
     status = get_db_schema_status(force_refresh=True)
@@ -230,14 +224,10 @@ def meta_compat() -> dict:
 @app.post("/ads/config")
 def ads_config(payload: AdsConfigRequest, request: Request) -> dict:
     """EN: Return authenticated ads mediation config resolved from locale region and placement rules.
-    RU: Вернуть authenticated ads-конфиг медиации, определенный по locale-региону и правилам плейсментов.
+    RU: Р’РµСЂРЅСѓС‚СЊ authenticated ads-РєРѕРЅС„РёРі РјРµРґРёР°С†РёРё, РѕРїСЂРµРґРµР»РµРЅРЅС‹Р№ РїРѕ locale-СЂРµРіРёРѕРЅСѓ Рё РїСЂР°РІРёР»Р°Рј РїР»РµР№СЃРјРµРЅС‚РѕРІ.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "UNAUTHORIZED"}
+    auth_user_id = require_same_user(request, int(payload.user_id))
     result = get_ads_config(auth_user_id, payload)
     result.pop("user_id", None)
     result.pop("screen", None)
@@ -250,14 +240,10 @@ def ads_config(payload: AdsConfigRequest, request: Request) -> dict:
 @app.post("/ads/event")
 def ads_event(payload: AdsEventRequest, request: Request) -> dict:
     """EN: Collect authenticated ads event and log it to stdout for current server stub stage.
-    RU: Собрать authenticated ads-событие и залогировать его в stdout на текущем stub-этапе сервера.
+    RU: РЎРѕР±СЂР°С‚СЊ authenticated ads-СЃРѕР±С‹С‚РёРµ Рё Р·Р°Р»РѕРіРёСЂРѕРІР°С‚СЊ РµРіРѕ РІ stdout РЅР° С‚РµРєСѓС‰РµРј stub-СЌС‚Р°РїРµ СЃРµСЂРІРµСЂР°.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "UNAUTHORIZED"}
+    auth_user_id = require_same_user(request, int(payload.user_id))
     meta_payload = dict(payload.meta or {})
     if payload.extra:
         meta_payload.setdefault("extra", dict(payload.extra))
@@ -278,7 +264,7 @@ def ads_event(payload: AdsEventRequest, request: Request) -> dict:
 @app.post("/auth/register")
 def auth_register(payload: RegisterRequest, request: Request) -> dict:
     """EN: Register user using existing auth service.
-    RU: Зарегистрировать пользователя через существующий auth-сервис.
+    RU: Р—Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°С‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ С‡РµСЂРµР· СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ auth-СЃРµСЂРІРёСЃ.
     """
 
     client_ip = request.client.host if request.client else None
@@ -290,7 +276,7 @@ def auth_register(payload: RegisterRequest, request: Request) -> dict:
 @app.post("/auth/login")
 def auth_login(payload: LoginRequest, request: Request) -> dict:
     """EN: Login user using existing auth service.
-    RU: Выполнить вход через существующий auth-сервис.
+    RU: Р’С‹РїРѕР»РЅРёС‚СЊ РІС…РѕРґ С‡РµСЂРµР· СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ auth-СЃРµСЂРІРёСЃ.
     """
 
     client_ip = request.client.host if request.client else None
@@ -302,7 +288,7 @@ def auth_login(payload: LoginRequest, request: Request) -> dict:
 @app.post("/auth/refresh")
 def auth_refresh(payload: RefreshRequest, request: Request) -> JSONResponse:
     """EN: Rotate refresh token and issue fresh access/refresh pair.
-    RU: Ротировать refresh-токен и выдать свежую пару access/refresh.
+    RU: Р РѕС‚РёСЂРѕРІР°С‚СЊ refresh-С‚РѕРєРµРЅ Рё РІС‹РґР°С‚СЊ СЃРІРµР¶СѓСЋ РїР°СЂСѓ access/refresh.
     """
 
     client_ip = request.client.host if request.client else None
@@ -316,7 +302,7 @@ def auth_refresh(payload: RefreshRequest, request: Request) -> JSONResponse:
 @app.post("/auth/logout")
 def auth_logout(payload: LogoutRequest) -> JSONResponse:
     """EN: Revoke provided refresh token.
-    RU: Отозвать переданный refresh-токен.
+    RU: РћС‚РѕР·РІР°С‚СЊ РїРµСЂРµРґР°РЅРЅС‹Р№ refresh-С‚РѕРєРµРЅ.
     """
 
     result = logout_user(payload.refresh_token)
@@ -328,7 +314,7 @@ def auth_logout(payload: LogoutRequest) -> JSONResponse:
 @app.post("/auth/password/reset/request")
 def auth_password_reset_request(payload: PasswordResetRequest, request: Request) -> dict:
     """EN: Request one-time password reset code by email with non-enumerating response.
-    RU: Запросить одноразовый код восстановления по email с ответом без раскрытия существования аккаунта.
+    RU: Р—Р°РїСЂРѕСЃРёС‚СЊ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ РєРѕРґ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїРѕ email СЃ РѕС‚РІРµС‚РѕРј Р±РµР· СЂР°СЃРєСЂС‹С‚РёСЏ СЃСѓС‰РµСЃС‚РІРѕРІР°РЅРёСЏ Р°РєРєР°СѓРЅС‚Р°.
     """
 
     client_ip = request.client.host if request.client else None
@@ -340,7 +326,7 @@ def auth_password_reset_request(payload: PasswordResetRequest, request: Request)
 @app.post("/auth/password/reset/confirm")
 def auth_password_reset_confirm(payload: PasswordResetConfirm, request: Request) -> dict:
     """EN: Confirm one-time reset code and set new password hash.
-    RU: Подтвердить одноразовый код и установить новый хеш пароля.
+    RU: РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ РєРѕРґ Рё СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РЅРѕРІС‹Р№ С…РµС€ РїР°СЂРѕР»СЏ.
     """
 
     del request
@@ -355,7 +341,7 @@ def auth_password_reset_confirm(payload: PasswordResetConfirm, request: Request)
 @app.post("/telegram/reset/issue_by_code")
 def telegram_reset_issue_by_code(payload: BotResetIssueRequest, request: Request) -> dict:
     """EN: Bot-only endpoint issuing one-time 6-digit reset confirm code from reset_link_code.
-    RU: Bot-only эндпоинт, выдающий одноразовый 6-значный reset confirm-код из reset_link_code.
+    RU: Bot-only СЌРЅРґРїРѕРёРЅС‚, РІС‹РґР°СЋС‰РёР№ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ 6-Р·РЅР°С‡РЅС‹Р№ reset confirm-РєРѕРґ РёР· reset_link_code.
     """
 
     expected_secret = str((os.getenv("BOT_SHARED_SECRET", "") or "").strip())
@@ -373,14 +359,10 @@ def telegram_reset_issue_by_code(payload: BotResetIssueRequest, request: Request
 @app.post("/telegram/link/request")
 def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dict:
     """EN: Create one-time Telegram deep-link start token for authenticated user.
-    RU: Создать одноразовый Telegram deep-link start token для авторизованного пользователя.
+    RU: РЎРѕР·РґР°С‚СЊ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ Telegram deep-link start token РґР»СЏ Р°РІС‚РѕСЂРёР·РѕРІР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "FORBIDDEN"}
+    require_same_user(request, int(payload.user_id))
     result = request_link_code(payload.user_id)
     return _service_result_to_response(result)
 
@@ -388,52 +370,40 @@ def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dic
 @app.post("/telegram/link/status")
 def telegram_link_status(payload: TelegramLinkStatusRequest, request: Request) -> dict:
     """EN: Return status of latest Telegram deep-link code for authenticated user.
-    RU: Вернуть статус последнего Telegram deep-link кода для авторизованного пользователя.
+    RU: Р’РµСЂРЅСѓС‚СЊ СЃС‚Р°С‚СѓСЃ РїРѕСЃР»РµРґРЅРµРіРѕ Telegram deep-link РєРѕРґР° РґР»СЏ Р°РІС‚РѕСЂРёР·РѕРІР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "FORBIDDEN"}
+    require_same_user(request, int(payload.user_id))
     result = get_last_link_status(int(payload.user_id))
     return _service_result_to_response(result)
 
 
 @app.post("/payout/link/request")
 def payout_link_request(payload: PayoutLinkRequest, request: Request) -> dict:
-    """EN: Issue one-time payout deep-link code for authenticated user.
-    RU: Выдать одноразовый payout deep-link-код для авторизованного пользователя.
+    """EN: Legacy payout deep-link request kept only for non-security fallback UX.
+    RU: Legacy-запрос payout deep-link, оставленный только для не security-критичного fallback UX.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "FORBIDDEN"}
+    require_same_user(request, int(payload.user_id))
     result = request_payout_link_code(int(payload.user_id))
     return _service_result_to_response(result)
 
 
 @app.post("/payout/link/status")
 def payout_link_status(payload: PayoutLinkStatusRequest, request: Request) -> dict:
-    """EN: Return status of latest payout deep-link code for authenticated user.
-    RU: Вернуть статус последнего payout deep-link кода для авторизованного пользователя.
+    """EN: Legacy payout deep-link status kept only for non-security fallback UX.
+    RU: Legacy-статус payout deep-link, оставленный только для не security-критичного fallback UX.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "FORBIDDEN"}
+    require_same_user(request, int(payload.user_id))
     result = get_last_payout_link_status(int(payload.user_id))
     return _service_result_to_response(result)
 
 
 @app.post("/payout/link/ack")
 def payout_link_ack(payload: PayoutLinkAckRequest, request: Request) -> dict:
-    """EN: Bot-only acknowledgement proving payout bot was opened from the app.
-    RU: Bot-only подтверждение, доказывающее открытие payout bot из приложения.
+    """EN: Legacy paybot ack endpoint kept for fallback UX and not used as payout security boundary.
+    RU: Legacy-endpoint paybot ack, оставленный для fallback UX и не используемый как security boundary payout.
     """
 
     expected_secret = str((os.getenv("PAY_BOT_SHARED_SECRET", "") or "").strip())
@@ -448,17 +418,62 @@ def payout_link_ack(payload: PayoutLinkAckRequest, request: Request) -> dict:
     return _service_result_to_response(result)
 
 
+@app.post("/payout/miniapp/session/request")
+def payout_miniapp_session_request(payload: PayoutMiniAppSessionRequest, request: Request) -> dict:
+    """EN: Issue one-time payout Mini App verification session for authenticated user.
+    RU: Выдать одноразовую payout Mini App verification-session для авторизованного пользователя.
+    """
+
+    require_same_user(request, int(payload.user_id))
+    result = request_payout_miniapp_session(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/payout/miniapp/session/confirm")
+def payout_miniapp_session_confirm(payload: PayoutMiniAppSessionConfirmRequest) -> dict:
+    """EN: Validate Telegram Mini App initData and verify payout identity for one session.
+    RU: Проверить Telegram Mini App initData и подтвердить payout identity для одной session.
+    """
+
+    result = confirm_payout_miniapp_session(
+        init_data_raw=str(payload.init_data_raw),
+        start_param=str(payload.start_param),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/payout/miniapp/session/status")
+def payout_miniapp_session_status(payload: PayoutMiniAppSessionStatusRequest, request: Request) -> dict:
+    """EN: Return current payout Mini App verification status for authenticated user.
+    RU: Вернуть текущий статус payout Mini App verification для авторизованного пользователя.
+    """
+
+    require_same_user(request, int(payload.user_id))
+    result = get_payout_miniapp_session_status(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.get("/paybot/miniapp")
+def paybot_miniapp_index() -> FileResponse:
+    """EN: Serve static Telegram Mini App frontend for payout verification.
+    RU: Отдать статический Telegram Mini App frontend для payout verification.
+
+    EN: BotFather Mini App configuration for `PAYOUT_MINIAPP_SHORT_NAME` is expected
+    to point to this public backend route.
+    RU: Ожидается, что конфигурация Mini App в BotFather для `PAYOUT_MINIAPP_SHORT_NAME`
+    будет указывать именно на этот публичный backend-route.
+    """
+
+    return FileResponse(_PAYBOT_MINIAPP_INDEX)
+
+
 @app.post("/telegram/link/confirm")
 def telegram_link_confirm(payload: TelegramLinkConfirmRequest, request: Request) -> dict:
     """EN: Confirm bot-issued 6-digit code from app and finalize Telegram binding for current user.
-    RU: Подтвердить 6-значный код из бота со стороны приложения и завершить привязку Telegram для текущего пользователя.
+    RU: РџРѕРґС‚РІРµСЂРґРёС‚СЊ 6-Р·РЅР°С‡РЅС‹Р№ РєРѕРґ РёР· Р±РѕС‚Р° СЃРѕ СЃС‚РѕСЂРѕРЅС‹ РїСЂРёР»РѕР¶РµРЅРёСЏ Рё Р·Р°РІРµСЂС€РёС‚СЊ РїСЂРёРІСЏР·РєСѓ Telegram РґР»СЏ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
     """
 
-    auth_user_id = _resolve_user_id_from_bearer(request)
-    if auth_user_id is None or auth_user_id <= 0:
-        return {"ok": False, "error": "UNAUTHORIZED"}
-    if int(auth_user_id) != int(payload.user_id):
-        return {"ok": False, "error": "UNAUTHORIZED"}
+    require_same_user(request, int(payload.user_id))
     result = confirm_link(payload.user_id, payload.confirm_code)
     return _service_result_to_response(result)
 
@@ -466,7 +481,7 @@ def telegram_link_confirm(payload: TelegramLinkConfirmRequest, request: Request)
 @app.post("/telegram/link/confirm_by_code")
 def telegram_link_confirm_by_code(payload: TelegramLinkConfirmByCodeRequest, request: Request) -> dict:
     """EN: Convert pending link_code into a separate one-time confirm_code and return debug info for bot chat.
-    RU: Преобразовать pending link_code в отдельный одноразовый confirm_code и вернуть debug-данные для чата бота.
+    RU: РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ pending link_code РІ РѕС‚РґРµР»СЊРЅС‹Р№ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ confirm_code Рё РІРµСЂРЅСѓС‚СЊ debug-РґР°РЅРЅС‹Рµ РґР»СЏ С‡Р°С‚Р° Р±РѕС‚Р°.
     """
 
     client_ip = request.client.host if request.client else "-"
@@ -498,7 +513,7 @@ def telegram_link_confirm_by_code(payload: TelegramLinkConfirmByCodeRequest, req
 @app.post("/telegram/link/confirm_latest")
 def telegram_link_confirm_latest(payload: TelegramLinkConfirmLatestRequest, request: Request) -> dict:
     """EN: Confirm latest pending Telegram link by runtime Telegram identity (no link_code from bot state required).
-    RU: Подтвердить последний pending Telegram link по текущей Telegram-идентичности (без link_code из состояния бота).
+    RU: РџРѕРґС‚РІРµСЂРґРёС‚СЊ РїРѕСЃР»РµРґРЅРёР№ pending Telegram link РїРѕ С‚РµРєСѓС‰РµР№ Telegram-РёРґРµРЅС‚РёС‡РЅРѕСЃС‚Рё (Р±РµР· link_code РёР· СЃРѕСЃС‚РѕСЏРЅРёСЏ Р±РѕС‚Р°).
     """
 
     client_ip = request.client.host if request.client else "-"
@@ -526,39 +541,32 @@ def telegram_link_confirm_latest(payload: TelegramLinkConfirmLatestRequest, requ
 
 
 @app.get("/auth/me")
-def auth_me(user_id: int = Query(gt=0)) -> dict:
+def auth_me(request: Request) -> dict:
     """EN: Return current user snapshot by user_id for cache validation/synchronization.
-    RU: Вернуть snapshot текущего пользователя по user_id для проверки/синхронизации кэша.
+    RU: Р’РµСЂРЅСѓС‚СЊ snapshot С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РїРѕ user_id РґР»СЏ РїСЂРѕРІРµСЂРєРё/СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё РєСЌС€Р°.
     """
 
-    return _service_result_to_response(get_user_snapshot(user_id))
-
-
-@app.get("/auth/exists")
-def auth_exists(email: str = Query(min_length=3)) -> dict:
-    """EN: Resolve user existence by email and return user snapshot when found.
-    RU: Проверить существование пользователя по email и вернуть snapshot при наличии.
-    """
-
-    return _service_result_to_response(get_user_snapshot_by_email(email))
-
+    auth_user_id = get_authenticated_user_id(request)
+    return _service_result_to_response(get_user_snapshot(auth_user_id))
 
 @app.post("/auth/delete")
-def auth_delete(payload: DeleteUserRequest) -> dict:
+def auth_delete(payload: DeleteUserRequest, request: Request) -> dict:
     """EN: Delete user by id via auth service.
-    RU: Удалить пользователя по id через auth-сервис.
+    RU: РЈРґР°Р»РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РїРѕ id С‡РµСЂРµР· auth-СЃРµСЂРІРёСЃ.
     """
 
+    require_same_user(request, int(payload.user_id))
     result = delete_user(payload.user_id)
     return _service_result_to_response(result)
 
 
 @app.post("/profile/user/update")
-def profile_user_update(payload: ProfileUserUpdateRequest) -> dict:
+def profile_user_update(payload: ProfileUserUpdateRequest, request: Request) -> dict:
     """EN: Update profile_users fields for selected user.
-    RU: Обновить поля profile_users для выбранного пользователя.
+    RU: РћР±РЅРѕРІРёС‚СЊ РїРѕР»СЏ profile_users РґР»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
     """
 
+    require_same_user(request, int(payload.user_id))
     result = update_profile_user(
         payload.user_id,
         login=payload.login,
@@ -569,21 +577,23 @@ def profile_user_update(payload: ProfileUserUpdateRequest) -> dict:
 
 
 @app.post("/profile/user/clear")
-def profile_user_clear(payload: ProfileUserClearRequest) -> dict:
+def profile_user_clear(payload: ProfileUserClearRequest, request: Request) -> dict:
     """EN: Reset selected profile_users fields to defaults.
-    RU: Сбросить выбранные поля profile_users к значениям по умолчанию.
+    RU: РЎР±СЂРѕСЃРёС‚СЊ РІС‹Р±СЂР°РЅРЅС‹Рµ РїРѕР»СЏ profile_users Рє Р·РЅР°С‡РµРЅРёСЏРј РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
     """
 
+    require_same_user(request, int(payload.user_id))
     result = clear_profile_user_fields(payload.user_id, payload.fields)
     return _service_result_to_response(result)
 
 
 @app.post("/profile/game/update")
-def profile_game_update(payload: ProfileGameUpdateRequest) -> dict:
+def profile_game_update(payload: ProfileGameUpdateRequest, request: Request) -> dict:
     """EN: Update profile_games numeric fields for selected user.
-    RU: Обновить числовые поля profile_games для выбранного пользователя.
+    RU: РћР±РЅРѕРІРёС‚СЊ С‡РёСЃР»РѕРІС‹Рµ РїРѕР»СЏ profile_games РґР»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
     """
 
+    require_same_user(request, int(payload.user_id))
     result = update_profile_game(
         payload.user_id,
         record=payload.record,
@@ -594,11 +604,12 @@ def profile_game_update(payload: ProfileGameUpdateRequest) -> dict:
 
 
 @app.post("/profile/game/clear")
-def profile_game_clear(payload: ProfileGameClearRequest) -> dict:
+def profile_game_clear(payload: ProfileGameClearRequest, request: Request) -> dict:
     """EN: Reset selected profile_games fields to defaults.
-    RU: Сбросить выбранные поля profile_games к значениям по умолчанию.
+    RU: РЎР±СЂРѕСЃРёС‚СЊ РІС‹Р±СЂР°РЅРЅС‹Рµ РїРѕР»СЏ profile_games Рє Р·РЅР°С‡РµРЅРёСЏРј РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ.
     """
 
+    require_same_user(request, int(payload.user_id))
     result = clear_profile_game_fields(payload.user_id, payload.fields)
     return _service_result_to_response(result)
 
@@ -606,7 +617,7 @@ def profile_game_clear(payload: ProfileGameClearRequest) -> dict:
 @app.get("/rating/top")
 def rating_top(limit: int = Query(default=100, ge=1, le=100)) -> dict:
     """EN: Return top rating rows via existing rating service.
-    RU: Вернуть топ строк рейтинга через существующий rating-сервис.
+    RU: Р’РµСЂРЅСѓС‚СЊ С‚РѕРї СЃС‚СЂРѕРє СЂРµР№С‚РёРЅРіР° С‡РµСЂРµР· СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ rating-СЃРµСЂРІРёСЃ.
     """
 
     items = get_top_ratings(limit=limit)
@@ -614,11 +625,12 @@ def rating_top(limit: int = Query(default=100, ge=1, le=100)) -> dict:
 
 
 @app.post("/game/session/finish")
-def game_session_finish(payload: GameSessionFinishRequest) -> dict:
+def game_session_finish(payload: GameSessionFinishRequest, request: Request) -> dict:
     """EN: Accept raw SIS metrics, calculate profile updates on server, and persist results.
-    RU: Принять сырые метрики СИС, рассчитать обновления профиля на сервере и сохранить результат.
+    RU: РџСЂРёРЅСЏС‚СЊ СЃС‹СЂС‹Рµ РјРµС‚СЂРёРєРё РЎРРЎ, СЂР°СЃСЃС‡РёС‚Р°С‚СЊ РѕР±РЅРѕРІР»РµРЅРёСЏ РїСЂРѕС„РёР»СЏ РЅР° СЃРµСЂРІРµСЂРµ Рё СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚.
     """
 
+    require_same_user(request, int(payload.user_id))
     result = apply_finished_session(
         payload.user_id,
         {
@@ -636,10 +648,30 @@ def game_session_finish(payload: GameSessionFinishRequest) -> dict:
     return _service_result_to_response(result)
 
 
+@app.post("/game/level-score-record")
+def game_level_score_record(payload: LevelScoreRecordUpsertRequest, request: Request) -> dict:
+    """EN: Accept one authenticated finished-run result and upsert it into the per-level score-record table.
+    RU: ??????? ???? ??????????????????? ???? ???????????? run ? ???????? ??? ? ??????? ???????? ?? ???????.
+    """
+
+    auth_user_id = get_authenticated_user_id(request)
+    result = upsert_level_score_record(
+        user_id=int(auth_user_id),
+        level_number=int(payload.level_number),
+        score=int(payload.score),
+        elapsed_ms=int(payload.elapsed_ms),
+        result=str(payload.result),
+        attempts_used=payload.attempts_used,
+        reward_used=bool(payload.reward_used),
+    )
+    return _service_result_to_response(result)
+
+
 @app.get("/docs/{doc_key}")
 def docs_get(doc_key: str, lang: str = Query(default="ru", min_length=2, max_length=2)) -> dict:
     """EN: Return localized markdown document content from server storage.
-    RU: Вернуть локализованное содержимое markdown-документа из серверного хранилища.
+    RU: Р’РµСЂРЅСѓС‚СЊ Р»РѕРєР°Р»РёР·РѕРІР°РЅРЅРѕРµ СЃРѕРґРµСЂР¶РёРјРѕРµ markdown-РґРѕРєСѓРјРµРЅС‚Р° РёР· СЃРµСЂРІРµСЂРЅРѕРіРѕ С…СЂР°РЅРёР»РёС‰Р°.
     """
 
     return get_doc_content(doc_key=doc_key, lang=lang)
+

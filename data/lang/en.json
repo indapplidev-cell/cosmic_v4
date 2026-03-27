@@ -82,6 +82,7 @@
   "reset.popup_instruction": "Open Telegram, press RESET in bot, get 6-digit code, then enter it here.",
   "reset.success.password_changed": "Password changed. Log in again.",
   "pay.open_fail": "Could not open Telegram. Please try again later.",
+  "pay.config_invalid": "Payout verification is temporarily unavailable. Please try again later.",
   "pay.request_fail": "Could not open payout bot. Please try again later.",
   "pay.session_expired": "Session expired. Please sign in again.",
   "pay.return_hint": "If the link did not open, switch back to the Cosmic app.",
@@ -163,5 +164,8 @@
   "ads.rewarded.placeholder": "REWARDED AD",
   "tg.open_timeout": "Could not open Telegram. Open Telegram and press Start in the bot chat.",
   "pay.open_timeout": "Could not open Telegram. Open Telegram and press Start in the bot chat.",
-  "tg.verify_timeout": "Telegram verification was not completed. Open Telegram and press Start in the bot chat."
+  "tg.verify_timeout": "Telegram verification was not completed. Open Telegram and press Start in the bot chat.",
+  "game.level_intro": "Level {level_number}. Objective: score the maximum number of points within the allotted time",
+  "game.level_victory": "Victory! Congratulations! You did it!",
+  "game.level_timeout_fail": "Too bad! You did not succeed! Maybe you will be lucky next time!"
 }
