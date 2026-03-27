@@ -202,6 +202,15 @@ class PayoutMiniAppSessionStatusRequest(StrictBaseModel):
     user_id: int = Field(gt=0)
 
 
+class TelegramMiniAppSessionConfirmRequest(StrictBaseModel):
+    """EN: Mini App payload with raw initData and opaque start_param for shared Telegram identity verification.
+    RU: Payload Mini App с raw initData и непрозрачным start_param для общей проверки Telegram identity.
+    """
+
+    init_data_raw: Annotated[str, MinLen(1), MaxLen(8192)]
+    start_param: Annotated[str, MinLen(1), MaxLen(128)]
+
+
 class PayoutLinkAckRequest(StrictBaseModel):
     """EN: Paybot acknowledgement payload for one-time payout link code.
     RU: Payload подтверждения paybot для одноразового payout link-кода.
@@ -212,13 +221,14 @@ class PayoutLinkAckRequest(StrictBaseModel):
     telegram_username: Annotated[str, MaxLen(64)] | None = None
 
 
-class PayoutMiniAppSessionConfirmRequest(StrictBaseModel):
-    """EN: Mini App payload with raw initData and opaque start_param for server-side verification.
-    RU: Payload Mini App с raw initData и непрозрачным start_param для серверной проверки.
+class PayoutRequestCreateRequest(StrictBaseModel):
+    """EN: Authenticated payload for creating an internal payout request after Mini App verification.
+    RU: Payload авторизованного запроса на создание внутреннего payout request после Mini App verification.
     """
 
-    init_data_raw: Annotated[str, MinLen(1), MaxLen(8192)]
-    start_param: Annotated[str, MinLen(1), MaxLen(128)]
+    user_id: int = Field(gt=0)
+    amount: object
+    wallet_address: Annotated[str, MinLen(8), MaxLen(128)]
 
 
 class TelegramLinkConfirmByCodeRequest(StrictBaseModel):

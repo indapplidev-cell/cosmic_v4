@@ -17,8 +17,8 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivymd.app import MDApp
 from manager import auth_backend
-from manager.config import TG_DEBUG_FLOW, TELEGRAM_BOT_USERNAME, TG_VERIFY_TIMEOUT_SEC
-from manager.telegram_deeplink import cancel_open_flow, open_bot_two_stage
+from manager.config import TG_VERIFY_TIMEOUT_SEC
+from manager.telegram_deeplink import cancel_open_flow, open_telegram_miniapp
 from manager.trace import trace_exception, trace_log
 from manager.lang.lang_manager import t, user_value_text
 from manager.session_manager import sync_user_snapshot_from_payload
@@ -206,8 +206,8 @@ class ProfileChangeController:
         popup.open()
 
     def _start_tg_verify_flow(self, changes: dict) -> None:
-        """EN: Request code, run two-stage Telegram open, and poll server ack until used=true.
-        RU: Запросить code, выполнить двухстадийное открытие Telegram и опрашивать server ack до used=true.
+        """EN: Request telegram_link Mini App session, open Telegram Mini App, and poll verification status.
+        RU: Запросить telegram_link Mini App session, открыть Telegram Mini App и опрашивать статус верификации.
         """
 
         def _worker() -> None:
@@ -219,15 +219,15 @@ class ProfileChangeController:
                     trace_log("STATE", "FLOW.DONE", ok=False, reason="NO_USER_ID")
                     return
 
-                ok, payload = auth_backend.telegram_link_request(user_id=user_id)
+                ok, payload = auth_backend.telegram_link_miniapp_session_request(user_id=user_id)
                 payload_ok = bool(isinstance(payload, dict) and payload.get("ok"))
                 payload_error = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
                 ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
                 tglog(f"[TGVERIFY] step8 result: ok={ok} body_ok={payload_ok} error={payload_error}")
                 trace_log("HTTP", "FLOW.STEP8_RESULT", ok=ok, body_ok=payload_ok, error=payload_error)
-                code = str((payload.get("code") or "").strip()) if isinstance(payload, dict) else ""
-                tglog(f"[TGVERIFY] step8 link_request ok={ok} has_code={bool(code)} ttl={ttl_sec}")
-                if not ok or not code:
+                miniapp_url = str((payload.get("miniapp_url") or "").strip()) if isinstance(payload, dict) else ""
+                tglog(f"[TGVERIFY] step8 miniapp_request ok={ok} has_url={bool(miniapp_url)} ttl={ttl_sec}")
+                if not ok or not miniapp_url:
                     error_code = payload_error
                     if error_code in {"NO_SESSION", "UNAUTHORIZED"}:
                         Clock.schedule_once(lambda _dt: self._show_session_expired_popup(), 0)
@@ -235,14 +235,18 @@ class ProfileChangeController:
                     trace_log("STATE", "FLOW.DONE", ok=False, reason=error_code)
                     return
 
-                tglog(f"[TGVERIFY] step9 code={self._mask_token(code)}")
-                trace_log("STATE", "FLOW.STEP9_CODE", code=code, debug_mode=bool(TG_DEBUG_FLOW))
-                tglog(f"[TGVERIFY] step10 open scheduled code={self._mask_token(code)}")
+                tglog("[TGVERIFY] step9 miniapp_url issued")
+                trace_log("STATE", "FLOW.STEP9_MINIAPP_URL", has_url=True)
+                tglog("[TGVERIFY] step10 miniapp open scheduled")
 
                 def _open_and_poll(_dt: float) -> None:
                     self._start_tg_verify_state(user_id=int(user_id))
-                    open_bot_two_stage(TELEGRAM_BOT_USERNAME, code, "TGVERIFY", warmup=True)
-                    self._show_tg_enter_code_popup(user_id=int(user_id))
+                    attempted, error = open_telegram_miniapp(miniapp_url)
+                    tglog(f"[TGVERIFY] miniapp open attempted={bool(attempted)} error={error or '-'}")
+                    if not attempted:
+                        self._show_tg_fail_popup(message=t("tg.confirm_unavailable"))
+                        return
+                    self._start_tg_polling(user_id=int(user_id))
 
                 Clock.schedule_once(_open_and_poll, 0)
             except Exception as exc:
@@ -501,21 +505,24 @@ class ProfileChangeController:
             return
 
     def _start_tg_polling(self, user_id: int) -> None:
-        """EN: Start periodic poll of /auth/me to detect telegram_verified transition.
-        RU: Запустить периодический опрос /auth/me для отслеживания telegram_verified.
+        """EN: Start periodic poll of telegram_link Mini App status until Telegram linkage becomes verified.
+        RU: Запустить периодический опрос статуса telegram_link Mini App до появления verified Telegram-привязки.
         """
 
         def _poll(_dt) -> bool:
             if not self._tg_verify_active:
                 return False
-            ok, payload = auth_backend.get_current_user_snapshot(timeout=8)
+            ok, payload = auth_backend.telegram_link_miniapp_session_status(user_id=int(user_id))
             if not ok or not isinstance(payload, dict) or not payload.get("ok"):
-                self._dbg("[TG] poll telegram_verified=unknown (network/api error)")
+                self._dbg("[TG] poll telegram_link_miniapp=unknown (network/api error)")
                 return True
-            user_payload = payload.get("user") if isinstance(payload, dict) else None
-            verified = bool(isinstance(user_payload, dict) and user_payload.get("telegram_verified"))
-            self._dbg(f"[TG] poll telegram_verified={verified}")
+            verified = bool(payload.get("verified"))
+            self._dbg(f"[TG] poll telegram_link_miniapp_verified={verified}")
             if verified:
+                me_ok, me_payload = auth_backend.get_current_user_snapshot(timeout=10)
+                if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
+                    sync_user_snapshot_from_payload(me_payload)
+                    Clock.schedule_once(lambda _dt: self._apply_tg_snapshot_to_current_view(me_payload), 0)
                 self._on_tg_verify_success()
                 return False
             return True

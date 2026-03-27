@@ -107,7 +107,10 @@ def _patch_common(monkeypatch, state: _SessionState, *, start_param: str = "opaq
     monkeypatch.setattr(
         payout_miniapp_service,
         "_load_latest_session_for_user",
-        lambda session, user_id: next((row for row in reversed(state.rows) if int(row.user_id) == int(user_id)), None),
+        lambda session, user_id, purpose, for_update=False: next(
+            (row for row in reversed(state.rows) if int(row.user_id) == int(user_id) and str(row.purpose) == str(purpose)),
+            None,
+        ),
     )
     monkeypatch.setattr(
         payout_miniapp_service,
@@ -145,8 +148,9 @@ def test_payout_miniapp_happy_path_request_confirm_status_and_link(monkeypatch) 
     status_result = payout_miniapp_service.get_payout_miniapp_session_status(7)
 
     assert request_result["ok"] is True
+    assert state.rows[0].purpose == "payout"
     assert request_result["miniapp_url"].endswith("?startapp=opaque-start")
-    assert confirm_result == {"ok": True, "user_id": 7, "telegram_user_id": 555}
+    assert confirm_result == {"ok": True, "user_id": 7, "purpose": "payout", "telegram_user_id": 555}
     assert status_result["verified"] is True
     assert status_result["status"] == "verified"
     assert status_result["telegram_user_id"] == 555
@@ -162,6 +166,7 @@ def test_confirm_payout_miniapp_session_rejects_already_verified(monkeypatch) ->
     now_utc = datetime.now(timezone.utc)
     row = PayoutMiniAppSession(
         user_id=7,
+        purpose="payout",
         session_token_hash=payout_miniapp_service._session_token_hash("opaque-start"),
         status="verified",
         expires_at=now_utc + timedelta(minutes=5),
@@ -182,9 +187,10 @@ def test_payout_miniapp_status_expires_issued_and_verified_sessions(monkeypatch)
     """
 
     past = datetime.now(timezone.utc) - timedelta(minutes=10)
-    issued_row = PayoutMiniAppSession(user_id=7, session_token_hash="issued", status="issued", expires_at=past)
+    issued_row = PayoutMiniAppSession(user_id=7, purpose="payout", session_token_hash="issued", status="issued", expires_at=past)
     verified_row = PayoutMiniAppSession(
         user_id=7,
+        purpose="payout",
         session_token_hash="verified",
         status="verified",
         expires_at=past,
@@ -215,6 +221,7 @@ def test_consume_verified_payout_miniapp_session_is_single_use(monkeypatch) -> N
     now_utc = datetime.now(timezone.utc)
     row = PayoutMiniAppSession(
         user_id=7,
+        purpose="payout",
         session_token_hash="opaque-hash",
         status="verified",
         expires_at=now_utc + timedelta(minutes=5),
@@ -246,6 +253,7 @@ def test_consume_verified_payout_miniapp_session_rejects_expired_verified(monkey
     past = datetime.now(timezone.utc) - timedelta(minutes=10)
     row = PayoutMiniAppSession(
         user_id=7,
+        purpose="payout",
         session_token_hash="opaque-hash",
         status="verified",
         expires_at=past,
@@ -268,6 +276,7 @@ def test_confirm_payout_miniapp_session_rejects_mismatched_linked_account(monkey
 
     row = PayoutMiniAppSession(
         user_id=7,
+        purpose="payout",
         session_token_hash=payout_miniapp_service._session_token_hash("opaque-start"),
         status="issued",
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),

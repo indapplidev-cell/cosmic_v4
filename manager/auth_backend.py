@@ -818,6 +818,33 @@ def telegram_link_request(user_id: int) -> Tuple[bool, dict]:
     return False, {"ok": False, "error": "API_ERROR"}
 
 
+def telegram_link_miniapp_session_request(user_id: int) -> Tuple[bool, dict]:
+    """EN: Request one-time telegram_link Mini App verification session for authenticated user.
+    RU: Запросить одноразовую telegram_link Mini App verification-session для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    token = ensure_access_token(force_refresh=False)
+    if not token:
+        tglog("[TGVERIFY] miniapp request status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
+        return False, {"ok": False, "error": "NO_SESSION"}
+
+    ok, payload, status_code = _authorized_request_with_retry(
+        "POST",
+        "/telegram/link/miniapp/session/request",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    body_short = str(payload)[:200]
+    tglog(f"[TGVERIFY] miniapp request status={status_code} ok={ok} body={body_short}")
+    miniapp_url = str((payload.get("miniapp_url") or "").strip()) if isinstance(payload, dict) else ""
+    if ok and isinstance(payload, dict) and payload.get("ok") and miniapp_url:
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
 def payout_link_request(user_id: int) -> Tuple[bool, dict]:
     """EN: Request one-time payout bot link code for authenticated user.
     RU: Запросить одноразовый payout bot link-код для авторизованного пользователя.
@@ -901,6 +928,25 @@ def payout_miniapp_session_status(user_id: int) -> Tuple[bool, dict]:
     ok, payload, _status = _authorized_request_with_retry(
         "POST",
         "/payout/miniapp/session/status",
+        json={"user_id": int(user_id)},
+        timeout=10,
+    )
+    if ok and isinstance(payload, dict) and payload.get("ok"):
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def telegram_link_miniapp_session_status(user_id: int) -> Tuple[bool, dict]:
+    """EN: Poll current telegram_link Mini App verification status for authenticated user.
+    RU: Опросить текущий статус telegram_link Mini App verification для авторизованного пользователя.
+    """
+
+    _ensure_healthcheck_once()
+    ok, payload, _status = _authorized_request_with_retry(
+        "POST",
+        "/telegram/link/miniapp/session/status",
         json={"user_id": int(user_id)},
         timeout=10,
     )

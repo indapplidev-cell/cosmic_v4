@@ -1,5 +1,5 @@
-"""EN: SQLAlchemy model for one-time payout Mini App verification sessions.
-RU: SQLAlchemy-модель одноразовых payout Mini App verification-сессий.
+"""EN: SQLAlchemy model for one-time Telegram Mini App verification sessions by purpose.
+RU: SQLAlchemy-модель одноразовых Telegram Mini App verification-сессий по назначению.
 """
 
 from __future__ import annotations
@@ -13,13 +13,15 @@ from server.db import Base
 
 
 class PayoutMiniAppSession(Base):
-    """EN: Persist one-time payout Mini App verification sessions per authenticated user.
-    RU: Хранить одноразовые payout Mini App verification-сессии для авторизованного пользователя.
+    """EN: Persist one-time Telegram Mini App verification sessions per authenticated user and purpose.
+    RU: Хранить одноразовые Telegram Mini App verification-сессии для авторизованного пользователя и purpose.
 
     EN: Only the hashed opaque session token is stored in DB. Verified session state is
-    bound to the Telegram user id extracted from server-validated WebApp initData.
+    bound to the Telegram user id extracted from server-validated WebApp initData, while
+    `purpose` separates trusted flows such as `payout` and `telegram_link`.
     RU: В БД хранится только хеш непрозрачного session-токена. Состояние verified
-    жёстко привязывается к Telegram user id, извлечённому из server-validated WebApp initData.
+    жёстко привязывается к Telegram user id, извлечённому из server-validated WebApp initData,
+    а `purpose` разделяет доверенные потоки вроде `payout` и `telegram_link`.
     """
 
     __tablename__ = "payout_miniapp_sessions"
@@ -31,6 +33,7 @@ class PayoutMiniAppSession(Base):
         nullable=False,
         index=True,
     )
+    purpose: Mapped[str] = mapped_column(Text, nullable=False, server_default="payout", index=True)
     session_token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="issued", index=True)
     telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)

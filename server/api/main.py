@@ -18,7 +18,7 @@ from server.api.schemas import (
     AdsEventRequest,
     PayoutLinkAckRequest,
     PayoutLinkRequest,
-    PayoutMiniAppSessionConfirmRequest,
+    PayoutRequestCreateRequest,
     PayoutMiniAppSessionRequest,
     PayoutMiniAppSessionStatusRequest,
     PayoutLinkStatusRequest,
@@ -31,6 +31,7 @@ from server.api.schemas import (
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshRequest,
+    TelegramMiniAppSessionConfirmRequest,
     TelegramLinkRequest,
     TelegramLinkConfirmByCodeRequest,
     TelegramLinkConfirmLatestRequest,
@@ -44,10 +45,14 @@ from server.api.schemas import (
 )
 from server.services.ads_service import get_ads_config, log_ads_event
 from server.services.payout_miniapp_service import (
+    confirm_telegram_miniapp_session,
+    get_telegram_link_miniapp_session_status,
     confirm_payout_miniapp_session,
     get_payout_miniapp_session_status,
+    request_telegram_link_miniapp_session,
     request_payout_miniapp_session,
 )
+from server.services.payout_request_service import create_payout_request
 from server.services.payout_service import ack_payout_link_code, get_last_payout_link_status, request_payout_link_code
 from server.services.auth_service import (
     delete_user,
@@ -358,8 +363,8 @@ def telegram_reset_issue_by_code(payload: BotResetIssueRequest, request: Request
 
 @app.post("/telegram/link/request")
 def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dict:
-    """EN: Create one-time Telegram deep-link start token for authenticated user.
-    RU: РЎРѕР·РґР°С‚СЊ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ Telegram deep-link start token РґР»СЏ Р°РІС‚РѕСЂРёР·РѕРІР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+    """EN: Legacy Telegram deep-link request kept only as fallback UX and not as the main security boundary.
+    RU: Legacy-запрос Telegram deep-link, оставленный только как fallback UX и не используемый как основной security boundary.
     """
 
     require_same_user(request, int(payload.user_id))
@@ -367,14 +372,36 @@ def telegram_link_request(payload: TelegramLinkRequest, request: Request) -> dic
     return _service_result_to_response(result)
 
 
+@app.post("/telegram/link/miniapp/session/request")
+def telegram_link_miniapp_session_request(payload: TelegramLinkRequest, request: Request) -> dict:
+    """EN: Issue one-time telegram_link Mini App verification session for authenticated user.
+    RU: Выдать одноразовую telegram_link Mini App verification-session для авторизованного пользователя.
+    """
+
+    require_same_user(request, int(payload.user_id))
+    result = request_telegram_link_miniapp_session(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
 @app.post("/telegram/link/status")
 def telegram_link_status(payload: TelegramLinkStatusRequest, request: Request) -> dict:
-    """EN: Return status of latest Telegram deep-link code for authenticated user.
-    RU: Р’РµСЂРЅСѓС‚СЊ СЃС‚Р°С‚СѓСЃ РїРѕСЃР»РµРґРЅРµРіРѕ Telegram deep-link РєРѕРґР° РґР»СЏ Р°РІС‚РѕСЂРёР·РѕРІР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+    """EN: Legacy Telegram deep-link status kept only as fallback UX and not as the main security boundary.
+    RU: Legacy-статус Telegram deep-link, оставленный только как fallback UX и не используемый как основной security boundary.
     """
 
     require_same_user(request, int(payload.user_id))
     result = get_last_link_status(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/link/miniapp/session/status")
+def telegram_link_miniapp_session_status(payload: TelegramLinkStatusRequest, request: Request) -> dict:
+    """EN: Return current telegram_link Mini App verification status for authenticated user.
+    RU: Вернуть текущий статус telegram_link Mini App verification для авторизованного пользователя.
+    """
+
+    require_same_user(request, int(payload.user_id))
+    result = get_telegram_link_miniapp_session_status(int(payload.user_id))
     return _service_result_to_response(result)
 
 
@@ -429,8 +456,21 @@ def payout_miniapp_session_request(payload: PayoutMiniAppSessionRequest, request
     return _service_result_to_response(result)
 
 
+@app.post("/telegram/miniapp/session/confirm")
+def telegram_miniapp_session_confirm(payload: TelegramMiniAppSessionConfirmRequest) -> dict:
+    """EN: Validate Telegram Mini App initData and confirm one purpose-aware session.
+    RU: Проверить Telegram Mini App initData и подтвердить одну purpose-aware session.
+    """
+
+    result = confirm_telegram_miniapp_session(
+        init_data_raw=str(payload.init_data_raw),
+        start_param=str(payload.start_param),
+    )
+    return _service_result_to_response(result)
+
+
 @app.post("/payout/miniapp/session/confirm")
-def payout_miniapp_session_confirm(payload: PayoutMiniAppSessionConfirmRequest) -> dict:
+def payout_miniapp_session_confirm(payload: TelegramMiniAppSessionConfirmRequest) -> dict:
     """EN: Validate Telegram Mini App initData and verify payout identity for one session.
     RU: Проверить Telegram Mini App initData и подтвердить payout identity для одной session.
     """
@@ -453,10 +493,25 @@ def payout_miniapp_session_status(payload: PayoutMiniAppSessionStatusRequest, re
     return _service_result_to_response(result)
 
 
+@app.post("/payout/request/create")
+def payout_request_create(payload: PayoutRequestCreateRequest, request: Request) -> dict:
+    """EN: Create internal payout request after Mini App verification and reserve user balance.
+    RU: Создать внутренний payout request после Mini App verification и зарезервировать баланс пользователя.
+    """
+
+    require_same_user(request, int(payload.user_id))
+    result = create_payout_request(
+        user_id=int(payload.user_id),
+        amount=payload.amount,
+        wallet_address=str(payload.wallet_address),
+    )
+    return _service_result_to_response(result)
+
+
 @app.get("/paybot/miniapp")
 def paybot_miniapp_index() -> FileResponse:
-    """EN: Serve static Telegram Mini App frontend for payout verification.
-    RU: Отдать статический Telegram Mini App frontend для payout verification.
+    """EN: Serve static Telegram Mini App frontend for shared identity verification purposes.
+    RU: Отдать статический Telegram Mini App frontend для общих целей проверки identity.
 
     EN: BotFather Mini App configuration for `PAYOUT_MINIAPP_SHORT_NAME` is expected
     to point to this public backend route.
@@ -469,8 +524,8 @@ def paybot_miniapp_index() -> FileResponse:
 
 @app.post("/telegram/link/confirm")
 def telegram_link_confirm(payload: TelegramLinkConfirmRequest, request: Request) -> dict:
-    """EN: Confirm bot-issued 6-digit code from app and finalize Telegram binding for current user.
-    RU: РџРѕРґС‚РІРµСЂРґРёС‚СЊ 6-Р·РЅР°С‡РЅС‹Р№ РєРѕРґ РёР· Р±РѕС‚Р° СЃРѕ СЃС‚РѕСЂРѕРЅС‹ РїСЂРёР»РѕР¶РµРЅРёСЏ Рё Р·Р°РІРµСЂС€РёС‚СЊ РїСЂРёРІСЏР·РєСѓ Telegram РґР»СЏ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+    """EN: Legacy Telegram code confirmation kept only as fallback UX and not as the main security boundary.
+    RU: Legacy-подтверждение Telegram по коду, оставленное только как fallback UX и не используемое как основной security boundary.
     """
 
     require_same_user(request, int(payload.user_id))
@@ -480,8 +535,8 @@ def telegram_link_confirm(payload: TelegramLinkConfirmRequest, request: Request)
 
 @app.post("/telegram/link/confirm_by_code")
 def telegram_link_confirm_by_code(payload: TelegramLinkConfirmByCodeRequest, request: Request) -> dict:
-    """EN: Convert pending link_code into a separate one-time confirm_code and return debug info for bot chat.
-    RU: РџСЂРµРѕР±СЂР°Р·РѕРІР°С‚СЊ pending link_code РІ РѕС‚РґРµР»СЊРЅС‹Р№ РѕРґРЅРѕСЂР°Р·РѕРІС‹Р№ confirm_code Рё РІРµСЂРЅСѓС‚СЊ debug-РґР°РЅРЅС‹Рµ РґР»СЏ С‡Р°С‚Р° Р±РѕС‚Р°.
+    """EN: Legacy bot endpoint for fallback Telegram link flow and not a trusted security boundary.
+    RU: Legacy bot-endpoint для fallback Telegram link flow и не доверенный security boundary.
     """
 
     client_ip = request.client.host if request.client else "-"
@@ -512,8 +567,8 @@ def telegram_link_confirm_by_code(payload: TelegramLinkConfirmByCodeRequest, req
 
 @app.post("/telegram/link/confirm_latest")
 def telegram_link_confirm_latest(payload: TelegramLinkConfirmLatestRequest, request: Request) -> dict:
-    """EN: Confirm latest pending Telegram link by runtime Telegram identity (no link_code from bot state required).
-    RU: РџРѕРґС‚РІРµСЂРґРёС‚СЊ РїРѕСЃР»РµРґРЅРёР№ pending Telegram link РїРѕ С‚РµРєСѓС‰РµР№ Telegram-РёРґРµРЅС‚РёС‡РЅРѕСЃС‚Рё (Р±РµР· link_code РёР· СЃРѕСЃС‚РѕСЏРЅРёСЏ Р±РѕС‚Р°).
+    """EN: Legacy bot endpoint for fallback latest Telegram link confirmation and not a trusted security boundary.
+    RU: Legacy bot-endpoint для fallback-подтверждения последней Telegram link session и не доверенный security boundary.
     """
 
     client_ip = request.client.host if request.client else "-"

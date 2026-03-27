@@ -306,13 +306,13 @@ def open_web(web_url: str) -> tuple[bool, str | None]:
 
 
 def open_telegram_miniapp(miniapp_url: str) -> tuple[bool, str | None]:
-    """EN: Open Telegram Mini App URL through a dedicated helper with explicit payout semantics.
-    RU: Открыть URL Telegram Mini App через отдельный helper с явной payout-семантикой.
+    """EN: Open Telegram Mini App URL through a dedicated helper with explicit Mini App semantics.
+    RU: Открыть URL Telegram Mini App через отдельный helper с явной Mini App-семантикой.
 
-    EN: This helper keeps Mini App launch separate from generic web-opening logic so payout
-    flow can log and handle launch failures explicitly.
-    RU: Этот helper отделяет запуск Mini App от generic web-opening, чтобы payout-flow
-    мог явно логировать и обрабатывать ошибки запуска.
+    EN: This helper keeps Mini App launch separate from generic web-opening logic so trusted
+    Telegram identity flows can log and handle launch failures explicitly.
+    RU: Этот helper отделяет запуск Mini App от generic web-opening, чтобы доверенные
+    Telegram identity-flow могли явно логировать и обрабатывать ошибки запуска.
     """
 
     masked_url = _mask_url(str(miniapp_url or ""))

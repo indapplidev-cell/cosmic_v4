@@ -1,5 +1,5 @@
-"""EN: Tests proving that profile-change UI uses the canonical telegram link flow.
-RU: Тесты, доказывающие, что UI экрана profile-change использует канонический telegram link flow.
+"""EN: Tests proving that profile-change UI uses the canonical telegram_link Mini App flow.
+RU: Тесты, доказывающие, что UI экрана profile-change использует канонический telegram_link Mini App flow.
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import uix.screens.profile_change.profile_change_controller as controller_module
 from uix.screens.profile_change.profile_change_controller import ProfileChangeController
 
 
-def test_profile_change_starts_telegram_link_request(monkeypatch) -> None:
-    """EN: Profile-change controller must request Telegram linking through telegram_link_request only.
-    RU: Контроллер profile-change должен запускать привязку Telegram только через telegram_link_request.
+def test_profile_change_starts_telegram_link_miniapp_request(monkeypatch) -> None:
+    """EN: Profile-change controller must start Telegram linking through telegram_link Mini App request only.
+    RU: Контроллер profile-change должен запускать привязку Telegram только через telegram_link Mini App request.
     """
 
     calls: list[tuple[str, int]] = []
@@ -33,23 +33,27 @@ def test_profile_change_starts_telegram_link_request(monkeypatch) -> None:
     dummy = SimpleNamespace(
         _resolve_current_user_id=lambda: 7,
         _start_tg_verify_state=lambda user_id: None,
-        _show_tg_enter_code_popup=lambda user_id: None,
+        _start_tg_polling=lambda user_id: calls.append(("poll", int(user_id))),
+        _show_tg_fail_popup=lambda message=None: calls.append(("fail", 0)),
         _show_session_expired_popup=lambda: None,
-        _mask_token=lambda token: token,
     )
 
     monkeypatch.setattr(controller_module, "Thread", _ImmediateThread)
     monkeypatch.setattr(controller_module, "Clock", _ImmediateClock)
-    monkeypatch.setattr(controller_module, "open_bot_two_stage", lambda *args, **kwargs: None)
+    monkeypatch.setattr(controller_module, "open_telegram_miniapp", lambda url: calls.append(("open", 0)) or (True, None))
     monkeypatch.setattr(controller_module, "trace_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(controller_module, "trace_exception", lambda *args, **kwargs: None)
     monkeypatch.setattr(controller_module, "tglog", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         controller_module.auth_backend,
-        "telegram_link_request",
-        lambda user_id: calls.append(("telegram_link_request", int(user_id))) or (True, {"ok": True, "code": "ABC123", "ttl_sec": 600}),
+        "telegram_link_miniapp_session_request",
+        lambda user_id: calls.append(("telegram_link_miniapp_session_request", int(user_id))) or (True, {"ok": True, "miniapp_url": "https://t.me/payprotect_bot/verify?startapp=abc", "ttl_sec": 600}),
     )
 
     ProfileChangeController._start_tg_verify_flow(dummy, {"tg": "@demo_user"})
 
-    assert calls == [("telegram_link_request", 7)]
+    assert calls == [
+        ("telegram_link_miniapp_session_request", 7),
+        ("open", 0),
+        ("poll", 7),
+    ]

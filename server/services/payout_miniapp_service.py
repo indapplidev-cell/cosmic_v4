@@ -1,5 +1,5 @@
-"""EN: Services for payout identity verification via Telegram Mini App sessions.
-RU: Сервисы проверки payout identity через Telegram Mini App sessions.
+"""EN: Services for Telegram identity verification via purpose-aware Mini App sessions.
+RU: Сервисы проверки Telegram identity через purpose-aware Mini App sessions.
 """
 
 from __future__ import annotations
@@ -31,7 +31,9 @@ from server.services.telegram_service import link_or_update_telegram_account
 
 
 _LOG = logging.getLogger("cosmic.payout_miniapp")
-_ACTIVE_PAYOUT_MINIAPP_STATUSES = ("issued", "verified")
+_ACTIVE_MINIAPP_STATUSES = ("issued", "verified")
+_PURPOSE_PAYOUT = "payout"
+_PURPOSE_TELEGRAM_LINK = "telegram_link"
 
 
 def _mask_token(token: str) -> str:
@@ -86,16 +88,17 @@ def _build_miniapp_url(start_param: str) -> str:
     return f"https://t.me/{bot_username}/{short_name}?startapp={start_param}"
 
 
-def _close_active_sessions(session, user_id: int, now_utc: datetime) -> None:
-    """EN: Invalidate previous active payout Mini App sessions for the same user.
-    RU: Инвалидировать предыдущие активные payout Mini App sessions того же пользователя.
+def _close_active_sessions(session, user_id: int, purpose: str, now_utc: datetime) -> None:
+    """EN: Invalidate previous active Mini App sessions of the same purpose for the same user.
+    RU: Инвалидировать предыдущие активные Mini App sessions того же purpose для того же пользователя.
     """
 
     session.execute(
         update(PayoutMiniAppSession)
         .where(
             PayoutMiniAppSession.user_id == int(user_id),
-            PayoutMiniAppSession.status.in_(_ACTIVE_PAYOUT_MINIAPP_STATUSES),
+            PayoutMiniAppSession.purpose == str(purpose),
+            PayoutMiniAppSession.status.in_(_ACTIVE_MINIAPP_STATUSES),
             PayoutMiniAppSession.consumed_at.is_(None),
             PayoutMiniAppSession.expires_at > now_utc,
         )
@@ -116,17 +119,23 @@ def _load_session_by_token(session, start_param: str) -> PayoutMiniAppSession | 
     )
 
 
-def _load_latest_session_for_user(session, user_id: int) -> PayoutMiniAppSession | None:
-    """EN: Load the latest payout Mini App session for a concrete authenticated user.
-    RU: Загрузить последнюю payout Mini App session для конкретного авторизованного пользователя.
+def _load_latest_session_for_user(session, user_id: int, purpose: str, *, for_update: bool = False) -> PayoutMiniAppSession | None:
+    """EN: Load the latest Mini App session of one purpose for a concrete authenticated user.
+    RU: Загрузить последнюю Mini App session одного purpose для конкретного авторизованного пользователя.
     """
 
-    return session.scalar(
+    statement = (
         select(PayoutMiniAppSession)
-        .where(PayoutMiniAppSession.user_id == int(user_id))
+        .where(
+            PayoutMiniAppSession.user_id == int(user_id),
+            PayoutMiniAppSession.purpose == str(purpose),
+        )
         .order_by(PayoutMiniAppSession.created_at.desc())
         .limit(1)
     )
+    if for_update:
+        statement = statement.with_for_update()
+    return session.scalar(statement)
 
 
 def _expire_session_if_needed(row: PayoutMiniAppSession, now_utc: datetime) -> bool:
@@ -148,7 +157,9 @@ def _verified_context(row: PayoutMiniAppSession) -> dict:
     """
 
     return {
+        "miniapp_session_id": int(row.id or 0),
         "user_id": int(row.user_id),
+        "purpose": str(row.purpose),
         "telegram_user_id": int(row.telegram_user_id or 0),
         "telegram_username": str((row.telegram_username or "").strip()) or None,
         "verified_at": row.verified_at.isoformat() if row.verified_at is not None else None,
@@ -156,9 +167,9 @@ def _verified_context(row: PayoutMiniAppSession) -> dict:
     }
 
 
-def request_payout_miniapp_session(user_id: int) -> dict:
-    """EN: Create one-time payout Mini App session and return launch URL for authenticated user.
-    RU: Создать одноразовую payout Mini App session и вернуть launch URL для авторизованного пользователя.
+def _request_miniapp_session(user_id: int, purpose: str) -> dict:
+    """EN: Create one-time Mini App session for one authenticated user and purpose.
+    RU: Создать одноразовую Mini App session для одного авторизованного пользователя и purpose.
     """
 
     now_utc = datetime.now(timezone.utc)
@@ -174,10 +185,11 @@ def request_payout_miniapp_session(user_id: int) -> dict:
         with get_session() as session:
             if session.get(User, int(user_id)) is None:
                 return {"ok": False, "error": "NOT_FOUND"}
-            _close_active_sessions(session, int(user_id), now_utc)
+            _close_active_sessions(session, int(user_id), str(purpose), now_utc)
             session.add(
                 PayoutMiniAppSession(
                     user_id=int(user_id),
+                    purpose=str(purpose),
                     session_token_hash=session_token_hash,
                     status="issued",
                     expires_at=now_utc + timedelta(seconds=ttl_sec),
@@ -185,21 +197,22 @@ def request_payout_miniapp_session(user_id: int) -> dict:
             )
             session.flush()
     except Exception:
-        _LOG.exception("event=PAYOUT_MINIAPP_SESSION_REQUEST_FAIL user_id=%s", int(user_id))
+        _LOG.exception("event=TG_MINIAPP_SESSION_REQUEST_FAIL user_id=%s purpose=%s", int(user_id), str(purpose))
         return {"ok": False, "error": "DB_ERROR"}
 
     _LOG.info(
-        "event=PAYOUT_MINIAPP_SESSION_ISSUED user_id=%s token=%s ttl_sec=%s",
+        "event=TG_MINIAPP_SESSION_ISSUED user_id=%s purpose=%s token=%s ttl_sec=%s",
         int(user_id),
+        str(purpose),
         _mask_token(session_token),
         int(ttl_sec),
     )
-    return {"ok": True, "miniapp_url": miniapp_url, "ttl_sec": int(ttl_sec)}
+    return {"ok": True, "miniapp_url": miniapp_url, "ttl_sec": int(ttl_sec), "purpose": str(purpose)}
 
 
-def confirm_payout_miniapp_session(init_data_raw: str, start_param: str) -> dict:
-    """EN: Validate Telegram Mini App initData and verify payout identity for one session.
-    RU: Проверить Telegram Mini App initData и подтвердить payout identity для одной session.
+def _confirm_miniapp_session(init_data_raw: str, start_param: str, *, expected_purpose: str | None = None) -> dict:
+    """EN: Validate Telegram Mini App initData and verify one Mini App session by its purpose.
+    RU: Проверить Telegram Mini App initData и подтвердить одну Mini App session по её purpose.
     """
 
     raw_value = str((init_data_raw or "").strip())
@@ -232,6 +245,8 @@ def confirm_payout_miniapp_session(init_data_raw: str, start_param: str) -> dict
             row = _load_session_by_token(session, validated_start_param)
             if row is None:
                 return {"ok": False, "error": "SESSION_NOT_FOUND"}
+            if expected_purpose and str(row.purpose) != str(expected_purpose):
+                return {"ok": False, "error": "SESSION_PURPOSE_MISMATCH"}
             if row.status == "consumed" or row.consumed_at is not None:
                 return {"ok": False, "error": "SESSION_CONSUMED"}
             if row.status == "verified":
@@ -275,7 +290,12 @@ def confirm_payout_miniapp_session(init_data_raw: str, start_param: str) -> dict
             row.status = "verified"
             row.fail_reason = None
             session.flush()
-            return {"ok": True, "user_id": int(row.user_id), "telegram_user_id": telegram_user_id}
+            return {
+                "ok": True,
+                "user_id": int(row.user_id),
+                "purpose": str(row.purpose),
+                "telegram_user_id": telegram_user_id,
+            }
     except IntegrityError:
         _LOG.exception(
             "event=PAYOUT_MINIAPP_SESSION_CONFIRM_CONFLICT tg_uid=%s",
@@ -284,24 +304,24 @@ def confirm_payout_miniapp_session(init_data_raw: str, start_param: str) -> dict
         return {"ok": False, "error": "TG_ALREADY_LINKED"}
     except Exception:
         _LOG.exception(
-            "event=PAYOUT_MINIAPP_SESSION_CONFIRM_FAIL tg_uid=%s start_param=%s",
+            "event=TG_MINIAPP_SESSION_CONFIRM_FAIL tg_uid=%s start_param=%s",
             telegram_user_id,
             _mask_token(validated_start_param),
         )
         return {"ok": False, "error": "DB_ERROR"}
 
 
-def get_payout_miniapp_session_status(user_id: int) -> dict:
-    """EN: Return current payout Mini App verification status for authenticated user.
-    RU: Вернуть текущий статус payout Mini App verification для авторизованного пользователя.
+def _get_miniapp_session_status(user_id: int, purpose: str) -> dict:
+    """EN: Return current Mini App verification status for one authenticated user and purpose.
+    RU: Вернуть текущий статус Mini App verification для одного авторизованного пользователя и purpose.
     """
 
     now_utc = datetime.now(timezone.utc)
     try:
         with get_session() as session:
-            row = _load_latest_session_for_user(session, int(user_id))
+            row = _load_latest_session_for_user(session, int(user_id), str(purpose))
             if row is None:
-                return {"ok": True, "verified": False, "status": "missing", "ttl_sec": 0, "expired": True}
+                return {"ok": True, "verified": False, "status": "missing", "ttl_sec": 0, "expired": True, "purpose": str(purpose)}
 
             expired = _expire_session_if_needed(row, now_utc)
             ttl_sec = max(0, int((row.expires_at - now_utc).total_seconds()))
@@ -312,11 +332,88 @@ def get_payout_miniapp_session_status(user_id: int) -> dict:
                 "status": str(row.status),
                 "ttl_sec": int(ttl_sec),
                 "expired": expired,
+                "purpose": str(row.purpose),
                 "telegram_user_id": int(row.telegram_user_id or 0) if verified else None,
             }
     except Exception:
-        _LOG.exception("event=PAYOUT_MINIAPP_SESSION_STATUS_FAIL user_id=%s", int(user_id))
+        _LOG.exception("event=TG_MINIAPP_SESSION_STATUS_FAIL user_id=%s purpose=%s", int(user_id), str(purpose))
         return {"ok": False, "error": "DB_ERROR"}
+
+
+def request_payout_miniapp_session(user_id: int) -> dict:
+    """EN: Create one-time payout Mini App session and return launch URL for authenticated user.
+    RU: Создать одноразовую payout Mini App session и вернуть launch URL для авторизованного пользователя.
+    """
+
+    return _request_miniapp_session(user_id=int(user_id), purpose=_PURPOSE_PAYOUT)
+
+
+def request_telegram_link_miniapp_session(user_id: int) -> dict:
+    """EN: Create one-time telegram_link Mini App session and return launch URL for authenticated user.
+    RU: Создать одноразовую telegram_link Mini App session и вернуть launch URL для авторизованного пользователя.
+    """
+
+    return _request_miniapp_session(user_id=int(user_id), purpose=_PURPOSE_TELEGRAM_LINK)
+
+
+def confirm_telegram_miniapp_session(init_data_raw: str, start_param: str) -> dict:
+    """EN: Confirm one Mini App session using server-validated Telegram WebApp initData.
+    RU: Подтвердить одну Mini App session через server-validated Telegram WebApp initData.
+    """
+
+    return _confirm_miniapp_session(init_data_raw=init_data_raw, start_param=start_param)
+
+
+def confirm_payout_miniapp_session(init_data_raw: str, start_param: str) -> dict:
+    """EN: Confirm payout-purpose Mini App session using server-validated Telegram WebApp initData.
+    RU: Подтвердить Mini App session назначения payout через server-validated Telegram WebApp initData.
+    """
+
+    return _confirm_miniapp_session(init_data_raw=init_data_raw, start_param=start_param, expected_purpose=_PURPOSE_PAYOUT)
+
+
+def get_payout_miniapp_session_status(user_id: int) -> dict:
+    """EN: Return current payout Mini App verification status for authenticated user.
+    RU: Вернуть текущий статус payout Mini App verification для авторизованного пользователя.
+    """
+
+    return _get_miniapp_session_status(user_id=int(user_id), purpose=_PURPOSE_PAYOUT)
+
+
+def get_telegram_link_miniapp_session_status(user_id: int) -> dict:
+    """EN: Return current telegram_link Mini App verification status for authenticated user.
+    RU: Вернуть текущий статус telegram_link Mini App verification для авторизованного пользователя.
+    """
+
+    return _get_miniapp_session_status(user_id=int(user_id), purpose=_PURPOSE_TELEGRAM_LINK)
+
+
+def consume_verified_payout_miniapp_session_in_session(session, user_id: int, *, now_utc: datetime | None = None) -> dict:
+    """EN: Consume the latest verified payout Mini App session inside an existing transaction.
+    RU: Потребить последнюю verified payout Mini App session внутри уже открытой транзакции.
+
+    EN: This helper is the transactional core reused by payout request creation.
+    RU: Этот helper является транзакционным ядром, которое переиспользуется при создании payout request.
+    """
+
+    now_value = now_utc or datetime.now(timezone.utc)
+    row = _load_latest_session_for_user(session, int(user_id), _PURPOSE_PAYOUT, for_update=True)
+    if row is None:
+        return {"ok": False, "error": "SESSION_NOT_FOUND"}
+    if row.status == "consumed" or row.consumed_at is not None:
+        return {"ok": False, "error": "SESSION_CONSUMED"}
+    if _expire_session_if_needed(row, now_value):
+        return {"ok": False, "error": "SESSION_EXPIRED"}
+    if row.status != "verified" or row.verified_at is None or int(row.telegram_user_id or 0) <= 0:
+        return {"ok": False, "error": "SESSION_NOT_VERIFIED"}
+
+    row.status = "consumed"
+    row.consumed_at = now_value
+    row.fail_reason = None
+    session.flush()
+    payload = _verified_context(row)
+    payload.update({"ok": True, "status": "consumed", "consumed_at": now_value.isoformat()})
+    return payload
 
 
 def consume_verified_payout_miniapp_session(user_id: int) -> dict:
@@ -329,26 +426,9 @@ def consume_verified_payout_miniapp_session(user_id: int) -> dict:
     саму бизнес-логику выплаты.
     """
 
-    now_utc = datetime.now(timezone.utc)
     try:
         with get_session() as session:
-            row = _load_latest_session_for_user(session, int(user_id))
-            if row is None:
-                return {"ok": False, "error": "SESSION_NOT_FOUND"}
-            if row.status == "consumed" or row.consumed_at is not None:
-                return {"ok": False, "error": "SESSION_CONSUMED"}
-            if _expire_session_if_needed(row, now_utc):
-                return {"ok": False, "error": "SESSION_EXPIRED"}
-            if row.status != "verified" or row.verified_at is None or int(row.telegram_user_id or 0) <= 0:
-                return {"ok": False, "error": "SESSION_NOT_VERIFIED"}
-
-            row.status = "consumed"
-            row.consumed_at = now_utc
-            row.fail_reason = None
-            session.flush()
-            payload = _verified_context(row)
-            payload.update({"ok": True, "status": "consumed", "consumed_at": now_utc.isoformat()})
-            return payload
+            return consume_verified_payout_miniapp_session_in_session(session, int(user_id))
     except Exception:
         _LOG.exception("event=PAYOUT_MINIAPP_SESSION_CONSUME_FAIL user_id=%s", int(user_id))
         return {"ok": False, "error": "DB_ERROR"}
