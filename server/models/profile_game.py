@@ -28,5 +28,6 @@ class ProfileGame(Base):
     record: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default=text("0"))
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default=text("0"))
     balance: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True, server_default=text("0"))
+    reserved_balance: Mapped[float | None] = mapped_column(Numeric(12, 3), nullable=True, server_default=text("0"))
 
     user = relationship("User", back_populates="profile_game", uselist=False)

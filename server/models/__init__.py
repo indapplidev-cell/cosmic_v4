@@ -7,6 +7,7 @@ from server.models.ads_event import AdsEvent
 from server.models.ads_setting import AdsSetting
 from server.models.payout_link_code import PayoutLinkCode
 from server.models.payout_miniapp_session import PayoutMiniAppSession
+from server.models.payout_request import PayoutRequest
 from server.models.profile_game import ProfileGame
 from server.models.profile_user import ProfileUser
 from server.models.refresh_token import RefreshToken
@@ -29,6 +30,7 @@ __all__ = [
     "RefreshToken",
     "PayoutLinkCode",
     "PayoutMiniAppSession",
+    "PayoutRequest",
     "TelegramAccount",
     "TelegramLinkToken",
     "TelegramOutbox",
