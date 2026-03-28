@@ -1,6 +1,6 @@
 """payout requests and reserved balance
 
-Revision ID: 0019_payout_requests_and_reserved_balance
+Revision ID: 0019_payout_requests
 Revises: 0018_payout_miniapp_sessions
 Create Date: 2026-03-27 00:00:01
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0019_payout_requests_and_reserved_balance"
+revision = "0019_payout_requests"
 down_revision = "0018_payout_miniapp_sessions"
 branch_labels = None
 depends_on = None
