@@ -38,7 +38,7 @@ def test_telegram_link_miniapp_request_forbids_foreign_user(monkeypatch) -> None
 
     def _fake_request(user_id: int) -> dict:
         called["value"] = True
-        return {"ok": True, "miniapp_url": "https://t.me/payprotect_bot/verify?startapp=test", "ttl_sec": 300, "purpose": "telegram_link"}
+        return {"ok": True, "miniapp_url": "https://t.me/escape2mars_bot/escape2mars?startapp=test", "ttl_sec": 300, "purpose": "telegram_link"}
 
     monkeypatch.setattr("server.api.main.request_telegram_link_miniapp_session", _fake_request)
 
@@ -94,3 +94,19 @@ def test_telegram_link_miniapp_status_allows_own_user(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["verified"] is True
     assert response.json()["purpose"] == "telegram_link"
+
+
+def test_paybot_miniapp_frontend_uses_shared_hub_routes() -> None:
+    """EN: Served paybot Mini App frontend must use shared hub init and action routes.
+    RU: Отдаваемый paybot Mini App frontend должен использовать общие hub init/action routes.
+    """
+
+    client = TestClient(app)
+    response = client.get("/main/miniapp")
+
+    assert response.status_code == 200
+    assert "/telegram/hub/init" in response.text
+    assert "/telegram/hub/action/verify" in response.text
+    assert "/telegram/hub/action/reset" in response.text
+    assert "/telegram/hub/action/payout/context" in response.text
+    assert "/telegram/hub/action/payout/confirm" in response.text

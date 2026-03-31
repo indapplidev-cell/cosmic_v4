@@ -97,7 +97,7 @@ def _patch_common(monkeypatch, state: _SessionState, *, start_param: str = "opaq
     monkeypatch.setattr(
         miniapp_service,
         "_build_miniapp_url",
-        lambda token: f"https://t.me/payprotect_bot/verify?startapp={token}",
+        lambda token: f"https://t.me/escape2mars_bot/escape2mars?startapp={token}",
     )
     monkeypatch.setattr(
         miniapp_service,
@@ -208,3 +208,23 @@ def test_telegram_link_miniapp_reuse_and_expired_protection(monkeypatch) -> None
     row.expires_at = now_utc - timedelta(minutes=1)
     expired = miniapp_service.confirm_telegram_miniapp_session("signed-init-data", "opaque-start")
     assert expired == {"ok": False, "error": "SESSION_EXPIRED"}
+
+
+def test_payout_confirm_rejects_telegram_link_session_purpose_mismatch(monkeypatch) -> None:
+    """EN: Payout confirm wrapper must reject a session issued for telegram_link purpose.
+    RU: Payout confirm-wrapper должен отклонять session, выданную для purpose telegram_link.
+    """
+
+    row = PayoutMiniAppSession(
+        user_id=7,
+        purpose="telegram_link",
+        session_token_hash=miniapp_service._session_token_hash("opaque-start"),
+        status="issued",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    state = _SessionState(rows=[row])
+    _patch_common(monkeypatch, state)
+
+    result = miniapp_service.confirm_payout_miniapp_session("signed-init-data", "opaque-start")
+
+    assert result == {"ok": False, "error": "SESSION_PURPOSE_MISMATCH"}

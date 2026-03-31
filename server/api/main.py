@@ -8,7 +8,7 @@ import os
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 
@@ -21,7 +21,15 @@ from server.api.schemas import (
     PayoutRequestCreateRequest,
     PayoutMiniAppSessionRequest,
     PayoutMiniAppSessionStatusRequest,
+    PayoutMiniAppInitRequest,
+    PayoutMiniAppConfirmRequest,
     PayoutLinkStatusRequest,
+    TelegramHubInitRequest,
+    TelegramHubPayoutConfirmRequest,
+    TelegramHubPayoutContextRequest,
+    TelegramHubResetActionRequest,
+    TelegramHubSessionRequest,
+    TelegramHubVerifyActionRequest,
     BotResetIssueRequest,
     DeleteUserRequest,
     GameSessionFinishRequest,
@@ -48,11 +56,21 @@ from server.services.payout_miniapp_service import (
     confirm_telegram_miniapp_session,
     get_telegram_link_miniapp_session_status,
     confirm_payout_miniapp_session,
+    confirm_payout_miniapp,
     get_payout_miniapp_session_status,
+    init_payout_miniapp,
     request_telegram_link_miniapp_session,
     request_payout_miniapp_session,
 )
 from server.services.payout_request_service import create_payout_request
+from server.services.telegram_hub_service import (
+    init_telegram_hub,
+    request_telegram_hub_session,
+    telegram_hub_action_payout_confirm,
+    telegram_hub_action_payout_context,
+    telegram_hub_action_reset,
+    telegram_hub_action_verify,
+)
 from server.services.payout_service import ack_payout_link_code, get_last_payout_link_status, request_payout_link_code
 from server.services.auth_service import (
     delete_user,
@@ -92,6 +110,9 @@ app = FastAPI(title="Cosmic API")
 _LOG = logging.getLogger("cosmic.api")
 _BOOT_CONFIG_OK = False
 _PAYBOT_MINIAPP_INDEX = Path(__file__).resolve().parents[1] / "static" / "paybot_miniapp" / "index.html"
+_PRIVACY_PAGE = Path(__file__).resolve().parents[1] / "static" / "paybot_miniapp" / "privacy.html"
+_TERMS_PAGE = Path(__file__).resolve().parents[1] / "static" / "paybot_miniapp" / "terms.html"
+_SUPPORT_PAGE = Path(__file__).resolve().parents[1] / "static" / "paybot_miniapp" / "support.html"
 
 
 def _mask_code(code: str) -> str:
@@ -187,6 +208,19 @@ def _service_result_to_response(result: dict) -> dict:
     if result.get("ok"):
         return result
     return {"ok": False, "error": str(result.get("error", "DB_ERROR"))}
+
+
+def _get_optional_authenticated_user_id(request: Request) -> int | None:
+    """EN: Return authenticated user id when bearer token exists, otherwise `None`.
+    RU: Вернуть id авторизованного пользователя при наличии bearer-токена, иначе `None`.
+    """
+
+    try:
+        return get_authenticated_user_id(request)
+    except HTTPException as exc:
+        if int(exc.status_code) == 401:
+            return None
+        raise
 
 
 
@@ -445,14 +479,37 @@ def payout_link_ack(payload: PayoutLinkAckRequest, request: Request) -> dict:
     return _service_result_to_response(result)
 
 
-@app.post("/payout/miniapp/session/request")
-def payout_miniapp_session_request(payload: PayoutMiniAppSessionRequest, request: Request) -> dict:
-    """EN: Issue one-time payout Mini App verification session for authenticated user.
-    RU: Выдать одноразовую payout Mini App verification-session для авторизованного пользователя.
+@app.post("/telegram/payout/miniapp/session/request")
+def telegram_payout_miniapp_session_request(payload: PayoutMiniAppSessionRequest, request: Request) -> dict:
+    """EN: Canonical payout Mini App session issue endpoint returning exact Telegram direct launch URL.
+    RU: Канонический endpoint выдачи payout Mini App session, возвращающий точный Telegram direct launch URL.
     """
 
     require_same_user(request, int(payload.user_id))
     result = request_payout_miniapp_session(int(payload.user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/hub/session/request")
+def telegram_hub_session_request(payload: TelegramHubSessionRequest, request: Request) -> dict:
+    """EN: Issue one shared Telegram Mini App hub session for verify/reset/payout entry points.
+    RU: Выдать одну общую Telegram Mini App hub session для точек входа verify/reset/payout.
+    """
+
+    auth_user_id = _get_optional_authenticated_user_id(request)
+    requested_user_id = int(payload.user_id or 0) if payload.user_id is not None else None
+    if payload.entry_action in {"verify", "payout"}:
+        if auth_user_id is None:
+            return {"ok": False, "error": "UNAUTHORIZED"}
+        if requested_user_id is None or requested_user_id <= 0:
+            return {"ok": False, "error": "FORBIDDEN"}
+        require_same_user(request, int(requested_user_id))
+    result = request_telegram_hub_session(
+        entry_action=str(payload.entry_action),
+        auth_user_id=auth_user_id,
+        requested_user_id=requested_user_id,
+        email=payload.email,
+    )
     return _service_result_to_response(result)
 
 
@@ -478,6 +535,96 @@ def payout_miniapp_session_confirm(payload: TelegramMiniAppSessionConfirmRequest
     result = confirm_payout_miniapp_session(
         init_data_raw=str(payload.init_data_raw),
         start_param=str(payload.start_param),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/payout/miniapp/init")
+def telegram_payout_miniapp_init(payload: PayoutMiniAppInitRequest) -> dict:
+    """EN: Initialize payout Mini App server context after validating Telegram initData and startapp token.
+    RU: Инициализировать серверный payout Mini App context после проверки Telegram initData и startapp-токена.
+    """
+
+    result = init_payout_miniapp(
+        init_data_raw=str(payload.init_data),
+        start_param=str(payload.start_param),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/payout/miniapp/confirm")
+def telegram_payout_miniapp_confirm(payload: PayoutMiniAppConfirmRequest) -> dict:
+    """EN: Confirm payout from Telegram Mini App with full server-side validation and request creation.
+    RU: Подтвердить payout из Telegram Mini App с полной серверной проверкой и созданием request.
+    """
+
+    result = confirm_payout_miniapp(
+        init_data_raw=str(payload.init_data),
+        start_param=str(payload.start_param),
+        amount=payload.amount,
+        wallet_address=str(payload.wallet_address),
+        network=str(payload.network),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/hub/init")
+def telegram_hub_init(payload: TelegramHubInitRequest) -> dict:
+    """EN: Validate Telegram initData once and return trusted shared hub context.
+    RU: Один раз проверить Telegram initData и вернуть доверенный общий hub context.
+    """
+
+    result = init_telegram_hub(
+        init_data=str(payload.init_data),
+        start_param=str(payload.start_param),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/hub/action/verify")
+def telegram_hub_verify_action(payload: TelegramHubVerifyActionRequest) -> dict:
+    """EN: Execute Telegram verify/link action through trusted hub session.
+    RU: Выполнить действие verify/link Telegram через доверенную hub session.
+    """
+
+    result = telegram_hub_action_verify(str(payload.hub_token))
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/hub/action/reset")
+def telegram_hub_reset_action(payload: TelegramHubResetActionRequest) -> dict:
+    """EN: Execute password reset action through trusted hub session.
+    RU: Выполнить действие сброса пароля через доверенную hub session.
+    """
+
+    result = telegram_hub_action_reset(
+        str(payload.hub_token),
+        str(payload.new_password),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/hub/action/payout/context")
+def telegram_hub_payout_context_action(payload: TelegramHubPayoutContextRequest) -> dict:
+    """EN: Load payout section context through trusted hub session.
+    RU: Загрузить context payout-секции через доверенную hub session.
+    """
+
+    result = telegram_hub_action_payout_context(str(payload.hub_token))
+    return _service_result_to_response(result)
+
+
+@app.post("/telegram/hub/action/payout/confirm")
+def telegram_hub_payout_confirm_action(payload: TelegramHubPayoutConfirmRequest) -> dict:
+    """EN: Confirm payout through trusted hub session with repeated server-side checks.
+    RU: Подтвердить payout через доверенную hub session с повторными server-side проверками.
+    """
+
+    result = telegram_hub_action_payout_confirm(
+        str(payload.hub_token),
+        amount=payload.amount,
+        wallet_address=str(payload.wallet_address),
+        network=str(payload.network),
     )
     return _service_result_to_response(result)
 
@@ -508,18 +655,45 @@ def payout_request_create(payload: PayoutRequestCreateRequest, request: Request)
     return _service_result_to_response(result)
 
 
-@app.get("/paybot/miniapp")
+@app.get("/main/miniapp")
 def paybot_miniapp_index() -> FileResponse:
     """EN: Serve static Telegram Mini App frontend for shared identity verification purposes.
     RU: Отдать статический Telegram Mini App frontend для общих целей проверки identity.
 
-    EN: BotFather Mini App configuration for `PAYOUT_MINIAPP_SHORT_NAME` is expected
+    EN: BotFather Mini App configuration for `ESCAPE2MARS_MINIAPP_SHORT_NAME` is expected
     to point to this public backend route.
-    RU: Ожидается, что конфигурация Mini App в BotFather для `PAYOUT_MINIAPP_SHORT_NAME`
+    RU: Ожидается, что конфигурация Mini App в BotFather для `ESCAPE2MARS_MINIAPP_SHORT_NAME`
     будет указывать именно на этот публичный backend-route.
     """
 
     return FileResponse(_PAYBOT_MINIAPP_INDEX)
+
+
+@app.get("/privacy")
+def privacy_page() -> FileResponse:
+    """EN: Serve public privacy policy page required for Telegram Mini App deployment.
+    RU: Отдать публичную страницу privacy policy, необходимую для деплоя Telegram Mini App.
+    """
+
+    return FileResponse(_PRIVACY_PAGE)
+
+
+@app.get("/terms")
+def terms_page() -> FileResponse:
+    """EN: Serve public terms page required for Telegram Mini App deployment.
+    RU: Отдать публичную страницу terms, необходимую для деплоя Telegram Mini App.
+    """
+
+    return FileResponse(_TERMS_PAGE)
+
+
+@app.get("/support")
+def support_page() -> FileResponse:
+    """EN: Serve public support/contact page required for Telegram Mini App deployment.
+    RU: Отдать публичную страницу support/contact, необходимую для деплоя Telegram Mini App.
+    """
+
+    return FileResponse(_SUPPORT_PAGE)
 
 
 @app.post("/telegram/link/confirm")

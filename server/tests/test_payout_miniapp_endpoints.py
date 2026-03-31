@@ -38,13 +38,13 @@ def test_payout_miniapp_session_request_forbids_foreign_user(monkeypatch) -> Non
 
     def _fake_request(user_id: int) -> dict:
         called["value"] = True
-        return {"ok": True, "miniapp_url": "https://t.me/payprotect_bot/verify?startapp=test", "ttl_sec": 300}
+        return {"ok": True, "miniapp_url": "https://t.me/escape2mars_bot/escape2mars?startapp=test", "ttl_sec": 300}
 
     monkeypatch.setattr("server.api.main.request_payout_miniapp_session", _fake_request)
 
     client = TestClient(app)
     response = client.post(
-        "/payout/miniapp/session/request",
+        "/telegram/payout/miniapp/session/request",
         json={"user_id": 2},
         headers=_auth_headers(1),
     )
@@ -94,3 +94,82 @@ def test_payout_miniapp_session_status_allows_own_user(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["verified"] is True
     assert response.json()["telegram_user_id"] == 555
+
+
+def test_telegram_payout_miniapp_session_request_returns_exact_url(monkeypatch) -> None:
+    """EN: Canonical payout session issue endpoint must return the exact Telegram Mini App direct URL.
+    RU: Канонический endpoint выдачи payout session должен возвращать точный direct URL Telegram Mini App.
+    """
+
+    monkeypatch.setattr(
+        "server.api.main.request_payout_miniapp_session",
+        lambda user_id: {"ok": True, "miniapp_url": "https://t.me/escape2mars_bot/escape2mars?startapp=opaque", "ttl_sec": 300},
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/payout/miniapp/session/request",
+        json={"user_id": 7},
+        headers=_auth_headers(7),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["miniapp_url"] == "https://t.me/escape2mars_bot/escape2mars?startapp=opaque"
+
+
+def test_telegram_payout_miniapp_init_passes_through_service(monkeypatch) -> None:
+    """EN: Public payout Mini App init endpoint must expose server-built payout context.
+    RU: Публичный endpoint init payout Mini App должен отдавать server-built payout context.
+    """
+
+    monkeypatch.setattr(
+        "server.api.main.init_payout_miniapp",
+        lambda init_data_raw, start_param: {
+            "ok": True,
+            "available_balance": 4.5,
+            "network": "USDT",
+            "linked_wallet": "TWallet123",
+            "session_status": "verified",
+        },
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/payout/miniapp/init",
+        json={"init_data": "signed-payload", "start_param": "opaque-start"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available_balance"] == 4.5
+    assert response.json()["session_status"] == "verified"
+
+
+def test_telegram_payout_miniapp_confirm_passes_through_service(monkeypatch) -> None:
+    """EN: Public payout Mini App confirm endpoint must create payout request without bearer auth.
+    RU: Публичный endpoint confirm payout Mini App должен создавать payout request без bearer auth.
+    """
+
+    monkeypatch.setattr(
+        "server.api.main.confirm_payout_miniapp",
+        lambda init_data_raw, start_param, amount, wallet_address, network: {
+            "ok": True,
+            "payout_request_id": 12,
+            "status": "reserved",
+            "network": "USDT",
+        },
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/payout/miniapp/confirm",
+        json={
+            "init_data": "signed-payload",
+            "start_param": "opaque-start",
+            "amount": 1.5,
+            "wallet_address": "TWallet123",
+            "network": "USDT",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["payout_request_id"] == 12

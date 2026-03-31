@@ -323,8 +323,8 @@ class SettingsScreenView(MDScreen):
         self.ids.back_btn.bind(on_release=self._back_callback)
 
     def start_payout_flow(self) -> None:
-        """EN: Start payout Mini App verification flow from Settings button.
-        RU: Запустить payout Mini App verification-flow по кнопке из экрана настроек.
+        """EN: Start shared Telegram hub Mini App flow from Settings payout button.
+        RU: Запустить общий Telegram hub Mini App flow по кнопке выплаты из экрана настроек.
         """
 
         tglog("[PAY] step1 click PAYOUT")
@@ -343,7 +343,7 @@ class SettingsScreenView(MDScreen):
             return
 
         def _worker() -> None:
-            ok, payload = auth_backend.payout_miniapp_session_request(user_id)
+            ok, payload = auth_backend.telegram_hub_session_request("payout", user_id=user_id)
             error_code = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
             miniapp_url = str((payload.get("miniapp_url") or "").strip()) if isinstance(payload, dict) else ""
             if not ok or not miniapp_url:
@@ -356,18 +356,14 @@ class SettingsScreenView(MDScreen):
                 return
 
             tglog("[PAY] step4 miniapp open scheduled")
-            self._pay_flow_active = True
-            self._pay_open_started_at = float(monotonic())
 
-            def _open_and_poll(_dt: float) -> None:
+            def _open_hub(_dt: float) -> None:
                 attempted, _error = open_telegram_miniapp(miniapp_url)
                 if not attempted:
-                    self._pay_flow_active = False
                     self._show_info_popup(t("pay.open_fail"))
                     return
-                self._start_payout_status_polling(user_id=int(user_id))
 
-            Clock.schedule_once(_open_and_poll, 0)
+            Clock.schedule_once(_open_hub, 0)
 
         Thread(target=_worker, daemon=True).start()
 
@@ -390,7 +386,12 @@ class SettingsScreenView(MDScreen):
             ok, payload = auth_backend.payout_miniapp_session_status(int(user_id))
             verified = bool(isinstance(payload, dict) and payload.get("verified"))
             ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
-            tglog(f"[PAY] status verified={verified} ttl={ttl_sec} elapsed={elapsed:.1f}")
+            status = str((payload.get("status") or "").strip()) if isinstance(payload, dict) else ""
+            expired = bool(payload.get("expired")) if isinstance(payload, dict) else False
+            tglog(
+                f"[PAY] status verified={verified} status={status or '-'} "
+                f"expired={expired} ttl={ttl_sec} elapsed={elapsed:.1f}"
+            )
             if verified:
                 self._pay_flow_active = False
                 if self._pay_status_poll_event is not None:
@@ -399,6 +400,16 @@ class SettingsScreenView(MDScreen):
                     except Exception:
                         pass
                     self._pay_status_poll_event = None
+                return False
+            if expired or status in {"expired", "rejected", "consumed"}:
+                self._pay_flow_active = False
+                if self._pay_status_poll_event is not None:
+                    try:
+                        self._pay_status_poll_event.cancel()
+                    except Exception:
+                        pass
+                    self._pay_status_poll_event = None
+                self._show_info_popup(t("pay.open_timeout" if expired or status == "expired" else "pay.open_fail"))
                 return False
             if elapsed >= float(VERIFY_OPEN_TIMEOUT_SEC):
                 self._pay_flow_active = False

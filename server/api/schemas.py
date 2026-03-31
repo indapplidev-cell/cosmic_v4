@@ -211,6 +211,91 @@ class TelegramMiniAppSessionConfirmRequest(StrictBaseModel):
     start_param: Annotated[str, MinLen(1), MaxLen(128)]
 
 
+class PayoutMiniAppInitRequest(StrictBaseModel):
+    """EN: Public Mini App init payload carrying signed Telegram initData and opaque startapp token.
+    RU: Публичный payload инициализации Mini App с подписанным Telegram initData и opaque startapp-токеном.
+    """
+
+    init_data: Annotated[str, MinLen(1), MaxLen(8192)]
+    start_param: Annotated[str, MinLen(1), MaxLen(128)]
+
+
+class PayoutMiniAppConfirmRequest(StrictBaseModel):
+    """EN: Public Mini App payout confirmation payload with server-revalidated Telegram identity.
+    RU: Публичный payload подтверждения payout в Mini App с повторной серверной Telegram-проверкой.
+    """
+
+    init_data: Annotated[str, MinLen(1), MaxLen(8192)]
+    start_param: Annotated[str, MinLen(1), MaxLen(128)]
+    network: Annotated[str, MinLen(1), MaxLen(32)]
+    wallet_address: Annotated[str, MinLen(8), MaxLen(128)]
+    amount: object
+
+
+class TelegramHubSessionRequest(StrictBaseModel):
+    """EN: Shared Telegram hub session issue payload for verify/reset/payout app entry points.
+    RU: Общий payload выдачи Telegram hub session для app-side точек входа verify/reset/payout.
+    """
+
+    entry_action: Literal["verify", "reset", "payout"]
+    user_id: int | None = Field(default=None, gt=0)
+    email: EmailStr | None = None
+
+
+class TelegramHubInitRequest(StrictBaseModel):
+    """EN: Shared Telegram hub init payload with signed initData and opaque start_param.
+    RU: Общий payload инициализации Telegram hub с подписанным initData и opaque start_param.
+    """
+
+    init_data: Annotated[str, MinLen(1), MaxLen(8192)]
+    start_param: Annotated[str, MinLen(1), MaxLen(128)]
+
+
+class TelegramHubVerifyActionRequest(StrictBaseModel):
+    """EN: Hub action payload for Telegram verify/link operation using trusted hub token.
+    RU: Payload hub-action для операции verify/link Telegram через доверенный hub token.
+    """
+
+    hub_token: Annotated[str, MinLen(1), MaxLen(2048)]
+
+
+class TelegramHubResetActionRequest(StrictBaseModel):
+    """EN: Hub action payload for password reset using trusted hub token and new password.
+    RU: Payload hub-action для сброса пароля через доверенный hub token и новый пароль.
+    """
+
+    hub_token: Annotated[str, MinLen(1), MaxLen(2048)]
+    new_password: Annotated[str, MinLen(8), MaxLen(72)]
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        """EN: Reject control characters in hub reset password payload.
+        RU: Запретить управляющие символы в hub reset password payload.
+        """
+
+        return reject_control_chars(value)
+
+
+class TelegramHubPayoutContextRequest(StrictBaseModel):
+    """EN: Hub action payload for loading payout context from trusted hub session.
+    RU: Payload hub-action для загрузки payout context из доверенной hub session.
+    """
+
+    hub_token: Annotated[str, MinLen(1), MaxLen(2048)]
+
+
+class TelegramHubPayoutConfirmRequest(StrictBaseModel):
+    """EN: Hub action payload for payout confirmation from shared Telegram hub.
+    RU: Payload hub-action для подтверждения payout из общего Telegram hub.
+    """
+
+    hub_token: Annotated[str, MinLen(1), MaxLen(2048)]
+    network: Annotated[str, MinLen(1), MaxLen(32)]
+    wallet_address: Annotated[str, MinLen(8), MaxLen(128)]
+    amount: object
+
+
 class PayoutLinkAckRequest(StrictBaseModel):
     """EN: Paybot acknowledgement payload for one-time payout link code.
     RU: Payload подтверждения paybot для одноразового payout link-кода.

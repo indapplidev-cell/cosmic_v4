@@ -206,8 +206,8 @@ class ProfileChangeController:
         popup.open()
 
     def _start_tg_verify_flow(self, changes: dict) -> None:
-        """EN: Request telegram_link Mini App session, open Telegram Mini App, and poll verification status.
-        RU: Запросить telegram_link Mini App session, открыть Telegram Mini App и опрашивать статус верификации.
+        """EN: Request shared Telegram hub session, open Telegram Mini App, and hand over verify action to hub UI.
+        RU: Запросить общую Telegram hub session, открыть Telegram Mini App и передать verify-действие в hub UI.
         """
 
         def _worker() -> None:
@@ -219,7 +219,7 @@ class ProfileChangeController:
                     trace_log("STATE", "FLOW.DONE", ok=False, reason="NO_USER_ID")
                     return
 
-                ok, payload = auth_backend.telegram_link_miniapp_session_request(user_id=user_id)
+                ok, payload = auth_backend.telegram_hub_session_request("verify", user_id=user_id)
                 payload_ok = bool(isinstance(payload, dict) and payload.get("ok"))
                 payload_error = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
                 ttl_sec = int((payload.get("ttl_sec") or 0) if isinstance(payload, dict) else 0)
@@ -239,16 +239,14 @@ class ProfileChangeController:
                 trace_log("STATE", "FLOW.STEP9_MINIAPP_URL", has_url=True)
                 tglog("[TGVERIFY] step10 miniapp open scheduled")
 
-                def _open_and_poll(_dt: float) -> None:
-                    self._start_tg_verify_state(user_id=int(user_id))
+                def _open_hub(_dt: float) -> None:
                     attempted, error = open_telegram_miniapp(miniapp_url)
                     tglog(f"[TGVERIFY] miniapp open attempted={bool(attempted)} error={error or '-'}")
                     if not attempted:
                         self._show_tg_fail_popup(message=t("tg.confirm_unavailable"))
                         return
-                    self._start_tg_polling(user_id=int(user_id))
 
-                Clock.schedule_once(_open_and_poll, 0)
+                Clock.schedule_once(_open_hub, 0)
             except Exception as exc:
                 trace_exception("STATE", "FLOW.EXCEPTION", exc)
                 tglog("[TGDBG] step10 DONE fail error=EXCEPTION")
@@ -517,13 +515,25 @@ class ProfileChangeController:
                 self._dbg("[TG] poll telegram_link_miniapp=unknown (network/api error)")
                 return True
             verified = bool(payload.get("verified"))
-            self._dbg(f"[TG] poll telegram_link_miniapp_verified={verified}")
+            status = str((payload.get("status") or "").strip())
+            expired = bool(payload.get("expired"))
+            error_code = str((payload.get("error") or "").strip())
+            self._dbg(
+                f"[TG] poll telegram_link_miniapp_verified={verified} "
+                f"status={status or '-'} expired={expired} error={error_code or '-'}"
+            )
             if verified:
                 me_ok, me_payload = auth_backend.get_current_user_snapshot(timeout=10)
                 if me_ok and isinstance(me_payload, dict) and me_payload.get("ok"):
                     sync_user_snapshot_from_payload(me_payload)
                     Clock.schedule_once(lambda _dt: self._apply_tg_snapshot_to_current_view(me_payload), 0)
                 self._on_tg_verify_success()
+                return False
+            if expired or status in {"expired", "rejected", "consumed"}:
+                self._tg_verify_active = False
+                self._cancel_tg_events()
+                fail_key = "tg.verify_timeout" if expired or status == "expired" else "tg.confirm_unavailable"
+                Clock.schedule_once(lambda _dt: self._show_tg_fail_popup(message=t(fail_key)), 0)
                 return False
             return True
 

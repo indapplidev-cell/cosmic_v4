@@ -142,42 +142,56 @@ RU:
   4) Приложение вызывает `POST /telegram/link/confirm` с `{user_id, confirm_code}`.
   5) После привязки Telegram восстановление пароля остаётся отдельным Telegram reset-flow.
 
-## Payout Mini App Verification (EN/RU)
+## Telegram Hub Mini App (EN/RU)
 
 EN:
-- Payout identity verification now uses Telegram Mini App only, not legacy `/start + ack` as a security boundary.
+- Verify/reset/payout now enter one shared Telegram Mini App hub, not separate Mini Apps per action.
 - Required env vars in `server/.env`:
   - `PAY_BOT_TOKEN`
   - `PAYOUT_MINIAPP_SECRET`
   - `PAYOUT_MINIAPP_BOT_USERNAME`
-  - `PAYOUT_MINIAPP_SHORT_NAME`
+  - `ESCAPE2MARS_MINIAPP_SHORT_NAME`
+  - `ESCAPE2MARS_MINIAPP_URL`
 - Optional env vars:
   - `PAYOUT_MINIAPP_SESSION_TTL_SEC` (default `300`)
   - `PAYOUT_MINIAPP_AUTH_MAX_AGE_SEC` (default `300`)
 - Runtime/API flow:
-  1) App calls `POST /payout/miniapp/session/request`.
-  2) Backend returns `miniapp_url` in `https://t.me/<bot>/<short_name>?startapp=<token>` format.
-  3) Telegram opens the Mini App registered in BotFather under `PAYOUT_MINIAPP_SHORT_NAME`.
-  4) That BotFather Mini App configuration must point to the backend route `GET /paybot/miniapp`, which serves the verification frontend.
-  5) Mini App posts raw `initData` and `start_param` to `POST /payout/miniapp/session/confirm`.
-  6) App polls `POST /payout/miniapp/session/status` until `verified=true`.
-- Legacy `/payout/link/*` and paybot `/start` remain only as fallback UX and are not a security boundary for payout.
+  1) App calls `POST /telegram/hub/session/request`.
+  2) Backend returns exact `miniapp_url`: `https://t.me/escape2mars_bot/escape2mars?startapp=<opaque_token>`.
+  3) BotFather must be configured for `@escape2mars_bot` with `Main App URL = https://tg.escape2mars.space/main/miniapp` and `Direct Link short name = escape2mars`.
+  4) Telegram opens `GET /main/miniapp`, which serves the shared hub Mini App frontend.
+  5) Hub frontend validates app-to-Telegram transition once via `POST /telegram/hub/init`.
+  6) Sensitive actions remain server-checked separately:
+     - `POST /telegram/hub/action/verify`
+     - `POST /telegram/hub/action/reset`
+     - `POST /telegram/hub/action/payout/context`
+     - `POST /telegram/hub/action/payout/confirm`
+  7) Public pages required for deployment are `/privacy`, `/terms`, and `/support`.
+- Legacy `/telegram/link/miniapp/*`, `/telegram/payout/miniapp/*`, `/payout/link/*`, and bot `/start` remain only as fallback/compatibility paths and are not the canonical security boundary anymore.
+- `@pswprotect_bot` remains dedicated to verify/reset bot flow and is not repurposed into Mini App payout flow.
 
 RU:
-- Проверка payout identity теперь использует только Telegram Mini App, а не legacy `/start + ack` как security boundary.
+- Verify/reset/payout теперь входят в один общий Telegram Mini App hub, а не в отдельные Mini App под каждое действие.
 - Обязательные env-переменные в `server/.env`:
   - `PAY_BOT_TOKEN`
   - `PAYOUT_MINIAPP_SECRET`
   - `PAYOUT_MINIAPP_BOT_USERNAME`
-  - `PAYOUT_MINIAPP_SHORT_NAME`
+  - `ESCAPE2MARS_MINIAPP_SHORT_NAME`
+  - `ESCAPE2MARS_MINIAPP_URL`
 - Optional env-переменные:
   - `PAYOUT_MINIAPP_SESSION_TTL_SEC` (default `300`)
   - `PAYOUT_MINIAPP_AUTH_MAX_AGE_SEC` (default `300`)
 - Runtime/API flow:
-  1) Приложение вызывает `POST /payout/miniapp/session/request`.
-  2) Backend возвращает `miniapp_url` в формате `https://t.me/<bot>/<short_name>?startapp=<token>`.
-  3) Telegram открывает Mini App, зарегистрированный в BotFather под `PAYOUT_MINIAPP_SHORT_NAME`.
-  4) Эта настройка Mini App в BotFather должна указывать на backend-route `GET /paybot/miniapp`, который отдаёт verification frontend.
-  5) Mini App отправляет raw `initData` и `start_param` в `POST /payout/miniapp/session/confirm`.
-  6) Приложение poll-ит `POST /payout/miniapp/session/status` до `verified=true`.
-- Legacy `/payout/link/*` и paybot `/start` остаются только как fallback UX и не являются security boundary для payout.
+  1) Приложение вызывает `POST /telegram/hub/session/request`.
+  2) Backend возвращает точный `miniapp_url`: `https://t.me/escape2mars_bot/escape2mars?startapp=<opaque_token>`.
+  3) В BotFather для `@escape2mars_bot` должны быть настроены `Main App URL = https://tg.escape2mars.space/main/miniapp` и `Direct Link short name = escape2mars`.
+  4) Telegram открывает `GET /main/miniapp`, который отдаёт общий hub Mini App frontend.
+  5) Hub frontend один раз подтверждает переход из приложения в Telegram через `POST /telegram/hub/init`.
+  6) Чувствительные действия всё равно проверяются сервером отдельно:
+     - `POST /telegram/hub/action/verify`
+     - `POST /telegram/hub/action/reset`
+     - `POST /telegram/hub/action/payout/context`
+     - `POST /telegram/hub/action/payout/confirm`
+  7) Для деплоя также нужны публичные страницы `/privacy`, `/terms` и `/support`.
+- Legacy `/telegram/link/miniapp/*`, `/telegram/payout/miniapp/*`, `/payout/link/*` и bot `/start` остаются только как fallback/compatibility paths и больше не являются каноническим security boundary.
+- `@pswprotect_bot` остаётся только для verify/reset bot flow и не переделывается в Mini App payout flow.

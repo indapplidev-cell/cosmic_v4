@@ -93,16 +93,29 @@ def create_payout_request(user_id: int, amount: object, wallet_address: str) -> 
         with get_session() as session:
             user = session.get(User, user_id_value)
             if user is None:
+                _LOG.info("event=PAYOUT_REQUEST_REJECT user_id=%s reason=%s", user_id_value, "NOT_FOUND")
                 return {"ok": False, "error": "NOT_FOUND"}
 
             profile_game = _ensure_profile_game_locked(session, user_id_value)
             available_balance = _decimal_or_zero(profile_game.balance)
             reserved_balance = _decimal_or_zero(profile_game.reserved_balance)
             if available_balance < amount_value:
+                _LOG.info(
+                    "event=PAYOUT_REQUEST_REJECT user_id=%s reason=%s balance=%s amount=%s",
+                    user_id_value,
+                    "BALANCE_INSUFFICIENT",
+                    str(available_balance),
+                    str(amount_value),
+                )
                 return {"ok": False, "error": "BALANCE_INSUFFICIENT"}
 
             verification = consume_verified_payout_miniapp_session_in_session(session, user_id_value)
             if not verification.get("ok"):
+                _LOG.info(
+                    "event=PAYOUT_REQUEST_REJECT user_id=%s reason=%s",
+                    user_id_value,
+                    str(verification.get("error")),
+                )
                 return verification
 
             profile_game.balance = available_balance - amount_value
@@ -119,6 +132,14 @@ def create_payout_request(user_id: int, amount: object, wallet_address: str) -> 
             )
             session.add(payout_request)
             session.flush()
+            _LOG.info(
+                "event=PAYOUT_REQUEST_CREATED user_id=%s payout_request_id=%s tg_uid=%s amount=%s status=%s",
+                user_id_value,
+                int(payout_request.id),
+                int(verification["telegram_user_id"]),
+                str(amount_value),
+                "reserved",
+            )
 
             return {
                 "ok": True,
@@ -132,3 +153,92 @@ def create_payout_request(user_id: int, amount: object, wallet_address: str) -> 
     except Exception:
         _LOG.exception("event=PAYOUT_REQUEST_CREATE_FAIL user_id=%s", user_id_value)
         return {"ok": False, "error": "DB_ERROR"}
+
+
+def create_hub_payout_request_in_session(
+    session,
+    *,
+    user_id: int,
+    telegram_user_id: int,
+    amount: object,
+    wallet_address: str,
+    miniapp_session_id: int | None = None,
+) -> dict:
+    """EN: Create internal payout request from a trusted hub session within caller transaction scope.
+    RU: Создать внутренний payout request из доверенной hub session в рамках транзакции вызывающего кода.
+
+    EN: This helper reuses the same reserve and wallet validation rules as the canonical payout
+    request flow, but it does not consume a separate payout Mini App session because hub access
+    has already been proven and bound to the caller transaction.
+    RU: Этот helper переиспользует те же правила reserve и валидации кошелька, что и канонический
+    payout flow, но не consume-ит отдельную payout Mini App session, потому что доступ через hub
+    уже доказан и привязан к транзакции вызывающего кода.
+    """
+
+    try:
+        user_id_value = int(user_id)
+        telegram_user_id_value = int(telegram_user_id)
+    except Exception:
+        return {"ok": False, "error": "BAD_USER_ID"}
+    if user_id_value <= 0 or telegram_user_id_value <= 0:
+        return {"ok": False, "error": "BAD_USER_ID"}
+
+    try:
+        amount_value = _normalize_amount(amount)
+    except ValueError:
+        return {"ok": False, "error": "PAYOUT_AMOUNT_INVALID"}
+
+    try:
+        wallet_value = validate_payout_wallet_address(wallet_address)
+    except PayoutWalletValidationError as exc:
+        return {"ok": False, "error": exc.error_code}
+
+    user = session.get(User, user_id_value)
+    if user is None:
+        _LOG.info("event=HUB_PAYOUT_REQUEST_REJECT user_id=%s reason=%s", user_id_value, "NOT_FOUND")
+        return {"ok": False, "error": "NOT_FOUND"}
+
+    profile_game = _ensure_profile_game_locked(session, user_id_value)
+    available_balance = _decimal_or_zero(profile_game.balance)
+    reserved_balance = _decimal_or_zero(profile_game.reserved_balance)
+    if available_balance < amount_value:
+        _LOG.info(
+            "event=HUB_PAYOUT_REQUEST_REJECT user_id=%s reason=%s balance=%s amount=%s",
+            user_id_value,
+            "BALANCE_INSUFFICIENT",
+            str(available_balance),
+            str(amount_value),
+        )
+        return {"ok": False, "error": "BALANCE_INSUFFICIENT"}
+
+    profile_game.balance = available_balance - amount_value
+    profile_game.reserved_balance = reserved_balance + amount_value
+
+    payout_request = PayoutRequest(
+        user_id=user_id_value,
+        telegram_user_id=telegram_user_id_value,
+        wallet_address=wallet_value,
+        asset_code=_PAYOUT_ASSET_CODE,
+        amount=amount_value,
+        status="reserved",
+        miniapp_session_id=int(miniapp_session_id or 0) or None,
+    )
+    session.add(payout_request)
+    session.flush()
+    _LOG.info(
+        "event=HUB_PAYOUT_REQUEST_CREATED user_id=%s payout_request_id=%s tg_uid=%s amount=%s status=%s",
+        user_id_value,
+        int(payout_request.id),
+        telegram_user_id_value,
+        str(amount_value),
+        "reserved",
+    )
+    return {
+        "ok": True,
+        "payout_request_id": int(payout_request.id),
+        "status": "reserved",
+        "amount": float(amount_value),
+        "asset_code": _PAYOUT_ASSET_CODE,
+        "available_balance": float(profile_game.balance),
+        "reserved_balance": float(profile_game.reserved_balance),
+    }

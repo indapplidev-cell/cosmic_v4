@@ -3,49 +3,329 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <title>Telegram Verify</title>
+  <title>Telegram Hub</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
+      --bg: var(--tg-theme-bg-color, #0e1621);
+      --card: var(--tg-theme-secondary-bg-color, #182433);
+      --text: var(--tg-theme-text-color, #f4f7fb);
+      --muted: var(--tg-theme-hint-color, #9fb0c1);
+      --accent: var(--tg-theme-button-color, #28a8ff);
+      --accent-text: var(--tg-theme-button-text-color, #ffffff);
+      --border: rgba(255, 255, 255, 0.08);
+      --danger: #e35b74;
+      --ok: #2dbd89;
       color-scheme: light dark;
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: #10131a;
-      color: #eef3ff;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(40, 168, 255, 0.16), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+        var(--bg);
     }
+
+    .page {
+      width: min(100%, 38rem);
+      margin: 0 auto;
+      padding: 1rem 1rem 2rem;
+    }
+
     .card {
-      width: min(92vw, 28rem);
-      padding: 1.5rem;
+      margin-top: 0.75rem;
+      padding: 1rem;
       border-radius: 1rem;
+      border: 1px solid var(--border);
+      background: var(--card);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18);
+    }
+
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.5rem;
+      line-height: 1.1;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .menu {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+
+    .section {
+      margin-top: 1rem;
+      padding: 0.95rem;
+      border-radius: 0.95rem;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.65rem;
+    }
+
+    .metric {
+      padding: 0.8rem 0.85rem;
+      border-radius: 0.85rem;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .metric-label {
+      display: block;
+      margin-bottom: 0.3rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .metric-value {
+      font-size: 0.98rem;
+      word-break: break-word;
+    }
+
+    label {
+      display: block;
+      margin-top: 0.9rem;
+      margin-bottom: 0.35rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 0.92rem 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 0.85rem;
+      background: rgba(0, 0, 0, 0.16);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    button {
+      min-height: 3rem;
+      padding: 0.85rem 0.95rem;
+      border: 0;
+      border-radius: 0.9rem;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: var(--accent-text);
+    }
+
+    .secondary {
       background: rgba(255, 255, 255, 0.08);
-      text-align: center;
+      color: var(--text);
     }
+
     .status {
-      font-size: 1.1rem;
-      line-height: 1.4;
+      margin-top: 1rem;
+      min-height: 1.4rem;
+      color: var(--muted);
+      font-size: 0.92rem;
     }
+
+    .status.error { color: var(--danger); }
+    .status.success { color: var(--ok); }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
-  <main class="card">
-    <div id="status" class="status">Проверка...</div>
-  </main>
-  <script>
-    const statusNode = document.getElementById("status");
+  <main class="page">
+    <section class="card">
+      <div class="toolbar">
+        <div>
+          <h1>Выплата</h1>
+          <p id="subtitle" class="subtitle">Проверка входа в Telegram Mini App hub.</p>
+        </div>
+        <button id="closeBtn" class="secondary" type="button">Закрыть</button>
+      </div>
 
-    function setStatus(text) {
+      <div id="menu" class="menu hidden">
+        <button id="verifyBtn" class="primary" type="button">Подтвердить аккаунт телеграм</button>
+        <button id="resetToggleBtn" class="secondary" type="button">Сбросить пароль</button>
+        <button id="payoutToggleBtn" class="secondary" type="button">Выплата</button>
+      </div>
+
+      <section id="verifySection" class="section hidden">
+        <div class="grid">
+          <div class="metric">
+            <span class="metric-label">Telegram</span>
+            <span id="telegramState" class="metric-value">-</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="resetSection" class="section hidden">
+        <label for="newPassword">Новый пароль</label>
+        <input id="newPassword" type="password" autocomplete="new-password" placeholder="Введите новый пароль">
+        <div class="actions">
+          <button id="resetBtn" class="primary" type="button">Сбросить пароль</button>
+          <button id="resetHideBtn" class="secondary" type="button">Скрыть</button>
+        </div>
+      </section>
+
+      <section id="payoutSection" class="section hidden">
+        <div class="grid">
+          <div class="metric">
+            <span class="metric-label">Доступный баланс</span>
+            <span id="balanceValue" class="metric-value">-</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Сеть</span>
+            <span id="networkValue" class="metric-value">-</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Связанный кошелёк</span>
+            <span id="linkedWalletValue" class="metric-value">-</span>
+          </div>
+        </div>
+
+        <label for="walletInput">Адрес кошелька</label>
+        <input id="walletInput" type="text" autocomplete="off" placeholder="Введите адрес кошелька">
+
+        <label for="amountInput">Сумма к выплате</label>
+        <input id="amountInput" type="number" inputmode="decimal" step="0.001" min="0.001" placeholder="0.000">
+
+        <div class="actions">
+          <button id="payoutConfirmBtn" class="primary" type="button">Подтвердить</button>
+          <button id="payoutHideBtn" class="secondary" type="button">Скрыть</button>
+        </div>
+      </section>
+
+      <div id="status" class="status">Подготовка...</div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      initData: "",
+      startParam: "",
+      hubToken: "",
+      availableActions: {verify: false, reset: false, payout: false},
+      payout: {balance: 0, network: "", linked_wallet: "", limits: {min_amount: 0}},
+    };
+
+    const subtitleNode = document.getElementById("subtitle");
+    const statusNode = document.getElementById("status");
+    const menuNode = document.getElementById("menu");
+    const verifySectionNode = document.getElementById("verifySection");
+    const resetSectionNode = document.getElementById("resetSection");
+    const payoutSectionNode = document.getElementById("payoutSection");
+    const telegramStateNode = document.getElementById("telegramState");
+    const balanceValueNode = document.getElementById("balanceValue");
+    const networkValueNode = document.getElementById("networkValue");
+    const linkedWalletValueNode = document.getElementById("linkedWalletValue");
+    const walletInputNode = document.getElementById("walletInput");
+    const amountInputNode = document.getElementById("amountInput");
+    const newPasswordNode = document.getElementById("newPassword");
+    const closeNode = document.getElementById("closeBtn");
+    const verifyNode = document.getElementById("verifyBtn");
+    const resetToggleNode = document.getElementById("resetToggleBtn");
+    const payoutToggleNode = document.getElementById("payoutToggleBtn");
+    const resetNode = document.getElementById("resetBtn");
+    const resetHideNode = document.getElementById("resetHideBtn");
+    const payoutConfirmNode = document.getElementById("payoutConfirmBtn");
+    const payoutHideNode = document.getElementById("payoutHideBtn");
+
+    function setStatus(text, kind) {
       statusNode.textContent = text;
+      statusNode.className = kind ? `status ${kind}` : "status";
     }
 
-    async function confirmMiniApp() {
+    function postJson(url, payload) {
+      return fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      }).then(function (response) {
+        return response.json();
+      });
+    }
+
+    function hideSections() {
+      verifySectionNode.classList.add("hidden");
+      resetSectionNode.classList.add("hidden");
+      payoutSectionNode.classList.add("hidden");
+    }
+
+    function normalizeAmount(value) {
+      const numberValue = Number(value);
+      if (!Number.isFinite(numberValue) || numberValue <= 0) {
+        return null;
+      }
+      return Math.floor(numberValue * 1000) / 1000;
+    }
+
+    function applyHubContext(payload) {
+      state.hubToken = String(payload.hub_token || "").trim();
+      state.availableActions = Object.assign({verify: false, reset: false, payout: false}, payload.available_actions || {});
+      state.payout = Object.assign({balance: 0, network: "", linked_wallet: "", limits: {min_amount: 0}}, payload.payout || {});
+
+      const telegramUsername = payload.telegram && payload.telegram.telegram_username ? `@${payload.telegram.telegram_username}` : "не привязан";
+      telegramStateNode.textContent = telegramUsername;
+      balanceValueNode.textContent = `${Number(state.payout.balance || 0).toFixed(3)} ${String(state.payout.network || "")}`.trim();
+      networkValueNode.textContent = String(state.payout.network || "-");
+      linkedWalletValueNode.textContent = String(state.payout.linked_wallet || "-");
+      walletInputNode.value = String(state.payout.linked_wallet || "");
+      amountInputNode.value = Number(state.payout.balance || 0) > 0 ? Number(state.payout.balance || 0).toFixed(3) : "";
+      amountInputNode.max = String(Number(state.payout.balance || 0).toFixed(3));
+      amountInputNode.min = String(((state.payout.limits || {}).min_amount || 0.001));
+      verifyNode.disabled = !state.availableActions.verify;
+      resetToggleNode.disabled = !state.availableActions.reset;
+      payoutToggleNode.disabled = !state.availableActions.payout;
+      menuNode.classList.remove("hidden");
+    }
+
+    function denyAccess(message) {
+      hideSections();
+      menuNode.classList.add("hidden");
+      verifyNode.disabled = true;
+      resetToggleNode.disabled = true;
+      payoutToggleNode.disabled = true;
+      subtitleNode.textContent = "Действия verify/reset/payout недоступны.";
+      setStatus(message, "error");
+    }
+
+    function initializeMiniApp() {
       const tg = window.Telegram && window.Telegram.WebApp;
       if (!tg) {
-        setStatus("Ошибка: Telegram WebApp недоступен");
+        denyAccess("Доступ запрещён: Telegram WebApp недоступен.");
         return;
       }
 
@@ -54,45 +334,175 @@
         tg.expand();
       }
 
-      const initDataRaw = String(tg.initData || "").trim();
-      const startParam = String(
-        (tg.initDataUnsafe && tg.initDataUnsafe.start_param) ||
+      state.initData = String(tg.initData || "").trim();
+      state.startParam = String(
         new URLSearchParams(window.location.search).get("tgWebAppStartParam") ||
+        (tg.initDataUnsafe && tg.initDataUnsafe.start_param) ||
         ""
       ).trim();
 
-      if (!initDataRaw || !startParam) {
-        setStatus("Ошибка");
+      if (!state.initData || !state.startParam) {
+        denyAccess("Доступ запрещён: hub session не найдена.");
         return;
       }
 
-      try {
-        const response = await fetch("/telegram/miniapp/session/confirm", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            init_data_raw: initDataRaw,
-            start_param: startParam,
-          }),
-        });
-        const payload = await response.json();
-        if (payload && payload.ok) {
-          setStatus("Подтверждено");
-          setTimeout(() => {
-            try {
-              tg.close();
-            } catch (_err) {
-            }
-          }, 900);
+      setStatus("Проверка доступа...", "");
+      postJson("/telegram/hub/init", {
+        init_data: state.initData,
+        start_param: state.startParam,
+      }).then(function (payload) {
+        if (!payload || !payload.ok || !payload.hub_token) {
+          denyAccess("Доступ запрещён: " + ((payload && payload.error) || "INIT_FAILED"));
           return;
         }
-        setStatus("Ошибка");
-      } catch (_err) {
-        setStatus("Ошибка");
-      }
+        applyHubContext(payload);
+        subtitleNode.textContent = "Выберите действие внутри общего Telegram Mini App hub.";
+        setStatus("Доступ подтверждён. Действия защищены server-side отдельно.", "");
+      }).catch(function () {
+        denyAccess("Ошибка сети. Повторите позже.");
+      });
     }
 
-    confirmMiniApp();
+    function executeVerify() {
+      if (!state.hubToken || !state.availableActions.verify) {
+        setStatus("Подтверждение недоступно.", "error");
+        return;
+      }
+      hideSections();
+      verifySectionNode.classList.remove("hidden");
+      setStatus("Подтверждение Telegram...", "");
+      postJson("/telegram/hub/action/verify", {hub_token: state.hubToken}).then(function (payload) {
+        if (!payload || !payload.ok) {
+          setStatus("Ошибка: " + ((payload && payload.error) || "VERIFY_FAILED"), "error");
+          return;
+        }
+        telegramStateNode.textContent = payload.telegram_username ? `@${payload.telegram_username}` : "подтверждено";
+        setStatus("Аккаунт Telegram подтверждён.", "success");
+      }).catch(function () {
+        setStatus("Ошибка сети. Повторите позже.", "error");
+      });
+    }
+
+    function showResetSection() {
+      hideSections();
+      if (!state.availableActions.reset) {
+        setStatus("Сброс пароля недоступен.", "error");
+        return;
+      }
+      resetSectionNode.classList.remove("hidden");
+      setStatus("Введите новый пароль и подтвердите действие.", "");
+    }
+
+    function executeReset() {
+      if (!state.hubToken || !state.availableActions.reset) {
+        setStatus("Сброс пароля недоступен.", "error");
+        return;
+      }
+      const newPassword = String(newPasswordNode.value || "");
+      if (newPassword.length < 8) {
+        setStatus("Пароль должен быть не короче 8 символов.", "error");
+        return;
+      }
+      resetNode.disabled = true;
+      setStatus("Сброс пароля...", "");
+      postJson("/telegram/hub/action/reset", {
+        hub_token: state.hubToken,
+        new_password: newPassword,
+      }).then(function (payload) {
+        resetNode.disabled = false;
+        if (!payload || !payload.ok) {
+          setStatus("Ошибка: " + ((payload && payload.error) || "RESET_FAILED"), "error");
+          return;
+        }
+        newPasswordNode.value = "";
+        setStatus("Пароль успешно обновлён.", "success");
+      }).catch(function () {
+        resetNode.disabled = false;
+        setStatus("Ошибка сети. Повторите позже.", "error");
+      });
+    }
+
+    function showPayoutSection() {
+      if (!state.hubToken || !state.availableActions.payout) {
+        setStatus("Выплата недоступна.", "error");
+        return;
+      }
+      hideSections();
+      payoutSectionNode.classList.remove("hidden");
+      setStatus("Загрузка payout context...", "");
+      postJson("/telegram/hub/action/payout/context", {hub_token: state.hubToken}).then(function (payload) {
+        if (!payload || !payload.ok) {
+          setStatus("Ошибка: " + ((payload && payload.error) || "PAYOUT_CONTEXT_FAILED"), "error");
+          return;
+        }
+        state.payout = Object.assign({}, state.payout, payload);
+        balanceValueNode.textContent = `${Number(payload.balance || 0).toFixed(3)} ${String(payload.network || "")}`.trim();
+        networkValueNode.textContent = String(payload.network || "-");
+        linkedWalletValueNode.textContent = String(payload.linked_wallet || "-");
+        walletInputNode.value = String(payload.linked_wallet || "");
+        amountInputNode.max = String(Number(payload.balance || 0).toFixed(3));
+        amountInputNode.min = String(((payload.limits || {}).min_amount || 0.001));
+        setStatus("Проверьте адрес и сумму перед подтверждением.", "");
+      }).catch(function () {
+        setStatus("Ошибка сети. Повторите позже.", "error");
+      });
+    }
+
+    function executePayoutConfirm() {
+      if (!state.hubToken || !state.availableActions.payout) {
+        setStatus("Выплата недоступна.", "error");
+        return;
+      }
+      const walletAddress = String(walletInputNode.value || "").trim();
+      const amount = normalizeAmount(amountInputNode.value);
+      if (!walletAddress) {
+        setStatus("Укажите адрес кошелька.", "error");
+        return;
+      }
+      if (amount === null) {
+        setStatus("Укажите корректную сумму.", "error");
+        return;
+      }
+      if (amount > Number(state.payout.balance || 0)) {
+        setStatus("Сумма превышает доступный баланс.", "error");
+        return;
+      }
+      payoutConfirmNode.disabled = true;
+      setStatus("Создание payout request...", "");
+      postJson("/telegram/hub/action/payout/confirm", {
+        hub_token: state.hubToken,
+        amount: amount,
+        wallet_address: walletAddress,
+        network: String(state.payout.network || ""),
+      }).then(function (payload) {
+        payoutConfirmNode.disabled = false;
+        if (!payload || !payload.ok) {
+          setStatus("Ошибка: " + ((payload && payload.error) || "PAYOUT_CONFIRM_FAILED"), "error");
+          return;
+        }
+        hideSections();
+        subtitleNode.textContent = "Запрос создан и передан на обработку.";
+        setStatus("Выплата успешно создана. Окно можно закрыть.", "success");
+      }).catch(function () {
+        payoutConfirmNode.disabled = false;
+        setStatus("Ошибка сети. Повторите позже.", "error");
+      });
+    }
+
+    closeNode.addEventListener("click", function () {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg && typeof tg.close === "function") {
+        tg.close();
+      }
+    });
+    verifyNode.addEventListener("click", executeVerify);
+    resetToggleNode.addEventListener("click", showResetSection);
+    payoutToggleNode.addEventListener("click", showPayoutSection);
+    resetNode.addEventListener("click", executeReset);
+    resetHideNode.addEventListener("click", hideSections);
+    payoutConfirmNode.addEventListener("click", executePayoutConfirm);
+    payoutHideNode.addEventListener("click", hideSections);
+    initializeMiniApp();
   </script>
 </body>
 </html>

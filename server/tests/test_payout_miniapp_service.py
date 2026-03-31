@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import server.services.payout_miniapp_service as payout_miniapp_service
 from server.models.payout_miniapp_session import PayoutMiniAppSession
-from server.security.telegram_miniapp import TelegramMiniAppPayload
+from server.security.telegram_miniapp import TelegramMiniAppPayload, TelegramMiniAppValidationError
 
 
 @dataclass
@@ -97,11 +97,16 @@ def _patch_common(monkeypatch, state: _SessionState, *, start_param: str = "opaq
     monkeypatch.setattr(
         payout_miniapp_service,
         "_build_miniapp_url",
-        lambda token: f"https://t.me/payprotect_bot/verify?startapp={token}",
+        lambda token: f"https://t.me/escape2mars_bot/escape2mars?startapp={token}",
     )
     monkeypatch.setattr(
         payout_miniapp_service,
         "_load_session_by_token",
+        lambda session, token: next((row for row in reversed(state.rows) if row.session_token_hash == payout_miniapp_service._session_token_hash(token)), None),
+    )
+    monkeypatch.setattr(
+        payout_miniapp_service,
+        "_load_session_by_token_for_update",
         lambda session, token: next((row for row in reversed(state.rows) if row.session_token_hash == payout_miniapp_service._session_token_hash(token)), None),
     )
     monkeypatch.setattr(
@@ -116,6 +121,11 @@ def _patch_common(monkeypatch, state: _SessionState, *, start_param: str = "opaq
         payout_miniapp_service,
         "validate_telegram_miniapp_init_data",
         lambda init_data_raw, bot_token, max_age_sec=300: payload or _miniapp_payload(start_param=start_param),
+    )
+    monkeypatch.setattr(
+        payout_miniapp_service,
+        "_get_available_balance",
+        lambda session, user_id: payout_miniapp_service.Decimal("10.000"),
     )
 
 
@@ -149,7 +159,7 @@ def test_payout_miniapp_happy_path_request_confirm_status_and_link(monkeypatch) 
 
     assert request_result["ok"] is True
     assert state.rows[0].purpose == "payout"
-    assert request_result["miniapp_url"].endswith("?startapp=opaque-start")
+    assert request_result["miniapp_url"] == "https://t.me/escape2mars_bot/escape2mars?startapp=opaque-start"
     assert confirm_result == {"ok": True, "user_id": 7, "purpose": "payout", "telegram_user_id": 555}
     assert status_result["verified"] is True
     assert status_result["status"] == "verified"
@@ -293,3 +303,141 @@ def test_confirm_payout_miniapp_session_rejects_mismatched_linked_account(monkey
     assert result == {"ok": False, "error": "TELEGRAM_ACCOUNT_MISMATCH"}
     assert row.status == "rejected"
     assert row.fail_reason == "TELEGRAM_ACCOUNT_MISMATCH"
+
+
+def test_build_miniapp_url_returns_exact_expected_direct_link(monkeypatch) -> None:
+    """EN: Payout Mini App URL builder must always return the exact Telegram direct link shape.
+    RU: Билдер payout Mini App URL должен всегда возвращать точную форму Telegram direct link.
+    """
+
+    monkeypatch.setattr(payout_miniapp_service, "get_payout_miniapp_bot_username", lambda: "escape2mars_bot")
+    monkeypatch.setattr(payout_miniapp_service, "get_payout_miniapp_short_name", lambda: "escape2mars")
+
+    assert payout_miniapp_service._build_miniapp_url("opaque-token") == "https://t.me/escape2mars_bot/escape2mars?startapp=opaque-token"
+
+
+def test_init_payout_miniapp_rejects_direct_bypass_without_issued_session(monkeypatch) -> None:
+    """EN: Direct Mini App bypass without an issued payout session must be denied.
+    RU: Прямой обход Mini App без выданной payout session должен блокироваться.
+    """
+
+    state = _SessionState()
+    _patch_common(monkeypatch, state)
+
+    result = payout_miniapp_service.init_payout_miniapp("signed-init-data", "opaque-start")
+
+    assert result == {"ok": False, "error": "SESSION_NOT_FOUND"}
+
+
+def test_init_payout_miniapp_rejects_invalid_initdata(monkeypatch) -> None:
+    """EN: Invalid Telegram initData must be blocked before any payout context is returned.
+    RU: Невалидный Telegram initData должен блокироваться до возврата payout context.
+    """
+
+    state = _SessionState()
+    monkeypatch.setattr(payout_miniapp_service, "get_session", _fake_get_session(state))
+    monkeypatch.setattr(payout_miniapp_service, "get_pay_bot_token", lambda: "123456:TEST_PAY_BOT_TOKEN")
+    monkeypatch.setattr(payout_miniapp_service, "get_payout_miniapp_auth_max_age_sec", lambda: 300)
+    monkeypatch.setattr(
+        payout_miniapp_service,
+        "validate_telegram_miniapp_init_data",
+        lambda *args, **kwargs: (_ for _ in ()).throw(TelegramMiniAppValidationError("INITDATA_INVALID")),
+    )
+
+    result = payout_miniapp_service.init_payout_miniapp("bad-data", "opaque-start")
+
+    assert result == {"ok": False, "error": "INITDATA_INVALID"}
+
+
+def test_init_payout_miniapp_returns_server_context_for_valid_session(monkeypatch) -> None:
+    """EN: Valid initData plus valid payout token must return trusted payout context from the server.
+    RU: Валидные initData и payout token должны возвращать доверенный payout context от сервера.
+    """
+
+    row = PayoutMiniAppSession(
+        user_id=7,
+        purpose="payout",
+        session_token_hash=payout_miniapp_service._session_token_hash("opaque-start"),
+        status="issued",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    state = _SessionState(rows=[row])
+    _patch_common(monkeypatch, state)
+    monkeypatch.setattr(
+        payout_miniapp_service,
+        "link_or_update_telegram_account",
+        lambda session, user_id, telegram_user_id, telegram_username: (True, None),
+    )
+    monkeypatch.setattr(
+        payout_miniapp_service,
+        "_get_available_balance",
+        lambda session, user_id: payout_miniapp_service.Decimal("5.500"),
+    )
+    monkeypatch.setattr(payout_miniapp_service, "_load_last_wallet_address", lambda session, user_id: "TWallet123")
+
+    result = payout_miniapp_service.init_payout_miniapp("signed-init-data", "opaque-start")
+
+    assert result["ok"] is True
+    assert result["available_balance"] == 5.5
+    assert result["linked_wallet"] == "TWallet123"
+    assert result["network"] == "USDT"
+    assert result["session_status"] == "verified"
+
+
+def test_confirm_payout_miniapp_rejects_reused_token(monkeypatch) -> None:
+    """EN: Reused payout token must be blocked during confirm.
+    RU: Повторно использованный payout token должен блокироваться на confirm.
+    """
+
+    row = PayoutMiniAppSession(
+        user_id=7,
+        purpose="payout",
+        session_token_hash=payout_miniapp_service._session_token_hash("opaque-start"),
+        status="consumed",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        consumed_at=datetime.now(timezone.utc),
+    )
+    state = _SessionState(rows=[row])
+    _patch_common(monkeypatch, state)
+
+    result = payout_miniapp_service.confirm_payout_miniapp(
+        "signed-init-data",
+        "opaque-start",
+        amount=1,
+        wallet_address="TWallet123",
+        network="USDT",
+    )
+
+    assert result == {"ok": False, "error": "SESSION_CONSUMED"}
+
+
+def test_confirm_payout_miniapp_rejects_insufficient_balance(monkeypatch) -> None:
+    """EN: Confirm must reject when server-side balance recheck fails.
+    RU: Confirm должен отклоняться, если повторная серверная проверка баланса не проходит.
+    """
+
+    row = PayoutMiniAppSession(
+        user_id=7,
+        purpose="payout",
+        session_token_hash=payout_miniapp_service._session_token_hash("opaque-start"),
+        status="verified",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        telegram_user_id=555,
+        verified_at=datetime.now(timezone.utc),
+    )
+    state = _SessionState(rows=[row])
+    _patch_common(monkeypatch, state)
+    monkeypatch.setattr(
+        "server.services.payout_request_service.create_payout_request",
+        lambda user_id, amount, wallet_address: {"ok": False, "error": "BALANCE_INSUFFICIENT"},
+    )
+
+    result = payout_miniapp_service.confirm_payout_miniapp(
+        "signed-init-data",
+        "opaque-start",
+        amount=10,
+        wallet_address="TWallet123",
+        network="USDT",
+    )
+
+    assert result == {"ok": False, "error": "BALANCE_INSUFFICIENT"}

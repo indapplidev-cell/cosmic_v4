@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import webbrowser
+from dataclasses import dataclass
 from time import time
 from urllib.parse import parse_qs, quote_plus, urlsplit, urlunsplit, urlencode
 
@@ -23,6 +24,17 @@ from manager.tg_debug_log import tglog
 
 _LOG = logging.getLogger("cosmic.telegram_deeplink")
 _OPEN_FLOW_EVENTS: dict[str, dict[str, object]] = {}
+_TG_ANDROID_PACKAGE = "org.telegram.messenger"
+
+
+@dataclass(frozen=True)
+class MiniAppLaunchStrategy:
+    """EN: One strict Telegram-app launch strategy for a Mini App target.
+    RU: Одна strict-стратегия запуска Mini App target через приложение Telegram.
+    """
+
+    name: str
+    target: str
 
 
 def _mask_url(url: str) -> str:
@@ -305,6 +317,168 @@ def open_web(web_url: str) -> tuple[bool, str | None]:
         return False, str(exc)
 
 
+def _extract_miniapp_launch_params(miniapp_url: str) -> tuple[str, str, str] | None:
+    """EN: Parse Mini App HTTPS URL into `(bot_username, short_name, start_param)` tuple.
+    RU: Разобрать HTTPS URL Mini App в кортеж `(bot_username, short_name, start_param)`.
+
+    EN: Only the canonical Telegram Mini App URL shape is accepted:
+    `https://t.me/<bot_username>/<short_name>?startapp=<token>`.
+    RU: Принимается только каноническая форма Telegram Mini App URL:
+    `https://t.me/<bot_username>/<short_name>?startapp=<token>`.
+    """
+
+    try:
+        parts = urlsplit(str((miniapp_url or "").strip()))
+    except Exception:
+        return None
+    if parts.scheme != "https" or parts.netloc not in {"t.me", "www.t.me"}:
+        return None
+    path_parts = [part for part in str(parts.path or "").split("/") if part]
+    if len(path_parts) < 2:
+        return None
+    query = parse_qs(parts.query, keep_blank_values=True)
+    start_param = str((query.get("startapp") or [""])[0]).strip()
+    bot_username = str(path_parts[0]).strip().lstrip("@")
+    short_name = str(path_parts[1]).strip()
+    if not bot_username or not short_name or not start_param:
+        return None
+    return bot_username, short_name, start_param
+
+
+def _build_direct_miniapp_tg_url(bot_username: str, short_name: str, start_param: str, *, scheme: str = "tg") -> str:
+    """EN: Build direct Mini App target for Telegram URI handlers using bot username, app short name and startapp.
+    RU: Собрать direct Mini App target для Telegram URI-handler-ов по username бота, short name приложения и startapp.
+    """
+
+    return (
+        f"{str(scheme)}://resolve?domain={quote_plus(str(bot_username).lstrip('@'))}"
+        f"&appname={quote_plus(str(short_name))}"
+        f"&startapp={quote_plus(str(start_param))}"
+    )
+
+
+def _build_main_miniapp_tg_url(bot_username: str, start_param: str, *, scheme: str = "tg") -> str:
+    """EN: Build main Mini App target for Telegram URI handlers using bot username and startapp only.
+    RU: Собрать target main Mini App для Telegram URI-handler-ов по username бота и startapp без short name.
+    """
+
+    return (
+        f"{str(scheme)}://resolve?domain={quote_plus(str(bot_username).lstrip('@'))}"
+        f"&startapp={quote_plus(str(start_param))}"
+    )
+
+
+def _is_valid_miniapp_target(target: str) -> bool:
+    """EN: Validate that a launcher target is a strict Telegram URI for a bot dialog or Mini App target.
+    RU: Проверить, что launcher-target является strict Telegram URI для bot dialog или Mini App target.
+    """
+
+    try:
+        parts = urlsplit(str((target or "").strip()))
+    except Exception:
+        return False
+    if parts.scheme not in {"tg", "telegram"} or parts.netloc != "resolve":
+        return False
+    query = parse_qs(parts.query, keep_blank_values=True)
+    domain = str((query.get("domain") or [""])[0]).strip().lstrip("@")
+    start_param = str((query.get("startapp") or [""])[0]).strip()
+    appname = str((query.get("appname") or [""])[0]).strip()
+    if not domain or not start_param:
+        return False
+    if "appname" in query and not appname:
+        return False
+    return True
+
+
+def _build_miniapp_launch_strategies(bot_username: str, short_name: str, start_param: str) -> list[MiniAppLaunchStrategy]:
+    """EN: Build ordered strict launch strategies for desktop/mobile Telegram Mini App opening.
+    RU: Собрать упорядоченные strict-стратегии запуска Telegram Mini App для desktop/mobile.
+
+    EN: Direct Mini App targets are tried first; main Mini App targets are attempted after them
+    as a compatibility fallback for Telegram clients that may ignore `appname`.
+    RU: Сначала пробуются direct Mini App targets; затем идут main Mini App targets как
+    совместимый fallback для клиентов Telegram, которые могут игнорировать `appname`.
+    """
+
+    bot_value = str(bot_username).lstrip("@")
+    short_value = str(short_name)
+    start_value = str(start_param)
+    return [
+        MiniAppLaunchStrategy(
+            name="tg-scheme-direct",
+            target=_build_direct_miniapp_tg_url(bot_value, short_value, start_value, scheme="tg"),
+        ),
+        MiniAppLaunchStrategy(
+            name="telegram-uri-direct",
+            target=_build_direct_miniapp_tg_url(bot_value, short_value, start_value, scheme="telegram"),
+        ),
+        MiniAppLaunchStrategy(
+            name="tg-scheme-main",
+            target=_build_main_miniapp_tg_url(bot_value, start_value, scheme="tg"),
+        ),
+        MiniAppLaunchStrategy(
+            name="telegram-uri-main",
+            target=_build_main_miniapp_tg_url(bot_value, start_value, scheme="telegram"),
+        ),
+    ]
+
+
+def _open_android_telegram_uri(tg_url: str) -> tuple[bool, str | None]:
+    """EN: Launch Telegram Mini App on Android only through Telegram app package.
+    RU: Запустить Telegram Mini App на Android только через пакет приложения Telegram.
+    """
+
+    try:
+        from jnius import autoclass  # type: ignore
+
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Intent = autoclass("android.content.Intent")
+        Uri = autoclass("android.net.Uri")
+        ctx = PythonActivity.mActivity
+        package_manager = ctx.getPackageManager()
+        intent = Intent(Intent.ACTION_VIEW, Uri.parse(tg_url))
+        intent.setPackage(_TG_ANDROID_PACKAGE)
+        intent.addFlags(int(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if intent.resolveActivity(package_manager) is None:
+            return False, "TG_APP_NOT_AVAILABLE"
+        ctx.startActivity(intent)
+        return True, None
+    except Exception as exc:
+        _LOG.exception("[MINIAPP] android tg app open failed")
+        trace_exception("OPEN", "OPEN.EXCEPTION", exc, stage="miniapp", platform=kivy_platform, url=_mask_url(tg_url))
+        return False, "MINIAPP_OPEN_FAILED"
+
+
+def _open_desktop_telegram_uri(tg_url: str) -> tuple[bool, str | None]:
+    """EN: Launch Telegram Mini App on desktop only through Telegram URI scheme handlers.
+    RU: Запустить Telegram Mini App на desktop только через обработчики URI-схем Telegram.
+    """
+
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(tg_url)  # type: ignore[attr-defined]
+            return False, "MINIAPP_OPEN_UNCERTAIN"
+        if sys.platform == "darwin":
+            result = subprocess.run(["open", tg_url], capture_output=True, text=True, check=False)
+            return (False, "MINIAPP_OPEN_UNCERTAIN") if int(result.returncode) == 0 else (False, "TG_SCHEME_UNSUPPORTED")
+        result = subprocess.run(["xdg-open", tg_url], capture_output=True, text=True, check=False)
+        return (False, "MINIAPP_OPEN_UNCERTAIN") if int(result.returncode) == 0 else (False, "TG_SCHEME_UNSUPPORTED")
+    except Exception as exc:
+        _LOG.exception("[MINIAPP] desktop tg app open failed")
+        trace_exception("OPEN", "OPEN.EXCEPTION", exc, stage="miniapp", platform=sys.platform, url=_mask_url(tg_url))
+        return False, "MINIAPP_OPEN_FAILED"
+
+
+def _open_miniapp_tg_target(tg_url: str) -> tuple[bool, str | None]:
+    """EN: Open strict Telegram Mini App target using platform-specific Telegram app path only.
+    RU: Открыть strict target Telegram Mini App только через platform-specific путь приложения Telegram.
+    """
+
+    if kivy_platform == "android":
+        return _open_android_telegram_uri(tg_url)
+    return _open_desktop_telegram_uri(tg_url)
+
+
 def open_telegram_miniapp(miniapp_url: str) -> tuple[bool, str | None]:
     """EN: Open Telegram Mini App URL through a dedicated helper with explicit Mini App semantics.
     RU: Открыть URL Telegram Mini App через отдельный helper с явной Mini App-семантикой.
@@ -315,29 +489,122 @@ def open_telegram_miniapp(miniapp_url: str) -> tuple[bool, str | None]:
     Telegram identity-flow могли явно логировать и обрабатывать ошибки запуска.
     """
 
-    masked_url = _mask_url(str(miniapp_url or ""))
-    tglog(f"[MINIAPP] open stage=miniapp url={masked_url}")
+    raw_url = str((miniapp_url or "").strip())
+    masked_url = _mask_url(raw_url)
+    parsed = _extract_miniapp_launch_params(raw_url)
+    if parsed is None:
+        tglog(f"[MINIAPP] open stage=miniapp target=- browser_fallback=False attempted=False result=False error=MINIAPP_OPEN_FAILED url={masked_url}")
+        trace_log(
+            "OPEN",
+            "OPEN.RESULT",
+            stage="miniapp",
+            platform=kivy_platform,
+            browser_fallback=False,
+            attempted=False,
+            result=False,
+            error="MINIAPP_OPEN_FAILED",
+            url=masked_url,
+        )
+        return False, "MINIAPP_OPEN_FAILED"
+
+    bot_username, short_name, start_param = parsed
+    tglog(
+        f"[MINIAPP] parse stage=miniapp raw_url={masked_url} "
+        f"bot_username={bot_username} short_name={short_name} start_param={_masked_code(start_param)}"
+    )
+    trace_log(
+        "OPEN",
+        "OPEN.PARSED",
+        stage="miniapp",
+        platform=kivy_platform,
+        url=masked_url,
+        bot_username=bot_username,
+        short_name=short_name,
+        start_param=_masked_code(start_param),
+        browser_fallback=False,
+    )
+    strategies = _build_miniapp_launch_strategies(bot_username, short_name, start_param)
+    last_error = "MINIAPP_OPEN_FAILED"
+    attempted_any = False
     trace_log(
         "OPEN",
         "OPEN.ATTEMPT",
         stage="miniapp",
         platform=kivy_platform,
         url=masked_url,
+        browser_fallback=False,
     )
-    attempted, error = open_web(str(miniapp_url or ""))
-    if attempted:
-        trace_log("OPEN", "OPEN.RESULT", stage="miniapp", platform=kivy_platform, attempted=True, result=True)
-        return True, None
+    for strategy in strategies:
+        masked_target = _mask_url(strategy.target)
+        target_ok = _is_valid_miniapp_target(strategy.target)
+        tglog(
+            f"[MINIAPP] strategy stage=miniapp name={strategy.name} target={masked_target} "
+            f"browser_fallback=False target_valid={target_ok}"
+        )
+        trace_log(
+            "OPEN",
+            "OPEN.STRATEGY",
+            stage="miniapp",
+            platform=kivy_platform,
+            strategy=strategy.name,
+            target=masked_target,
+            target_valid=bool(target_ok),
+            browser_fallback=False,
+        )
+        if not target_ok:
+            last_error = "TG_TARGET_INVALID"
+            continue
+        attempted, error = _open_miniapp_tg_target(strategy.target)
+        attempted_any = attempted_any or bool(attempted)
+        error_code = str(error or "")
+        tglog(
+            f"[MINIAPP] strategy result stage=miniapp name={strategy.name} target={masked_target} "
+            f"browser_fallback=False attempted={bool(attempted)} result={bool(attempted and not error_code)} "
+            f"error={error_code or '-'}"
+        )
+        trace_log(
+            "OPEN",
+            "OPEN.STRATEGY_RESULT",
+            stage="miniapp",
+            platform=kivy_platform,
+            strategy=strategy.name,
+            target=masked_target,
+            attempted=bool(attempted),
+            result=bool(attempted and not error_code),
+            error=error_code or "",
+            browser_fallback=False,
+        )
+        if attempted and not error_code:
+            trace_log(
+                "OPEN",
+                "OPEN.RESULT",
+                stage="miniapp",
+                platform=kivy_platform,
+                strategy=strategy.name,
+                target=masked_target,
+                browser_fallback=False,
+                attempted=True,
+                result=True,
+            )
+            return True, None
+        if error_code:
+            last_error = error_code
+
     trace_log(
         "OPEN",
         "OPEN.RESULT",
         stage="miniapp",
         platform=kivy_platform,
-        attempted=False,
+        browser_fallback=False,
+        attempted=bool(attempted_any),
         result=False,
-        error="MINIAPP_OPEN_FAILED",
+        error=last_error,
     )
-    return False, "MINIAPP_OPEN_FAILED"
+    tglog(
+        f"[MINIAPP] open stage=miniapp browser_fallback=False attempted={bool(attempted_any)} "
+        f"result=False error={last_error}"
+    )
+    return False, last_error
 
 
 def open_tg(bot_username: str, token: str = "") -> bool:

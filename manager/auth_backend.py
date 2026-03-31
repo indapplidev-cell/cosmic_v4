@@ -886,13 +886,61 @@ def payout_miniapp_session_request(user_id: int) -> Tuple[bool, dict]:
 
     ok, payload, status_code = _authorized_request_with_retry(
         "POST",
-        "/payout/miniapp/session/request",
+        "/telegram/payout/miniapp/session/request",
         json={"user_id": int(user_id)},
         timeout=10,
     )
     body_short = str(payload)[:200]
     tglog(f"[PAY] miniapp request status={status_code} ok={ok} body={body_short}")
     miniapp_url = str((payload.get('miniapp_url') or "").strip()) if isinstance(payload, dict) else ""
+    if ok and isinstance(payload, dict) and payload.get("ok") and miniapp_url:
+        return True, payload
+    if isinstance(payload, dict):
+        return False, payload
+    return False, {"ok": False, "error": "API_ERROR"}
+
+
+def telegram_hub_session_request(
+    entry_action: str,
+    *,
+    user_id: int | None = None,
+    email: str | None = None,
+) -> Tuple[bool, dict]:
+    """EN: Request one shared Telegram Mini App hub session for verify/reset/payout entry points.
+    RU: Запросить одну общую Telegram Mini App hub session для точек входа verify/reset/payout.
+    """
+
+    _ensure_healthcheck_once()
+    action_value = str((entry_action or "").strip().lower())
+    payload_body: dict[str, object] = {"entry_action": action_value}
+    if user_id is not None:
+        payload_body["user_id"] = int(user_id)
+    if email is not None:
+        payload_body["email"] = str((email or "").strip())
+
+    if action_value in {"verify", "payout"}:
+        token = ensure_access_token(force_refresh=False)
+        if not token:
+            tglog("[TGHUB] request status=0 ok=False body={'ok':False,'error':'NO_SESSION'}")
+            return False, {"ok": False, "error": "NO_SESSION"}
+        ok, payload, status_code = _authorized_request_with_retry(
+            "POST",
+            "/telegram/hub/session/request",
+            json=payload_body,
+            timeout=10,
+        )
+    else:
+        ok, payload = api_client.request(
+            "POST",
+            "/telegram/hub/session/request",
+            json=payload_body,
+            timeout=10,
+        )
+        status_code = 200 if ok else 0
+
+    body_short = str(payload)[:200]
+    tglog(f"[TGHUB] request action={action_value} status={status_code} ok={ok} body={body_short}")
+    miniapp_url = str((payload.get("miniapp_url") or "").strip()) if isinstance(payload, dict) else ""
     if ok and isinstance(payload, dict) and payload.get("ok") and miniapp_url:
         return True, payload
     if isinstance(payload, dict):

@@ -5,10 +5,9 @@ RU: РџСЂРµРґСЃС‚Р°РІР»РµРЅРёРµ СЌРєСЂР°РЅР
 from pathlib import Path
 
 from manager import auth_backend
-from manager.config import TELEGRAM_BOT_USERNAME
 from manager.input_validation import validate_login
 from manager.lang.lang_manager import t
-from manager.telegram_deeplink import open_telegram_bot_chat
+from manager.telegram_deeplink import open_telegram_miniapp
 from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.uix.boxlayout import BoxLayout
@@ -147,8 +146,8 @@ class LoginScreenView(MDScreen):
             self._clear_auth_inflight()
 
     def _on_forgot_pressed(self, *args) -> None:
-        """EN: Run Telegram-only forgot-password flow from login screen via popup.
-        RU: Р—Р°РїСѓСЃС‚РёС‚СЊ Telegram-only flow В«Р—Р°Р±С‹Р»Рё РїР°СЂРѕР»СЊВ» СЃ СЌРєСЂР°РЅР° РІС…РѕРґР° С‡РµСЂРµР· popup.
+        """EN: Open shared Telegram hub Mini App for forgot-password flow from login screen.
+        RU: Открыть общий Telegram hub Mini App для flow «Забыли пароль» с экрана входа.
         """
 
         email = str((self.ids.email_field.text or "").strip())
@@ -156,23 +155,23 @@ class LoginScreenView(MDScreen):
             self.set_error(t("reset.error.email_required"))
             return
 
-        ok, payload = auth_backend.password_reset_request(email, channel="telegram")
+        ok, payload = auth_backend.telegram_hub_session_request("reset", email=email)
         if not ok:
+            error_code = str(payload.get("error") if isinstance(payload, dict) else "API_ERROR")
+            if error_code == "RESET_UNAVAILABLE":
+                self._show_simple_popup(t("reset.telegram_not_verified"))
+            else:
+                self._show_simple_popup(t("reset.error.request_failed"))
+            return
+
+        miniapp_url = str((payload.get("miniapp_url") or "").strip()) if isinstance(payload, dict) else ""
+        if not miniapp_url:
             self._show_simple_popup(t("reset.error.request_failed"))
             return
 
-        reset_link_code = str((payload.get("reset_link_code") or "").strip()) if isinstance(payload, dict) else ""
-        ttl_sec = int((payload.get("ttl_sec") or 0)) if isinstance(payload, dict) else 0
-        tglog(
-            f"[TGDBG][RESET] open tg start={auth_backend.mask_token('R_' + reset_link_code) if reset_link_code else '-'} ttl={ttl_sec}"
-        )
-        if not reset_link_code:
-            self._show_simple_popup(t("reset.telegram_not_verified"))
-            return
-
-        start_payload = f"R_{reset_link_code}"
-        open_telegram_bot_chat(TELEGRAM_BOT_USERNAME, start_payload)
-        self._show_reset_confirm_popup(email=email)
+        attempted, _error = open_telegram_miniapp(miniapp_url)
+        if not attempted:
+            self._show_simple_popup(t("pay.open_fail"))
 
     def _show_simple_popup(self, message: str) -> None:
         """EN: Show one-button informational popup for login forgot-password flow.
@@ -261,10 +260,12 @@ class LoginScreenView(MDScreen):
                 error = str((response or {}).get("error") or "API_ERROR")
                 if error == "CODE_EXPIRED":
                     self._show_simple_popup(t("reset.error.code_expired"))
-                elif error in {"CODE_USED", "CODE_LOCKED"}:
+                elif error in {"CODE_USED", "ATTEMPTS_EXCEEDED"}:
                     self._show_simple_popup(t("reset.error.code_used"))
-                elif error in {"CODE_INVALID", "EMAIL_NOT_FOUND"}:
+                elif error in {"CODE_INVALID", "CHALLENGE_NOT_FOUND"}:
                     self._show_simple_popup(t("reset.error.invalid_code"))
+                elif error == "TELEGRAM_NOT_CONFIRMED":
+                    self._show_simple_popup(t("reset.telegram_not_verified"))
                 else:
                     self._show_simple_popup(t("reset.error.confirm_failed"))
                 return

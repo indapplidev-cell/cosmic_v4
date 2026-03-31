@@ -93,7 +93,7 @@ def get_payout_miniapp_short_name() -> str:
     RU: Вернуть настроенное short name Telegram Mini App для payout verification.
     """
 
-    return require_env("PAYOUT_MINIAPP_SHORT_NAME")
+    return require_env("ESCAPE2MARS_MINIAPP_SHORT_NAME")
 
 
 def get_payout_miniapp_session_ttl_sec() -> int:
