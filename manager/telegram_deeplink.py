@@ -394,10 +394,12 @@ def _build_miniapp_launch_strategies(bot_username: str, short_name: str, start_p
     """EN: Build ordered strict launch strategies for desktop/mobile Telegram Mini App opening.
     RU: Собрать упорядоченные strict-стратегии запуска Telegram Mini App для desktop/mobile.
 
-    EN: Direct Mini App targets are tried first; main Mini App targets are attempted after them
-    as a compatibility fallback for Telegram clients that may ignore `appname`.
-    RU: Сначала пробуются direct Mini App targets; затем идут main Mini App targets как
-    совместимый fallback для клиентов Telegram, которые могут игнорировать `appname`.
+    EN: Direct `tg://resolve?...&appname=...&startapp=...` target is tried first; a single
+    `tg://resolve?...&startapp=...` fallback is attempted after it for Telegram clients that may
+    ignore `appname`.
+    RU: Сначала пробуется direct target `tg://resolve?...&appname=...&startapp=...`; затем идёт
+    один fallback `tg://resolve?...&startapp=...` для клиентов Telegram, которые могут
+    игнорировать `appname`.
     """
 
     bot_value = str(bot_username).lstrip("@")
@@ -409,16 +411,8 @@ def _build_miniapp_launch_strategies(bot_username: str, short_name: str, start_p
             target=_build_direct_miniapp_tg_url(bot_value, short_value, start_value, scheme="tg"),
         ),
         MiniAppLaunchStrategy(
-            name="telegram-uri-direct",
-            target=_build_direct_miniapp_tg_url(bot_value, short_value, start_value, scheme="telegram"),
-        ),
-        MiniAppLaunchStrategy(
             name="tg-scheme-main",
             target=_build_main_miniapp_tg_url(bot_value, start_value, scheme="tg"),
-        ),
-        MiniAppLaunchStrategy(
-            name="telegram-uri-main",
-            target=_build_main_miniapp_tg_url(bot_value, start_value, scheme="telegram"),
         ),
     ]
 
@@ -457,7 +451,7 @@ def _open_desktop_telegram_uri(tg_url: str) -> tuple[bool, str | None]:
     try:
         if sys.platform.startswith("win"):
             os.startfile(tg_url)  # type: ignore[attr-defined]
-            return False, "MINIAPP_OPEN_UNCERTAIN"
+            return True, None
         if sys.platform == "darwin":
             result = subprocess.run(["open", tg_url], capture_output=True, text=True, check=False)
             return (False, "MINIAPP_OPEN_UNCERTAIN") if int(result.returncode) == 0 else (False, "TG_SCHEME_UNSUPPORTED")

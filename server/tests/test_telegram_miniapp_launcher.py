@@ -75,7 +75,7 @@ def test_open_telegram_miniapp_tries_multiple_strict_desktop_targets(monkeypatch
     assert error is None
     assert attempted_targets == [
         "tg://resolve?domain=escape2mars_bot&appname=escape2mars&startapp=opaque-token",
-        "telegram://resolve?domain=escape2mars_bot&appname=escape2mars&startapp=opaque-token",
+        "tg://resolve?domain=escape2mars_bot&startapp=opaque-token",
     ]
 
 
@@ -105,17 +105,17 @@ def test_open_telegram_miniapp_rejects_invalid_strategy_target(monkeypatch) -> N
     assert error == "TG_TARGET_INVALID"
 
 
-def test_open_telegram_miniapp_returns_uncertain_when_os_opener_only_succeeds(monkeypatch) -> None:
-    """EN: Desktop OS opener success alone must not count as proven Mini App success.
-    RU: Сам по себе успех desktop OS opener не должен считаться доказанным успехом Mini App.
+def test_open_telegram_miniapp_returns_success_when_windows_uri_open_succeeds(monkeypatch) -> None:
+    """EN: Windows URI handoff through `os.startfile()` must count as a successful launch attempt.
+    RU: На Windows передача URI через `os.startfile()` должна считаться успешной попыткой запуска.
     """
 
     monkeypatch.setattr(deeplink, "tglog", lambda *args, **kwargs: None)
     monkeypatch.setattr(deeplink, "trace_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(deeplink, "trace_exception", lambda *args, **kwargs: None)
-    monkeypatch.setattr(deeplink, "_open_miniapp_tg_target", lambda _tg_url: (False, "MINIAPP_OPEN_UNCERTAIN"))
+    monkeypatch.setattr(deeplink, "_open_miniapp_tg_target", lambda _tg_url: (True, None))
 
     attempted, error = deeplink.open_telegram_miniapp("https://t.me/escape2mars_bot/escape2mars?startapp=opaque-token")
 
-    assert attempted is False
-    assert error == "MINIAPP_OPEN_UNCERTAIN"
+    assert attempted is True
+    assert error is None
