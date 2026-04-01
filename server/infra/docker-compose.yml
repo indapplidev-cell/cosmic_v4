@@ -46,7 +46,7 @@ services:
     command: python -m server.bot.main
     restart: unless-stopped
 
-  paybot:
+  escape2mars:
     image: cosmic-api:local
     build:
       context: ../..
@@ -56,7 +56,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    command: python -m server.paybot.main
+    command: python -m server.escape2mars.main
     restart: unless-stopped
 
   caddy:
