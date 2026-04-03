@@ -26,6 +26,7 @@ jobs:
       ANDROID_NDK_PACKAGE: "25.2.9519653"
       P4A_REPO: "https://github.com/kivy/python-for-android.git"
       DEFAULT_P4A_COMMIT: "957a3e5f8c270f7aa648ba185e5a68c1077a798d"
+      KIVYMD_COMMIT: "d668d8b2b3d9eb54517892f613ffe34d9914517a"
       CACHE_EPOCH: ${{ vars.CACHE_EPOCH || '0' }}
 
     steps:
@@ -191,31 +192,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          KIVYMD_COMMIT="$(python - <<'PY'
-          from pathlib import Path
-
-          spec = Path("buildozer.spec").read_text(encoding="utf-8")
-          requirements_line = ""
-          for raw_line in spec.splitlines():
-              stripped = raw_line.strip()
-              if stripped.startswith("requirements ="):
-                  requirements_line = stripped.split("=", 1)[1]
-                  break
-          if not requirements_line:
-              raise SystemExit("Unable to resolve requirements from buildozer.spec")
-          commit = ""
-          for item in [item.strip() for item in requirements_line.split(",") if item.strip()]:
-              lower = item.lower()
-              if "github.com/kivymd/kivymd/archive/" not in lower:
-                  continue
-              commit = item.rsplit("/archive/", 1)[-1].rsplit(".zip", 1)[0].strip()
-              if commit:
-                  break
-          if not commit:
-              raise SystemExit("Unable to resolve KivyMD commit from buildozer.spec requirements")
-          print(commit)
-          PY
-          )"
           echo "KIVYMD_COMMIT=${KIVYMD_COMMIT}" | tee -a "$GITHUB_ENV"
           rm -rf .kivymd-src kivymd
           git clone --filter=blob:none https://github.com/kivymd/KivyMD.git .kivymd-src
