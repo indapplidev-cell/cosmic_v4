@@ -192,16 +192,16 @@ jobs:
         run: |
           set -euo pipefail
           KIVYMD_COMMIT="$(python - <<'PY'
-from pathlib import Path
-import re
+          from pathlib import Path
+          import re
 
-spec = Path("buildozer.spec").read_text(encoding="utf-8")
-match = re.search(r"github\.com/kivymd/KivyMD/archive/([0-9a-f]{7,40})\.zip", spec, re.IGNORECASE)
-if not match:
-    raise SystemExit("Unable to resolve KivyMD commit from buildozer.spec")
-print(match.group(1))
-PY
-)"
+          spec = Path("buildozer.spec").read_text(encoding="utf-8")
+          match = re.search(r"github\.com/kivymd/KivyMD/archive/([0-9a-f]{7,40})\.zip", spec, re.IGNORECASE)
+          if not match:
+              raise SystemExit("Unable to resolve KivyMD commit from buildozer.spec")
+          print(match.group(1))
+          PY
+          )"
           echo "KIVYMD_COMMIT=${KIVYMD_COMMIT}" | tee -a "$GITHUB_ENV"
           rm -rf .kivymd-src kivymd
           git clone --filter=blob:none https://github.com/kivymd/KivyMD.git .kivymd-src
@@ -214,24 +214,24 @@ PY
         run: |
           set -euo pipefail
           APP_REQUIREMENTS="$(python - <<'PY'
-from pathlib import Path
+          from pathlib import Path
 
-spec = Path("buildozer.spec").read_text(encoding="utf-8")
-requirements_line = ""
-for raw_line in spec.splitlines():
-    stripped = raw_line.strip()
-    if stripped.startswith("requirements ="):
-        requirements_line = stripped.split("=", 1)[1]
-        break
-if not requirements_line:
-    raise SystemExit("Unable to resolve requirements from buildozer.spec")
-items = [item.strip() for item in requirements_line.split(",") if item.strip()]
-filtered = [item for item in items if "kivymd" not in item.lower()]
-if not filtered:
-    raise SystemExit("APP_REQUIREMENTS became empty after filtering")
-print(",".join(filtered))
-PY
-)"
+          spec = Path("buildozer.spec").read_text(encoding="utf-8")
+          requirements_line = ""
+          for raw_line in spec.splitlines():
+              stripped = raw_line.strip()
+              if stripped.startswith("requirements ="):
+                  requirements_line = stripped.split("=", 1)[1]
+                  break
+          if not requirements_line:
+              raise SystemExit("Unable to resolve requirements from buildozer.spec")
+          items = [item.strip() for item in requirements_line.split(",") if item.strip()]
+          filtered = [item for item in items if "kivymd" not in item.lower()]
+          if not filtered:
+              raise SystemExit("APP_REQUIREMENTS became empty after filtering")
+          print(",".join(filtered))
+          PY
+          )"
           echo "APP_REQUIREMENTS=${APP_REQUIREMENTS}" | tee -a "$GITHUB_ENV"
 
       - name: Build debug APK (single entrypoint)
