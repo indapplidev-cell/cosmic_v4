@@ -187,6 +187,53 @@ jobs:
             fi
           fi
 
+      - name: Prepare vendored KivyMD for Android build
+        shell: bash
+        run: |
+          set -euo pipefail
+          KIVYMD_COMMIT="$(python - <<'PY'
+from pathlib import Path
+import re
+
+spec = Path("buildozer.spec").read_text(encoding="utf-8")
+match = re.search(r"github\.com/kivymd/KivyMD/archive/([0-9a-f]{7,40})\.zip", spec, re.IGNORECASE)
+if not match:
+    raise SystemExit("Unable to resolve KivyMD commit from buildozer.spec")
+print(match.group(1))
+PY
+)"
+          echo "KIVYMD_COMMIT=${KIVYMD_COMMIT}" | tee -a "$GITHUB_ENV"
+          rm -rf .kivymd-src kivymd
+          git clone --filter=blob:none https://github.com/kivymd/KivyMD.git .kivymd-src
+          git -C .kivymd-src checkout "${KIVYMD_COMMIT}"
+          rsync -a .kivymd-src/kivymd/ ./kivymd/
+          test -f kivymd/__init__.py
+
+      - name: Compute Android requirements override
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_REQUIREMENTS="$(python - <<'PY'
+from pathlib import Path
+
+spec = Path("buildozer.spec").read_text(encoding="utf-8")
+requirements_line = ""
+for raw_line in spec.splitlines():
+    stripped = raw_line.strip()
+    if stripped.startswith("requirements ="):
+        requirements_line = stripped.split("=", 1)[1]
+        break
+if not requirements_line:
+    raise SystemExit("Unable to resolve requirements from buildozer.spec")
+items = [item.strip() for item in requirements_line.split(",") if item.strip()]
+filtered = [item for item in items if "kivymd" not in item.lower()]
+if not filtered:
+    raise SystemExit("APP_REQUIREMENTS became empty after filtering")
+print(",".join(filtered))
+PY
+)"
+          echo "APP_REQUIREMENTS=${APP_REQUIREMENTS}" | tee -a "$GITHUB_ENV"
+
       - name: Build debug APK (single entrypoint)
         shell: bash
         run: |
@@ -195,6 +242,7 @@ jobs:
           export APP_ANDROID_API="${ANDROID_API}"
           export APP_ANDROID_NDK="${ANDROID_NDK}"
           export APP_ANDROID_BUILD_TOOLS_VERSION="${ANDROID_BUILD_TOOLS}"
+          export APP_REQUIREMENTS="${APP_REQUIREMENTS}"
           bash builds/android/tools/build_android.sh android debug
 
       - name: Locate APK
