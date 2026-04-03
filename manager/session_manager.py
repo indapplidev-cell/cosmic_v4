@@ -7,10 +7,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ads.payment.balance_store import BalanceStore
+from data.gameplay.rating_storage import RatingStorage
+from data.gameplay.record_store import RecordStore
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_cache_writer import remove_user_cache_fields, update_user_cache_fields
 from data.user_cache.user_session import UserSession
-from manager import api_client
+from manager import auth_backend
 from manager.trace import trace_log
 from manager.tg_debug_log import tglog
 
@@ -49,14 +52,13 @@ def clear_cached_session() -> None:
 
 
 def has_valid_session(cache: dict | None = None) -> bool:
-    """EN: Return True only when cache has positive user_id and non-empty refresh_token.
-    RU: Вернуть True только если в кэше есть положительный user_id и непустой refresh_token.
+    """EN: Return True when cache has a non-empty refresh token for protected refresh+retry flows.
+    RU: Вернуть True, когда в кэше есть непустой refresh token для защищённых refresh+retry flow.
     """
 
     src = cache if isinstance(cache, dict) else (get_user_cache() or {})
-    user_id = _safe_int(src.get("user_id")) or 0
     refresh_token = str((src.get("refresh_token") or "").strip())
-    return bool(user_id > 0 and refresh_token)
+    return bool(refresh_token)
 
 
 def get_session_user_id(cache: dict | None = None) -> int:
@@ -121,6 +123,9 @@ def sync_user_snapshot(user: dict) -> None:
     }
     if patch["user_id"] > 0:
         update_user_cache_fields(patch)
+        RecordStore().set_best_score(int(patch["record"]))
+        RatingStorage().save_points(int(patch["rating"]))
+        BalanceStore().set_balance(float(patch["balance"]))
     if patch["email"]:
         UserSession().set_email(patch["email"])
 
@@ -185,34 +190,10 @@ def validate_cached_session(timeout: int = 8, allow_offline: bool = True) -> dic
     user_id = _safe_int(cache.get("user_id"))
     email = str((cache.get("email") or "").strip())
 
-    if user_id is not None and int(user_id) <= 0:
-        tglog("[SESSION] skip /auth/me (no user_id)")
-        trace_log("SESSION", "SESSION.SKIP_AUTH_ME", user_id=int(user_id))
+    if not refresh_present and user_id is None and not email:
         return {"ok": False, "reason": "NO_CACHE"}
 
-    if user_id is None and not email:
-        return {"ok": False, "reason": "NO_CACHE"}
-
-    if user_id is None and email:
-        ok_exists, exists_payload = api_client.auth_exists(email, timeout=timeout)
-        if not ok_exists:
-            if allow_offline and isinstance(exists_payload, dict) and exists_payload.get("error") == "NETWORK":
-                return {"ok": False, "reason": "NETWORK", "has_cache": True}
-            return {"ok": False, "reason": "SERVER_NOT_FOUND"}
-        if not exists_payload.get("ok"):
-            if exists_payload.get("error") == "NOT_FOUND":
-                clear_cached_session()
-                return {"ok": False, "reason": "SERVER_NOT_FOUND"}
-            return {"ok": False, "reason": "NETWORK"}
-
-        user = exists_payload.get("user") if isinstance(exists_payload, dict) else None
-        if not isinstance(user, dict):
-            return {"ok": False, "reason": "SERVER_NOT_FOUND"}
-        user_id = _safe_int(user.get("user_id"))
-        if user_id is None:
-            return {"ok": False, "reason": "SERVER_NOT_FOUND"}
-
-    ok_me, me_payload = api_client.auth_me(int(user_id), timeout=timeout)
+    ok_me, me_payload = auth_backend.get_current_user_snapshot(timeout=timeout)
     if not ok_me:
         if allow_offline and isinstance(me_payload, dict) and me_payload.get("error") == "NETWORK":
             return {"ok": False, "reason": "NETWORK", "has_cache": True}
@@ -230,4 +211,5 @@ def validate_cached_session(timeout: int = 8, allow_offline: bool = True) -> dic
         return {"ok": False, "reason": "SERVER_NOT_FOUND"}
 
     sync_user_snapshot(user)
+    auth_backend.hydrate_survive_timed_progress(timeout=timeout)
     return {"ok": True, "user": user}

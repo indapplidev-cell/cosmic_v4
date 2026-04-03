@@ -157,6 +157,7 @@
   "reset.popup_instruction": "Откройте Telegram, нажмите СБРОСИТЬ в боте, получите 6-значный код и введите его здесь.",
   "reset.success.password_changed": "Пароль изменён. Войдите заново.",
   "pay.open_fail": "Не удалось открыть Telegram. Попробуйте позже.",
+  "pay.balance_insufficient": "Недостаточно баланса для выплаты.",
   "pay.config_invalid": "Проверка payout временно недоступна. Попробуйте позже.",
   "pay.request_fail": "Не удалось открыть. Попробуйте позже.",
   "pay.session_expired": "Сессия истекла. Войдите заново.",
@@ -167,5 +168,9 @@
   "game.level_complete": "Уровень завершён",
   "game.level_intro": "Уровень {level_number}. Условие: наберите максимальное количество очков за отведенное время",
   "game.level_victory": "Победа! Поздравляем! Вы справились!",
-  "game.level_timeout_fail": "Жаль! Вы не справились! Возможно вам повезет в другой раз!"
+  "game.level_timeout_fail": "Жаль! Вы не справились! Возможно, вам повезет в другой раз!",
+  "game.survive_timed.level_intro": "Уровень {level_number}. Продержитесь {minutes} мин {seconds} сек",
+  "game.survive_timed.level_success": "Уровень {level_number} пройден",
+  "game.survive_timed.level_fail": "Уровень {level_number} не пройден",
+  "game.survive_timed.hud": "Уровень {level_number}\nЦель: {target_mmss}\nПрошло: {elapsed_mmss}\nОсталось: {remaining_mmss}"
 }

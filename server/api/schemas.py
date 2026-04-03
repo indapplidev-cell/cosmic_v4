@@ -535,6 +535,25 @@ class LevelScoreRecordUpsertRequest(StrictBaseModel):
     reward_used: bool
 
 
+class SurviveTimedLevelResultRequest(StrictBaseModel):
+    """EN: Authenticated survive_timed level-result payload for success/fail attempt persistence.
+    RU: Authenticated payload ?????????? ?????? survive_timed ??? ?????????? ?????? ??? ??????? ???????.
+    """
+
+    level_number: int = Field(ge=1)
+    survival_ms: int = Field(ge=0)
+    result: Literal["success", "fail"]
+
+
+class SurviveTimedLevelSuccessRequest(StrictBaseModel):
+    """EN: Authenticated survive_timed success payload that also advances campaign progress.
+    RU: Authenticated payload ?????? survive_timed, ??????? ????? ?????????? ???????? ????????.
+    """
+
+    level_number: int = Field(ge=1)
+    survival_ms: int = Field(ge=0)
+
+
 class AdsConfigRequest(StrictBaseModel):
     """EN: Client ads-config request payload describing runtime platform and locale context.
     RU: Payload запроса ads-config от клиента с описанием runtime-платформы и locale-контекста.

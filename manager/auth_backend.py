@@ -438,6 +438,41 @@ def get_current_user_id(timeout: int = 8) -> Tuple[bool, str | int]:
         return False, "API_ERROR"
 
 
+def _normalize_survive_timed_progress_payload(progress: object) -> dict | None:
+    """EN: Normalize backend survive_timed campaign progress into local-store shape.
+    RU: Нормализовать backend-прогресс survive_timed к формату локального store.
+    """
+
+    if not isinstance(progress, dict):
+        return None
+    try:
+        return {
+            "last_completed_level_number": max(int(progress.get("last_completed_level_number", 0) or 0), 0),
+            "current_level_number": int(progress.get("current_level_number", 1) or 1),
+            "campaign_completed": bool(progress.get("campaign_completed", False)),
+        }
+    except Exception:
+        return None
+
+
+def hydrate_survive_timed_progress(timeout: int = 10) -> bool:
+    """EN: Best-effort hydrate local survive_timed campaign progress from backend.
+    RU: Best-effort загрузить локальный прогресс кампании survive_timed с backend.
+    """
+
+    if not has_valid_session():
+        return False
+    ok, payload = get_survive_timed_progress(timeout=timeout)
+    if not ok or not isinstance(payload, dict):
+        return False
+    try:
+        from manager.modes.survive_timed.level_progress_service import apply_survive_timed_progress_from_server
+
+        return apply_survive_timed_progress_from_server(payload.get("progress")) is not None
+    except Exception:
+        return False
+
+
 def ads_config_fetch(
     user_id: int,
     platform: str,
@@ -507,6 +542,7 @@ def register(email: str, psw: str) -> Tuple[bool, str | int]:
             force_logout(reason="REGISTER_MISSING_REFRESH_TOKEN")
             return False, "API_ERROR"
         set_tokens(access_token, refresh_token)
+        hydrate_survive_timed_progress()
         tglog(f"[TGDBG] login tokens: access={mask_token(access_token)} refresh={mask_token(refresh_token)}")
         return True, int(payload["user_id"])
     return False, _error_code(payload, "API_ERROR")
@@ -530,6 +566,7 @@ def login(email: str, psw: str) -> Tuple[bool, str | int]:
             force_logout(reason="LOGIN_MISSING_REFRESH_TOKEN")
             return False, "API_ERROR"
         set_tokens(access_token, refresh_token)
+        hydrate_survive_timed_progress()
         tglog(f"[TGDBG] login tokens: access={mask_token(access_token)} refresh={mask_token(refresh_token)}")
         return True, int(payload["user_id"])
     return False, _error_code(payload, "API_ERROR")
@@ -733,6 +770,83 @@ def submit_level_score_record(payload: dict, timeout: int = 10) -> Tuple[bool, d
         tag="LEVEL_SCORE_RECORD",
     )
     is_ok = bool(int(status_code) == 200 and isinstance(data, dict) and data.get("ok"))
+    return is_ok, data if isinstance(data, dict) else {"ok": False, "error": "BAD_RESPONSE"}
+
+
+def get_survive_timed_progress(timeout: int = 10) -> Tuple[bool, dict]:
+    """EN: Load authenticated survive_timed campaign progress from backend.
+    RU: ????????? ???????? ???????? survive_timed ? backend ??? ??????????????? ????????????.
+    """
+
+    _ensure_healthcheck_once()
+    status_code, data = authorized_get_json(
+        "/game/modes/survive-timed/progress",
+        tag="SURVIVE_TIMED_PROGRESS",
+        timeout=timeout,
+    )
+    is_ok = bool(int(status_code) == 200 and isinstance(data, dict) and data.get("ok"))
+    return is_ok, data if isinstance(data, dict) else {"ok": False, "error": "BAD_RESPONSE"}
+
+
+def submit_survive_timed_level_result(payload: dict, timeout: int = 10) -> Tuple[bool, dict]:
+    """EN: Submit one authenticated survive_timed attempt result without advancing campaign progress.
+    RU: ????????? ???? ????????? ??????? survive_timed ??? ??????????? ????????? ????????.
+    """
+
+    _ensure_healthcheck_once()
+    request_payload = dict(payload or {})
+    tglog(
+        "[TGDBG][SURVIVE_TIMED] level-result request "
+        f"level_number={request_payload.get('level_number')} "
+        f"survival_ms={request_payload.get('survival_ms')} "
+        f"result={request_payload.get('result')}"
+    )
+    status_code, data = authorized_post_json(
+        "/game/modes/survive-timed/level-result",
+        request_payload,
+        tag="SURVIVE_TIMED_LEVEL_RESULT",
+    )
+    is_ok = bool(int(status_code) == 200 and isinstance(data, dict) and data.get("ok"))
+    if isinstance(data, dict):
+        result_payload = data.get("result") if isinstance(data.get("result"), dict) else {}
+        tglog(
+            "[TGDBG][SURVIVE_TIMED] level-result response "
+            f"ok={is_ok} status={status_code} "
+            f"level_number={result_payload.get('level_number')} "
+            f"last_result={result_payload.get('last_result')} "
+            f"attempts_count={result_payload.get('attempts_count')}"
+        )
+    return is_ok, data if isinstance(data, dict) else {"ok": False, "error": "BAD_RESPONSE"}
+
+
+def submit_survive_timed_level_success(payload: dict, timeout: int = 10) -> Tuple[bool, dict]:
+    """EN: Submit one authenticated survive_timed success and campaign-progress advance.
+    RU: ????????? ???? ???????? ????????? survive_timed ? ??????????? ????????? ????????.
+    """
+
+    _ensure_healthcheck_once()
+    request_payload = dict(payload or {})
+    tglog(
+        "[TGDBG][SURVIVE_TIMED] level-success request "
+        f"level_number={request_payload.get('level_number')} "
+        f"survival_ms={request_payload.get('survival_ms')}"
+    )
+    status_code, data = authorized_post_json(
+        "/game/modes/survive-timed/level-success",
+        request_payload,
+        tag="SURVIVE_TIMED_LEVEL_SUCCESS",
+    )
+    is_ok = bool(int(status_code) == 200 and isinstance(data, dict) and data.get("ok"))
+    if isinstance(data, dict):
+        progress_payload = data.get("progress") if isinstance(data.get("progress"), dict) else {}
+        result_payload = data.get("result") if isinstance(data.get("result"), dict) else {}
+        tglog(
+            "[TGDBG][SURVIVE_TIMED] level-success response "
+            f"ok={is_ok} status={status_code} "
+            f"level_number={result_payload.get('level_number')} "
+            f"current_level_number={progress_payload.get('current_level_number')} "
+            f"last_completed_level_number={progress_payload.get('last_completed_level_number')}"
+        )
     return is_ok, data if isinstance(data, dict) else {"ok": False, "error": "BAD_RESPONSE"}
 
 
@@ -1034,5 +1148,3 @@ def telegram_link_confirm(user_id: int, confirm_code: str) -> Tuple[bool, dict]:
     if isinstance(payload, dict):
         return False, payload
     return False, {"ok": False, "error": "API_ERROR"}
-
-

@@ -32,17 +32,21 @@ from manager.game_control.hud_layout_store import get_swapped
 from manager.score.score_manager import ScoreManager
 from manager.score.score_widget import ScoreLabel
 from manager.time.time_manager import TimeManager
+from manager.levels.active_level_session import set_active_level_id
 from manager.levels.level_runtime_manager import LevelRuntimeManager
+from manager.modes.survive_timed.mode_registry import SURVIVE_TIMED_MODE_CODE, get_default_game_mode_code
+from manager.modes.survive_timed.runtime_bridge import SurviveTimedRuntimeBridge
 from data.gameplay.rating.rating_session import RatingSession
 from data.gameplay.rating_storage import RatingStorage
+from data.gameplay import level_progress_store
 from data.gameplay.record_store import RecordStore
 from ads.payment.balance_store import BalanceStore
 from manager.gameover.gameover_counters import counters
 from manager.lang.lang_manager import t
 from manager import auth_backend
+from manager.tg_debug_log import tglog
 from data.user_cache.user_cache_reader import get_user_cache
 from data.user_cache.user_cache_writer import update_user_cache_fields
-from data.user_cache.user_session import UserSession
 from manager.user_snapshot_store import UserSnapshotStore
 from uix.debug.debug_borders import apply_debug_borders_to_ids
 from uix.screens.common.button_text_style import apply_button_text_style, caps
@@ -91,8 +95,12 @@ class GameScreenView(MDScreen):
         self._rewarded_focus_lost = False
         self._pending_rewarded_result = None
         self._level_runtime_manager = LevelRuntimeManager()
+        self._survive_timed_bridge = SurviveTimedRuntimeBridge()
         self._active_level_profile = None
+        self._level_transition_active = False
+        self._level_failed_by_timeout = False
         self._level_completed_flag = False
+        self._level_score_record_sent = False
         Window.bind(on_focus=self._on_window_focus)
 
     def on_kv_post(self, base_widget) -> None:
@@ -118,7 +126,7 @@ class GameScreenView(MDScreen):
             surface = GameplaySurface(size_hint=(1, 1))
             host.add_widget(surface)
             runtime = GameplayRuntime(surface)
-            runtime.on_game_over = self._show_hud_after_loss
+            runtime.on_game_over = self._on_runtime_game_over
             runtime.on_loss = self._on_runtime_loss
             Clock.schedule_once(lambda *_: runtime.prepare_scene(), 0)
             surface.bind(size=lambda *_: runtime.request_redraw())
@@ -229,7 +237,7 @@ class GameScreenView(MDScreen):
             self._shell.refresh_user_info()
             self._shell.set_user_info_visible(True)
 
-        if self._session_started and not self._game_over_flag and not self._level_completed_flag:
+        if self._session_started and not self._game_over_flag and not self._level_transition_active and not self._level_completed_flag:
             self._shell.set_bar_visibility(top=True, content=False, bottom=False)
             return
 
@@ -458,7 +466,6 @@ class GameScreenView(MDScreen):
         """EN: Update lives when the runtime registers a loss.
         RU: 1e313d3e3238424c 3638373d38 3f4038 4035333841424030463838 3f3e42354038 32 runtime.
         """
-        self._time_manager.time_gameplay(stop=True)
         if hasattr(self, "_rating_session"):
             self._rating_session.on_life_lost()
         if not hasattr(self, "_life"):
@@ -481,9 +488,7 @@ class GameScreenView(MDScreen):
         """EN: Show all HUD bars after a loss.
         RU: Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р Р‹Р РЋРЎСџР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎС™Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В·Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В° Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р Р‹Р Р†Р вЂљРЎС™Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’Вµ HUD-Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В±Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР Р†Р вЂљРІР‚Сљ Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р Р‹Р Р†Р вЂљРЎС™Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В»Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’Вµ Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’ВР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎС™Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР Р†Р вЂљРІР‚СљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В РІР‚в„ўР вЂ™Р’В¬Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°.
         """
-        counters.inc_gameover()
-        if hasattr(self, "_rating_session"):
-            self._rating_session.on_game_over(time.time())
+        self._apply_game_over_accounting()
         now_ts = time.time()
         current_score = int(getattr(getattr(self, "_state", None), "current_y_loop", 0))
         elapsed_sec = 0.0
@@ -501,18 +506,132 @@ class GameScreenView(MDScreen):
         self.ids.game_btn_text.text = caps(t("game.btn_receive"))
         self._bind_game_button(self.receive_reward)
         self._game_over_flag = True
+        self._level_transition_active = False
+        self._level_failed_by_timeout = False
         self._level_completed_flag = False
         self._sync_shell_state()
 
-    def _complete_level(self) -> None:
-        """EN: Complete the active level without using the loss/rewarded game-over flow.
-        RU: ????????? ???????? ??????? ??? ????????????? loss/rewarded game-over ????????.
+    def _apply_game_over_accounting(self) -> None:
+        """EN: Apply shared game-over accounting without entering any specific UI flow.
+        RU: Выполнить общий учёт game over без перехода в конкретный UI-flow.
         """
-        if self._level_completed_flag:
+
+        counters.inc_gameover()
+        if hasattr(self, "_rating_session"):
+            self._rating_session.on_game_over(time.time())
+
+    def _is_survive_timed_mode_active(self) -> bool:
+        """EN: Return whether the default integrated gameplay mode is survive_timed.
+        RU: ???????, ??????? ?? ??????????????? ????? gameplay ?? ????????? survive_timed.
+        """
+
+        return str(get_default_game_mode_code()) == SURVIVE_TIMED_MODE_CODE
+
+    def _on_runtime_game_over(self) -> None:
+        """EN: Route gameplay game-over into survive_timed fail flow or legacy rewarded flow.
+        RU: ????????? gameplay game over ???? ? fail-flow survive_timed, ???? ? legacy rewarded-flow.
+        """
+
+        if (
+            self._is_survive_timed_mode_active()
+            and self._session_started
+            and not self._level_transition_active
+            and not self._level_completed_flag
+        ):
+            self._fail_survive_timed_level_on_game_over()
             return
-        self._level_completed_flag = True
-        self._game_over_flag = False
+        self._show_hud_after_loss()
+
+    def _fail_survive_timed_level_on_game_over(self) -> None:
+        """EN: Fail the active survive_timed level when game over happens before the target timer.
+        RU: ????????? ???????? ??????? survive_timed, ???? game over ???????? ?????? ???????? ???????.
+        """
+
+        if self._level_transition_active or self._active_level_profile is None:
+            return
+        self._level_transition_active = True
+        self._level_failed_by_timeout = False
+        self._level_completed_flag = False
+        self._apply_game_over_accounting()
+        profile = self._active_level_profile
+        survival_sec = float(self._survive_timed_bridge.get_elapsed_sec())
+        self._survive_timed_bridge.record_fail()
+        self._finish_level_run_for_transition()
+        self._show_timed_popup(
+            t("game.survive_timed.level_fail").format(level_number=int(profile.level_number)),
+            seconds=3.0,
+            on_dismiss=self._reset_to_first_start_state,
+        )
+
+    @staticmethod
+    def _format_mmss(total_seconds: int) -> str:
+        """EN: Format whole seconds into MM:SS for survive_timed HUD and popups.
+        RU: ????????????? ????? ??????? ? MM:SS ??? HUD ? popup survive_timed.
+        """
+
+        minutes, seconds = divmod(max(0, int(total_seconds)), 60)
+        return f"{minutes:02d}:{seconds:02d}"
+
+    def _get_attempts_used_for_level_record(self) -> int | None:
+        """EN: Return the number of attempts consumed in the current run for level-record submission.
+        RU: ??????? ????? ??????????????? ??????? ? ??????? run ??? ???????? ??????? ??????.
+        """
+
+        life = getattr(self, "_life", None)
+        session = getattr(life, "_session", None)
+        if session is None:
+            return None
+        try:
+            max_attempts = int(session.get_max_attempts())
+            attempts_left = int(session.get_attempts_left())
+        except Exception:
+            return None
+        return max(0, int(max_attempts - attempts_left))
+
+    def _submit_level_score_record_if_needed(
+        self,
+        *,
+        result: str,
+        score: int | None = None,
+        elapsed_ms: int | None = None,
+    ) -> None:
+        """EN: Submit one finished run to the server only once and only for first-principle score-unlimited levels.
+        RU: ????????? ???? ??????????? run ?? ?????? ?????? ???? ??? ? ?????? ??? ??????? ??????? ???????? score-unlimited.
+        """
+
+        if self._level_score_record_sent:
+            return
+        profile = getattr(self, "_active_level_profile", None)
+        if profile is None or str(getattr(profile, "record_type", "")) != "score_max_unlimited":
+            return
+        score_value = int(
+            score if score is not None else int(getattr(getattr(self, "_state", None), "current_y_loop", 0) or 0)
+        )
+        if elapsed_ms is None:
+            elapsed_sec = float(self._time_manager.time_gameplay() or 0.0)
+            elapsed_ms_value = max(0, int(round(elapsed_sec * 1000.0)))
+        else:
+            elapsed_ms_value = max(0, int(elapsed_ms))
+        payload = {
+            "level_number": int(profile.level_number),
+            "score": max(0, int(score_value)),
+            "elapsed_ms": int(elapsed_ms_value),
+            "result": str(result or "").strip(),
+            "attempts_used": self._get_attempts_used_for_level_record(),
+            "reward_used": bool(self._reward_used),
+        }
+        ok_submit, response = auth_backend.submit_level_score_record(payload)
+        if ok_submit:
+            self._level_score_record_sent = True
+            return
+        print(f"[LevelScoreRecord] submit_failed response={response}", flush=True)
+
+    def _finish_level_run_for_transition(self) -> None:
+        """EN: Stop the active run and restore the regular game screen layout before level-result popups.
+        RU: ????????????? ??????? run ? ?????????? ??????? ????????? ?????? ???? ????? popup ?????????? ??????.
+        """
         self._session_started = False
+        self._game_over_flag = False
         self._time_manager.time_gameplay(stop=True)
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
@@ -522,29 +641,97 @@ class GameScreenView(MDScreen):
             self._stop_hud_sync()
         self.touch_controls_hide()
         set_hud_visible(self, top=True, content=True, bottom=True)
-        self.ids.title_lbl.text = t("game.level_complete")
         self.ids.game_btn_text.text = caps(t("game.btn_start"))
         self._bind_game_button(self._on_start_pressed)
+        self.ids.title_lbl.text = t("game.title")
         self._sync_level_timer_overlay()
         self._sync_shell_state()
 
+    def _complete_level(self, current_score: int, elapsed_sec: float) -> None:
+        """EN: Complete the active level, persist progress, and auto-start the next level after timed popups.
+        RU: ????????? ???????? ???????, ????????? ???????? ? ????????????? ????????? ????????? ??????? ????? timed popup.
+        """
+        if self._level_transition_active or self._active_level_profile is None:
+            return
+        self._level_transition_active = True
+        self._level_failed_by_timeout = False
+        self._level_completed_flag = True
+        profile = self._active_level_profile
+        if self._is_survive_timed_mode_active():
+            response = self._survive_timed_bridge.record_success()
+            progress = response.get("progress") if isinstance(response, dict) else None
+            next_level_number = int((progress or {}).get("current_level_number") or profile.level_number)
+            tglog(
+                "[TGDBG][SURVIVE_TIMED] level-success transition "
+                f"level_number={int(profile.level_number)} "
+                f"response_ok={bool(isinstance(response, dict) and response.get('ok'))} "
+                f"current_level_number={(progress or {}).get('current_level_number')} "
+                f"next_level_number={next_level_number}"
+            )
+            self._finish_level_run_for_transition()
+            self._show_timed_popup(
+                t("game.survive_timed.level_success").format(level_number=int(profile.level_number)),
+                seconds=3.0,
+                on_dismiss=lambda: self._start_level_with_intro(next_level_number),
+            )
+            return
+        self._submit_level_score_record_if_needed(
+            result="completed",
+            score=int(current_score),
+            elapsed_ms=max(0, int(round(float(elapsed_sec) * 1000.0))),
+        )
+        level_progress_store.mark_level_completed(profile.level_number, int(current_score), float(elapsed_sec))
+        next_level_number = level_progress_store.get_current_level_number()
+        self._finish_level_run_for_transition()
+        self._show_timed_popup(
+            t("game.level_victory"),
+            seconds=3.0,
+            on_dismiss=lambda: self._start_level_with_intro(next_level_number),
+        )
+
+    def _fail_level_by_timeout(self) -> None:
+        """EN: Stop the active level on timeout without entering the rewarded game-over branch.
+        RU: ?????????? ??????? ?? ???????? ??? ???????? ? rewarded/game-over ?????.
+        """
+        if self._level_transition_active:
+            return
+        self._level_transition_active = True
+        self._level_failed_by_timeout = True
+        self._level_completed_flag = False
+        self._submit_level_score_record_if_needed(result="timeout")
+        self._finish_level_run_for_transition()
+        self._show_timed_popup(
+            t("game.level_timeout_fail"),
+            seconds=3.0,
+            on_dismiss=self._reset_to_first_start_state,
+        )
+
     def _sync_level_timer_overlay(self) -> None:
-        """EN: Sync the gameplay timer overlay for timed levels inside the gameplay area.
-        RU: ???????????????? overlay-?????? gameplay ??? timed-??????? ?????? ??????? ???????.
+        """EN: Sync the gameplay timer overlay for the active level or survive_timed HUD block.
+        RU: ???????????????? overlay-?????? gameplay ??? ????????? ?????? ??? HUD-???? survive_timed.
         """
         timer = self.ids.gameplay_timer_lbl
         profile = getattr(self, "_active_level_profile", None)
-        is_timed = bool(
+        is_visible = bool(
             self._session_started
             and not self._game_over_flag
+            and not self._level_transition_active
             and not self._level_completed_flag
             and profile is not None
-            and profile.goal_type == "timed_max_score"
-            and profile.time_limit_sec is not None
         )
-        if not is_timed:
+        if not is_visible:
             timer.text = ""
             timer.opacity = 0
+            return
+        if self._is_survive_timed_mode_active():
+            hud = self._survive_timed_bridge.build_hud_payload()
+            timer.text = t("game.survive_timed.hud").format(
+                level_number=int(hud.get("level_number") or profile.level_number),
+                target_mmss=self._format_mmss(int(hud.get("target_survival_sec") or profile.time_limit_sec)),
+                elapsed_mmss=self._format_mmss(int(hud.get("elapsed_sec") or 0)),
+                remaining_mmss=self._format_mmss(int(hud.get("remaining_sec") or 0)),
+            )
+            timer.opacity = 1
             return
         elapsed = float(self._time_manager.time_gameplay() or 0.0)
         remaining = max(0, int(profile.time_limit_sec - elapsed))
@@ -553,25 +740,28 @@ class GameScreenView(MDScreen):
         timer.opacity = 1
 
     def _check_level_completion(self, current_score: int) -> None:
-        """EN: Complete the active level when its goal condition is reached.
-        RU: ????????? ???????? ???????, ????? ????????? ??? ??????? ???????.
+        """EN: Check active level completion conditions for either survive_timed or legacy score mode.
+        RU: ????????? ??????? ?????????? ????????? ?????? ??? survive_timed ???? legacy score-??????.
         """
         if (
             not self._session_started
             or self._game_over_flag
+            or self._level_transition_active
             or self._level_completed_flag
             or self._active_level_profile is None
         ):
             return
         profile = self._active_level_profile
-        if profile.goal_type == "timed_max_score" and profile.time_limit_sec is not None:
-            elapsed = float(self._time_manager.time_gameplay() or 0.0)
-            remaining = max(0.0, float(profile.time_limit_sec) - elapsed)
-            if remaining <= 0.0:
-                self._complete_level()
-        elif profile.goal_type == "target_score" and profile.target_score is not None:
-            if int(current_score) >= int(profile.target_score):
-                self._complete_level()
+        elapsed = float(self._time_manager.time_gameplay() or 0.0)
+        if self._is_survive_timed_mode_active():
+            if self._survive_timed_bridge.is_success_ready():
+                self._complete_level(current_score, elapsed)
+            return
+        if int(current_score) >= int(profile.target_score):
+            self._complete_level(current_score, elapsed)
+            return
+        if elapsed >= float(profile.time_limit_sec):
+            self._fail_level_by_timeout()
 
     def _on_window_focus(self, _window, focused: bool) -> None:
         """EN: Finalize rewarded flow on focus return when fullscreen ads temporarily steal app focus.
@@ -771,12 +961,15 @@ class GameScreenView(MDScreen):
         self._chis_segment_started_at = 0.0
         self._chis_accum_sec = 0.0
         self._reward_used = False
+        self._level_score_record_sent = False
         self._record_sis_max = 0
         self._record_pure_max = 0
         self._attempts_total = int(ATTEMPTS_BASE)
         self._cheat_flag = False
         self._cheat_points_window.clear()
         self._active_level_profile = None
+        self._level_transition_active = False
+        self._level_failed_by_timeout = False
         self._level_completed_flag = False
         self._sync_level_timer_overlay()
         self._sync_shell_state()
@@ -812,6 +1005,9 @@ class GameScreenView(MDScreen):
         now = time.time()
         if hasattr(self, "_rating_session"):
             self._rating_session.on_exit_back(now)
+
+        if self._game_over_flag:
+            self._submit_level_score_record_if_needed(result="lives_fail")
 
         sis_sec = float(self._time_manager.time_game_session(stop=True) or 0.0)
         chis_sec = float(self._finalize_chis_sec() or 0.0)
@@ -898,11 +1094,7 @@ class GameScreenView(MDScreen):
         if isinstance(raw_user_id, str) and raw_user_id.isdigit():
             return int(raw_user_id)
 
-        email = (cache.get("email") or "").strip() or (UserSession().get_email() or "").strip()
-        if not email:
-            return None
-
-        ok, payload = auth_backend.resolve_user_id(email)
+        ok, payload = auth_backend.get_current_user_id()
         if not ok:
             return None
         user_id = int(payload)
@@ -910,8 +1102,81 @@ class GameScreenView(MDScreen):
         return user_id
 
     def _on_start_pressed(self, *args) -> None:
-        """EN: Hide HUD and start the gameplay runtime.
-        RU: Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћвЂ“Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎС™Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР Р†Р вЂљРІР‚СљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В° HUD Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В·Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎв„ўР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р Р‹Р Р†Р вЂљРЎС™Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’ВР В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В° Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р вЂ™Р’ВР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎС™Р В Р’В Р вЂ™Р’В Р В Р’В Р В РІР‚в„–Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В Р вЂ№Р В Р вЂ Р В РІР‚С™Р РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р вЂ Р В РІР‚С™Р РЋРІР‚С”Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎС™ runtime.
+        """EN: Resolve the persisted current level, show its intro popup, and start the run only after dismiss.
+        RU: ?????????? ??????????? ??????? ???????, ???????? ??? intro popup ? ?????? run ?????? ????? ???????? popup.
+        """
+        if self._is_survive_timed_mode_active():
+            level_number = self._survive_timed_bridge.resolve_start_level_number()
+        else:
+            level_number = level_progress_store.get_current_level_number()
+        self._start_level_with_intro(level_number)
+
+    def _build_level_intro_message(self, level_number: int) -> str:
+        """EN: Build the exact intro message required for level startup.
+        RU: ????????? ?????? ????? intro popup ??? ?????? ??????.
+        """
+        if self._is_survive_timed_mode_active():
+            profile = self._survive_timed_bridge.get_active_profile()
+            if profile is None or int(profile.level_number) != int(level_number):
+                profile = self._survive_timed_bridge.activate_level(int(level_number))
+            target_sec = int(profile.target_survival_sec)
+            minutes, seconds = divmod(target_sec, 60)
+            return t("game.survive_timed.level_intro").format(
+                level_number=int(profile.level_number),
+                minutes=int(minutes),
+                seconds=int(seconds),
+            )
+        return t("game.level_intro").format(level_number=int(level_number))
+
+    def _show_timed_popup(self, message: str, seconds: float = 3.0, on_dismiss=None) -> Popup:
+        """EN: Show an auto-dismissing popup and call an optional callback after it closes.
+        RU: ???????? popup ? ????????????? ? ??????? ?????????????? callback ????? ????????.
+        """
+        content = AnchorLayout(padding=dp(16))
+        label = Label(text=str(message), halign="center", valign="middle")
+        label.bind(size=lambda instance, value: setattr(instance, "text_size", value))
+        content.add_widget(label)
+        popup = Popup(
+            title="",
+            content=content,
+            size_hint=(None, None),
+            size=(dp(520), dp(220)),
+            auto_dismiss=False,
+            separator_height=0,
+        )
+        callback_state = {"called": False}
+
+        def _after_dismiss(*_args) -> None:
+            if callback_state["called"]:
+                return
+            callback_state["called"] = True
+            if callable(on_dismiss):
+                on_dismiss()
+
+        popup.bind(on_dismiss=_after_dismiss)
+        Clock.schedule_once(lambda *_: popup.dismiss(), float(seconds))
+        popup.open()
+        return popup
+
+    def _start_level_with_intro(self, level_number: int) -> None:
+        """EN: Select a level, show its intro popup, and start gameplay after the popup closes.
+        RU: ??????? ???????, ???????? ??? intro popup ? ????????? gameplay ????? ???????? popup.
+        """
+        number = max(int(level_number), 1)
+        if self._is_survive_timed_mode_active():
+            profile = self._survive_timed_bridge.activate_level(number)
+            number = int(profile.level_number)
+        else:
+            set_active_level_id(f"level_{number}")
+        self._show_timed_popup(
+            self._build_level_intro_message(number),
+            seconds=3.0,
+            on_dismiss=self._begin_level_run,
+        )
+
+    def _begin_level_run(self) -> None:
+        """EN: Execute the existing fresh-start gameplay flow for the currently active level.
+        RU: ????????? ???????????? ???????? ?????? ?????? gameplay ??? ???????? ????????? ??????.
         """
         start_ts = time.time()
         self._start_pressed_at = start_ts
@@ -925,6 +1190,7 @@ class GameScreenView(MDScreen):
         self._cheat_flag = False
         self._cheat_points_window.clear()
         self._reward_click_start = int(counters.receive_click_count)
+        self._level_score_record_sent = False
         if hasattr(self, "_rating_session"):
             current_score = int(getattr(getattr(self, "_state", None), "current_y_loop", 0))
             self._rating_session.on_press_start(start_ts, current_score)
@@ -932,7 +1198,12 @@ class GameScreenView(MDScreen):
         self._time_manager.time_gameplay(reset=True)
         self._time_manager.time_game_session(start=True)
         self._time_manager.time_gameplay(start=True)
+        if self._is_survive_timed_mode_active():
+            self._survive_timed_bridge.begin_run()
         self._active_level_profile = self._level_runtime_manager.get_active_profile()
+        self._level_transition_active = False
+        self._level_failed_by_timeout = False
+        self._level_completed_flag = False
         self._session_started = True
         self._receive_click_start = counters.receive_click_count
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
@@ -945,6 +1216,7 @@ class GameScreenView(MDScreen):
         self.touch_controls_show()
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.start()
+
 
     def get_shell_background_widget(self):
         """EN: Return the gameplay background/runtime layer for mounting behind the shared shell bars.
@@ -966,9 +1238,5 @@ class GameScreenView(MDScreen):
         """
 
         return self._bottombar_widget
-
-
-
-
 
 

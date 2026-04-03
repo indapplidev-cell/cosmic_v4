@@ -19,6 +19,8 @@ from server.models.telegram_reset_request import TelegramResetRequest
 from server.models.telegram_verify_challenge import TelegramVerifyChallenge
 from server.models.user import User
 from server.models.user_level_score_record import UserLevelScoreRecord
+from server.models.modes.survive_timed.user_campaign_progress import SurviveTimedUserCampaignProgress
+from server.models.modes.survive_timed.user_level_result import SurviveTimedUserLevelResult
 
 __all__ = [
     "User",
@@ -38,4 +40,6 @@ __all__ = [
     "TelegramResetChallenge",
     "TelegramVerifyChallenge",
     "UserLevelScoreRecord",
+    "SurviveTimedUserCampaignProgress",
+    "SurviveTimedUserLevelResult",
 ]

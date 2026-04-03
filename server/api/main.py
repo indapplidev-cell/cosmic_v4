@@ -50,6 +50,8 @@ from server.api.schemas import (
     ProfileUserClearRequest,
     ProfileUserUpdateRequest,
     RegisterRequest,
+    SurviveTimedLevelResultRequest,
+    SurviveTimedLevelSuccessRequest,
 )
 from server.services.ads_service import get_ads_config, log_ads_event
 from server.services.payout_miniapp_service import (
@@ -102,6 +104,9 @@ from server.services.rating_service import get_top_ratings
 from server.services.db_schema_guard import get_db_schema_status
 from server.services.docs_service import get_doc_content
 from server.services.level_score_record_service import upsert_level_score_record
+from server.services.modes.survive_timed.campaign_progress_service import get_campaign_progress
+from server.services.modes.survive_timed.level_result_service import upsert_level_result
+from server.services.modes.survive_timed.level_success_service import record_survive_timed_level_success
 from server.config import get_jwt_secret, get_reset_secret
 from server.db import get_session
 
@@ -896,6 +901,48 @@ def game_level_score_record(payload: LevelScoreRecordUpsertRequest, request: Req
     return _service_result_to_response(result)
 
 
+@app.get("/game/modes/survive-timed/progress")
+def game_survive_timed_progress(request: Request) -> dict:
+    """EN: Return authenticated survive_timed campaign progress.
+    RU: ??????? ???????? ???????? survive_timed ??? ??????????????? ????????????.
+    """
+
+    auth_user_id = get_authenticated_user_id(request)
+    result = get_campaign_progress(int(auth_user_id))
+    return _service_result_to_response(result)
+
+
+@app.post("/game/modes/survive-timed/level-result")
+def game_survive_timed_level_result(payload: SurviveTimedLevelResultRequest, request: Request) -> dict:
+    """EN: Persist one authenticated survive_timed level attempt result without advancing campaign progress.
+    RU: ????????? ???? ????????? ??????? ?????? survive_timed ??? ??????????? ????????? ????????.
+    """
+
+    auth_user_id = get_authenticated_user_id(request)
+    result = upsert_level_result(
+        int(auth_user_id),
+        int(payload.level_number),
+        int(payload.survival_ms),
+        str(payload.result),
+    )
+    return _service_result_to_response(result)
+
+
+@app.post("/game/modes/survive-timed/level-success")
+def game_survive_timed_level_success(payload: SurviveTimedLevelSuccessRequest, request: Request) -> dict:
+    """EN: Persist one authenticated survive_timed success and advance campaign progress.
+    RU: ????????? ???? ???????? ????????? survive_timed ? ?????????? ???????? ????????.
+    """
+
+    auth_user_id = get_authenticated_user_id(request)
+    result = record_survive_timed_level_success(
+        int(auth_user_id),
+        int(payload.level_number),
+        int(payload.survival_ms),
+    )
+    return _service_result_to_response(result)
+
+
 @app.get("/docs/{doc_key}")
 def docs_get(doc_key: str, lang: str = Query(default="ru", min_length=2, max_length=2)) -> dict:
     """EN: Return localized markdown document content from server storage.
@@ -903,4 +950,3 @@ def docs_get(doc_key: str, lang: str = Query(default="ru", min_length=2, max_len
     """
 
     return get_doc_content(doc_key=doc_key, lang=lang)
-
