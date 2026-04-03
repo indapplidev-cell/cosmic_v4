@@ -193,13 +193,27 @@ jobs:
           set -euo pipefail
           KIVYMD_COMMIT="$(python - <<'PY'
           from pathlib import Path
-          import re
 
           spec = Path("buildozer.spec").read_text(encoding="utf-8")
-          match = re.search(r"github\.com/kivymd/KivyMD/archive/([0-9a-f]{7,40})\.zip", spec, re.IGNORECASE)
-          if not match:
-              raise SystemExit("Unable to resolve KivyMD commit from buildozer.spec")
-          print(match.group(1))
+          requirements_line = ""
+          for raw_line in spec.splitlines():
+              stripped = raw_line.strip()
+              if stripped.startswith("requirements ="):
+                  requirements_line = stripped.split("=", 1)[1]
+                  break
+          if not requirements_line:
+              raise SystemExit("Unable to resolve requirements from buildozer.spec")
+          commit = ""
+          for item in [item.strip() for item in requirements_line.split(",") if item.strip()]:
+              lower = item.lower()
+              if "github.com/kivymd/kivymd/archive/" not in lower:
+                  continue
+              commit = item.rsplit("/archive/", 1)[-1].rsplit(".zip", 1)[0].strip()
+              if commit:
+                  break
+          if not commit:
+              raise SystemExit("Unable to resolve KivyMD commit from buildozer.spec requirements")
+          print(commit)
           PY
           )"
           echo "KIVYMD_COMMIT=${KIVYMD_COMMIT}" | tee -a "$GITHUB_ENV"
