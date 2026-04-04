@@ -47,6 +47,7 @@ class GifBackground(Widget):
         self._durations: List[float] = []
         self._idx: int = 0
         self._ev = None
+        self._animation_paused = False
 
         with self.canvas.before:
             self._color = Color(1, 1, 1, 1)
@@ -74,6 +75,18 @@ class GifBackground(Widget):
         if self.parent is None:
             self._cancel()
 
+    def set_animation_paused(self, paused: bool) -> None:
+        """Pause or resume GIF playback without dropping the current frame."""
+        paused = bool(paused)
+        if self._animation_paused == paused:
+            return
+        self._animation_paused = paused
+        if paused:
+            self._cancel()
+            return
+        if self._frames:
+            self._schedule_next()
+
     def _on_source(self, *_):
         self._load_gif(self.source)
 
@@ -85,7 +98,8 @@ class GifBackground(Widget):
         self._durations.reverse()
         self._idx = 0
         self._rect.texture = self._frames[0]
-        self._schedule_next()
+        if not self._animation_paused:
+            self._schedule_next()
 
     def _load_gif(self, src: str) -> None:
         self._cancel()
@@ -161,16 +175,17 @@ class GifBackground(Widget):
 
         Logger.info("GifBackground: loaded %s frames from %s", len(self._frames), p.name)
         self._rect.texture = self._frames[0]
-        self._schedule_next()
+        if not self._animation_paused:
+            self._schedule_next()
 
     def _schedule_next(self) -> None:
-        if not self._frames:
+        if not self._frames or self._animation_paused:
             return
         dt = self._durations[self._idx]
         self._ev = Clock.schedule_once(self._next_frame, dt)
 
     def _next_frame(self, _dt) -> None:
-        if not self._frames:
+        if not self._frames or self._animation_paused:
             return
 
         self._idx += 1

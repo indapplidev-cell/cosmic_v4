@@ -6,8 +6,6 @@ EN: Single press triggers step; hold triggers linear after delay.
 RU: Одиночное нажатие делает шаг; удержание включает линейный режим.
 """
 
-from time import time
-
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.textinput import TextInput
@@ -36,7 +34,6 @@ class KeyboardAdapter:
         self._pressed = set()
         self._hold_event = None
         self._hold_key = None
-        self._hold_started_at = 0.0
         self._hold_dir = None
         self._left_pressed = False
         self._right_pressed = False
@@ -218,11 +215,10 @@ class KeyboardAdapter:
         RU: Запустить таймер удержания для линейного режима.
         """
         self._hold_key = key
-        self._hold_started_at = time()
         if self._hold_event:
             return
-        self._hold_event = Clock.schedule_interval(self._hold_tick, 0)
         self._hold_dir = direction
+        self._hold_event = Clock.schedule_once(self._hold_tick, self._hold_delay)
 
     def _stop_hold(self) -> None:
         """EN: Stop hold delay timer.
@@ -248,13 +244,10 @@ class KeyboardAdapter:
         """EN: Start linear mode after hold delay.
         RU: Запустить линейный режим после задержки удержания.
         """
+        self._hold_event = None
         if not self._hold_key:
-            return
-        elapsed = time() - self._hold_started_at
-        if elapsed < self._hold_delay:
             return
         if self._hold_dir == "left":
             self._linear.start_left()
         elif self._hold_dir == "right":
             self._linear.start_right()
-        self._stop_hold()

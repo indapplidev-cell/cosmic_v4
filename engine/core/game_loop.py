@@ -29,7 +29,7 @@ class GameLoop:
         """
         if self._event:
             return
-        self._event = Clock.schedule_interval(tick_fn, 1.0 / fps)
+        self._event = Clock.schedule_interval(tick_fn, 0)
 
     def stop(self):
         """

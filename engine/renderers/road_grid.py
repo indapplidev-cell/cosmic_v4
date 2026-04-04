@@ -32,11 +32,11 @@ class RoadGridRenderer:
         RU: Создаёт вертикальные и горизонтальные линии белого цвета.
         """
         with canvas:
-            Color(1, 1, 1)
+            Color(1, 1, 1, 0.85)
             for _ in range(0, self._config.V_NB_LINES):
-                self.vertical_lines.append(Line())
+                self.vertical_lines.append(Line(width=1.15))
             for _ in range(0, self._config.H_NB_LINES):
-                self.horizontal_lines.append(Line())
+                self.horizontal_lines.append(Line(width=1.15))
 
     def update(self, state, perspective, geometry, width, height, config):
         """
@@ -55,13 +55,14 @@ class RoadGridRenderer:
         """
         start_index, end_index = geometry.vertical_line_range(config)
         ppx = perspective.perspective_point_x
+        offset_x = geometry.get_state_offset_x(state, use_render_state=True)
         for idx in range(start_index, end_index + 1):
             pos = idx - start_index
             line_x = geometry.get_line_x_from_index(
                 idx,
                 width,
                 ppx,
-                state.current_offset_x,
+                offset_x,
                 config,
             )
             x1, y1 = perspective.transform(line_x, 0, height)
@@ -77,18 +78,20 @@ class RoadGridRenderer:
         start_index, end_index = geometry.vertical_line_range(config)
         ppx = perspective.perspective_point_x
         ppy = perspective.perspective_point_y
+        offset_x = geometry.get_state_offset_x(state, use_render_state=True)
+        offset_y = geometry.get_state_offset_y(state, use_render_state=True)
         xmin = geometry.get_line_x_from_index(
             start_index,
             width,
             ppx,
-            state.current_offset_x,
+            offset_x,
             config,
         )
         xmax = geometry.get_line_x_from_index(
             end_index,
             width,
             ppx,
-            state.current_offset_x,
+            offset_x,
             config,
         )
         for i in range(0, config.H_NB_LINES):
@@ -96,7 +99,7 @@ class RoadGridRenderer:
                 i,
                 height,
                 ppy,
-                state.current_offset_y,
+                offset_y,
                 config,
             )
             x1, y1 = perspective.transform(xmin, line_y, height)

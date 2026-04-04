@@ -55,6 +55,7 @@ class TilesRenderer:
                 ppx,
                 ppy,
                 config,
+                use_render_state=True,
             )
 
             x1, y1 = perspective.transform(xmin, ymin, height)

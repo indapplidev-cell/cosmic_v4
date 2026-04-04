@@ -6,9 +6,6 @@ EN: Updates runtime offset continuously while input is held.
 RU: Непрерывно обновляет смещение runtime во время удержания ввода.
 """
 
-from kivy.clock import Clock
-
-
 class LinearController:
     """
     Manage continuous left/right movement via runtime hook.
@@ -56,21 +53,16 @@ class LinearController:
         """EN: Ensure the tick is scheduled.
         RU: Убедиться, что тик запущен.
         """
-        if not self._ev:
-            self._ev = Clock.schedule_interval(self._tick, 0)
+        return
 
     def _stop(self) -> None:
         """EN: Stop the tick.
         RU: Остановить тик.
         """
-        if self._ev:
-            self._ev.cancel()
-            self._ev = None
+        self._ev = None
 
     def _tick(self, dt) -> None:
         """EN: Apply one linear movement tick.
         RU: Применить один тик линейного движения.
         """
-        if self._dir == 0:
-            return
-        self._rt.apply_linear_x(dt)
+        return

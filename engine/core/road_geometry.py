@@ -21,6 +21,24 @@ class RoadGeometry:
         end_index = start_index + config.V_NB_LINES - 1
         return start_index, end_index
 
+    def get_state_offset_x(self, state, use_render_state=False):
+        """Return X offset for either simulation or render calculations."""
+        if use_render_state:
+            return getattr(state, "render_offset_x", state.current_offset_x)
+        return state.current_offset_x
+
+    def get_state_offset_y(self, state, use_render_state=False):
+        """Return Y offset for either simulation or render calculations."""
+        if use_render_state:
+            return getattr(state, "render_offset_y", state.current_offset_y)
+        return state.current_offset_y
+
+    def get_state_y_loop(self, state, use_render_state=False):
+        """Return Y loop index for either simulation or render calculations."""
+        if use_render_state:
+            return getattr(state, "render_y_loop", state.current_y_loop)
+        return state.current_y_loop
+
     def get_line_x_from_index(self, index, width, perspective_point_x, current_offset_x, config):
         """
         Compute the world X of a vertical line by index.
@@ -56,39 +74,43 @@ class RoadGeometry:
         perspective_point_x,
         perspective_point_y,
         config,
+        use_render_state=False,
     ):
         """
         Compute the world-space axis-aligned rectangle for a tile coordinate.
 
         RU: Вычисляет осевой прямоугольник тайла в мировых координатах.
         """
-        adj_y = tile_y - state.current_y_loop
+        offset_x = self.get_state_offset_x(state, use_render_state)
+        offset_y = self.get_state_offset_y(state, use_render_state)
+        y_loop = self.get_state_y_loop(state, use_render_state)
+        adj_y = tile_y - y_loop
         xmin = self.get_line_x_from_index(
             tile_x,
             width,
             perspective_point_x,
-            state.current_offset_x,
+            offset_x,
             config,
         )
         xmax = self.get_line_x_from_index(
             tile_x + 1,
             width,
             perspective_point_x,
-            state.current_offset_x,
+            offset_x,
             config,
         )
         ymin = self.get_line_y_from_index(
             adj_y,
             height,
             perspective_point_y,
-            state.current_offset_y,
+            offset_y,
             config,
         )
         ymax = self.get_line_y_from_index(
             adj_y + 1,
             height,
             perspective_point_y,
-            state.current_offset_y,
+            offset_y,
             config,
         )
         return xmin, ymin, xmax, ymax

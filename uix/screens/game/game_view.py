@@ -159,6 +159,7 @@ class GameScreenView(MDScreen):
         apply_game_layout(self)
         self.apply_hud_layout()
         self.touch_controls_hide()
+        self._set_gameplay_background_paused(False)
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.attach(self._gameplay_surface)
         self._sync_shell_state()
@@ -169,9 +170,18 @@ class GameScreenView(MDScreen):
         """
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
+        self._set_gameplay_background_paused(False)
         self._stop_hud_sync()
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.detach(self._gameplay_surface)
+
+    def _set_gameplay_background_paused(self, paused: bool) -> None:
+        """EN: Pause or resume the animated GIF background for gameplay cadence control.
+        RU: Ставить GIF-фон на паузу или возобновлять его для контроля cadence во время gameplay.
+        """
+        background = self.ids.get("game_bg_gif")
+        if background is not None and hasattr(background, "set_animation_paused"):
+            background.set_animation_paused(paused)
 
     def _inject_hud_widgets(self) -> None:
         """EN: Inject score and lives widgets into the top bar.
@@ -454,6 +464,7 @@ class GameScreenView(MDScreen):
         self._session_started = False
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
+        self._set_gameplay_background_paused(False)
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.detach(self._gameplay_surface)
         if hasattr(self, "_stop_hud_sync"):
@@ -501,6 +512,7 @@ class GameScreenView(MDScreen):
         if hasattr(self, "_game_control"):
             self._game_control.hud_reset()
         self.touch_controls_hide()
+        self._set_gameplay_background_paused(False)
         set_hud_visible(self, top=True, content=True, bottom=True)
         self.ids.title_lbl.text = t("game.reward_prompt")
         self.ids.game_btn_text.text = caps(t("game.btn_receive"))
@@ -635,6 +647,7 @@ class GameScreenView(MDScreen):
         self._time_manager.time_gameplay(stop=True)
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
+        self._set_gameplay_background_paused(False)
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.detach(self._gameplay_surface)
         if hasattr(self, "_stop_hud_sync"):
@@ -883,6 +896,7 @@ class GameScreenView(MDScreen):
             self._start_hud_sync()
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.receive_reward()
+        self._set_gameplay_background_paused(True)
         self._time_manager.resume_gameplay()
         self._reward_used = True
         self._open_chis_segment()
@@ -947,6 +961,7 @@ class GameScreenView(MDScreen):
 
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
+        self._set_gameplay_background_paused(False)
         if hasattr(self, "_stop_hud_sync"):
             self._stop_hud_sync()
 
@@ -991,6 +1006,7 @@ class GameScreenView(MDScreen):
         if not self._session_started:
             if hasattr(self, "_gameplay_runtime"):
                 self._gameplay_runtime.stop()
+            self._set_gameplay_background_paused(False)
             if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
                 self._game_control.detach(self._gameplay_surface)
             self.touch_controls_hide()
@@ -1054,6 +1070,7 @@ class GameScreenView(MDScreen):
         self._session_started = False
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.stop()
+        self._set_gameplay_background_paused(False)
         if hasattr(self, "_game_control") and hasattr(self, "_gameplay_surface"):
             self._game_control.detach(self._gameplay_surface)
         self.touch_controls_hide()
@@ -1216,6 +1233,7 @@ class GameScreenView(MDScreen):
         self.touch_controls_show()
         if hasattr(self, "_gameplay_runtime"):
             self._gameplay_runtime.start()
+        self._set_gameplay_background_paused(True)
 
 
     def get_shell_background_widget(self):
@@ -1238,5 +1256,3 @@ class GameScreenView(MDScreen):
         """
 
         return self._bottombar_widget
-
-

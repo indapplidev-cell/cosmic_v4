@@ -10,6 +10,9 @@ RU: Создаёт ключевые компоненты движка, связ�
 
 from __future__ import annotations
 
+import math
+from time import perf_counter
+
 from engine.core.collision_engine import CollisionEngine
 from engine.core.config import GameConfig
 from engine.core.game_loop import GameLoop
@@ -26,6 +29,11 @@ from engine.renderers.tiles_renderer import TilesRenderer
 from engine.ship.ship_engine import ShipEngine
 from engine.widgets.gameplay_surface import GameplaySurface
 from manager.levels.level_runtime_manager import LevelRuntimeManager
+
+FIXED_DT = 1.0 / 120.0
+MAX_FRAME_DT = 0.05
+MAX_FIXED_STEPS = max(int(MAX_FRAME_DT / FIXED_DT), 1)
+X_SMOOTHING_BASE_FPS = 60.0
 
 
 class GameplayRuntime:
@@ -68,6 +76,15 @@ class GameplayRuntime:
         self._paused_for_ad = False
         self._x_smoothing_ratio = 0.3
         self._x_snap_epsilon = 0.5
+        self._dt_accumulator = 0.0
+        self._previous_offset_x = 0.0
+        self._previous_world_y = 0.0
+        self._current_world_y = 0.0
+        self._brake_pressed = False
+        self._brake_active = False
+        self._brake_locked_until_release = False
+        self._brake_started_at = 0.0
+        self._brake_max_sec = 3.0
 
         surface.bind_engines(
             self._road_grid,
@@ -88,12 +105,16 @@ class GameplayRuntime:
         RU: Сбрасывает состояние, тайлы и корабль, затем рендерит один раз.
         """
         self._state.reset()
+        self._reset_brake_state()
         self._tiles.reset(self._state, self._config)
         self._ship_engine.reset_to_start(self._state)
+        self._sync_target_offset_x()
+        self._reset_timing()
         width = self._surface.width
         height = self._surface.height
         if width <= 0 or height <= 0:
             return
+        self._sync_render_state_from_simulation(height)
         self._perspective.set_perspective_point(width / 2, height * 0.75)
         self._surface.render()
 
@@ -111,6 +132,12 @@ class GameplayRuntime:
         self._session.reset()
         self._state.mark_started()
         self._paused_for_ad = False
+        self._reset_brake_state()
+        self._sync_target_offset_x()
+        self._reset_timing()
+        height = self._surface.height
+        if height > 0:
+            self._sync_render_state_from_simulation(height)
         self._loop.start(self._tick, fps=self._fps)
 
     def receive_reward(self) -> None:
@@ -126,6 +153,11 @@ class GameplayRuntime:
         respawn_to_start(self._state, self._ship_engine, self._tiles, self._config)
         self._apply_active_level_profile()
         self._state.mark_started()
+        self._sync_target_offset_x()
+        self._reset_timing()
+        height = self._surface.height
+        if height > 0:
+            self._sync_render_state_from_simulation(height)
         self.resume_after_ad()
 
     def stop(self) -> None:
@@ -154,45 +186,24 @@ class GameplayRuntime:
         if width <= 0 or height <= 0:
             return
 
+        self._update_brake()
+        frame_dt = min(max(dt, 0.0), MAX_FRAME_DT)
+        self._dt_accumulator += frame_dt
+
+        fixed_steps = 0
+        while self._dt_accumulator >= FIXED_DT and fixed_steps < MAX_FIXED_STEPS:
+            self._capture_previous_simulation_state(height)
+            self._fixed_update(FIXED_DT, width, height)
+            self._current_world_y = self._world_y(height)
+            self._dt_accumulator -= FIXED_DT
+            fixed_steps += 1
+        if fixed_steps == MAX_FIXED_STEPS and self._dt_accumulator > FIXED_DT:
+            self._dt_accumulator = FIXED_DT
+
+        alpha = min(max(self._dt_accumulator / FIXED_DT, 0.0), 1.0)
+        self._update_render_state(alpha, height)
         self._perspective.set_perspective_point(width / 2, height * 0.75)
         self._surface.render()
-
-        if not self._state.state_game_has_started or self._state.state_game_over:
-            return
-
-        saved_speed_x = self._state.current_speed_x
-        if self._linear_active:
-            self._state.current_speed_x = 0
-        motion = self._motion.step(dt, self._state, (width, height), self._config)
-        if self._linear_active:
-            self._state.current_speed_x = saved_speed_x
-        self._smooth_offset_x(dt, width)
-        for _ in range(motion.advanced_rows):
-            self._tiles.prune_passed_tiles(self._state)
-            self._tiles.generate_more(self._state, self._config)
-
-        ship_points = self._ship_engine.get_ship_points_world()
-        on_tiles = self._collision.get_ship_points_on_tiles(
-            ship_points,
-            self._tiles.tiles_coordinates,
-            self._geometry,
-            self._state,
-            width,
-            height,
-            self._config,
-            self._perspective.perspective_point_x,
-            self._perspective.perspective_point_y,
-        )
-        if not on_tiles or not all(on_tiles):
-            outcome = self._session.register_loss()
-            if outcome == LossOutcome.SOFT_RESET:
-                respawn_to_start(self._state, self._ship_engine, self._tiles, self._config)
-            else:
-                self._state.mark_game_over()
-                if self.on_game_over:
-                    self.on_game_over()
-            if self.on_loss:
-                self.on_loss()
 
     def request_redraw(self) -> None:
         """EN: Update perspective and render once without changing state.
@@ -202,6 +213,7 @@ class GameplayRuntime:
         height = self._surface.height
         if width <= 0 or height <= 0:
             return
+        self._sync_render_state_from_simulation(height)
         self._perspective.set_perspective_point(width / 2, height * 0.75)
         self._surface.render()
 
@@ -214,22 +226,35 @@ class GameplayRuntime:
         self._linear_active = False
         self._linear_speed_x = 0.0
         self._state.current_speed_x = 0.0
-        self._state.speed_y_factor = self._get_active_level_speed_y_factor()
+        self._sync_target_offset_x()
+        self._reset_timing()
+        self._reset_brake_state()
 
     def resume_after_ad(self) -> None:
         """EN: Resume the same run after rewarded flow is fully closed and continuation is allowed.
         RU: ??????????? ??? ?? ????? ????? ??????? ???????? rewarded-flow ? ???????????? continue.
         """
         self._paused_for_ad = False
+        self._reset_timing()
+        height = self._surface.height
+        if height > 0:
+            self._sync_render_state_from_simulation(height)
         self._loop.start(self._tick, fps=self._fps)
 
     def brake_on(self) -> None:
-        """EN: Enable vertical brake by applying slowdown factor.
-        RU: Включить вертикальный тормоз, применив коэффициент замедления.
+        """EN: Treat brake-on as a new press event with a single 3-second active window.
+        RU: Обрабатывать включение тормоза как новое нажатие с единственным окном активности на 3 секунды.
         """
         if self._paused_for_ad:
             return
-        self._state.speed_y_factor = self._config.SPEED_Y_BRAKE_FACTOR
+        if self._brake_pressed:
+            return
+        self._brake_pressed = True
+        if self._brake_locked_until_release:
+            return
+        self._brake_active = True
+        self._brake_started_at = perf_counter()
+        self._apply_brake_state()
 
     def _apply_active_level_profile(self) -> None:
         """
@@ -251,12 +276,47 @@ class GameplayRuntime:
         return profile.initial_speed_y_factor
 
     def brake_off(self) -> None:
-        """EN: Disable vertical brake and restore default factor.
-        RU: Отключить вертикальный тормоз и вернуть коэффициент по умолчанию.
+        """EN: Treat brake-off as a full release that clears press, lock, and active state.
+        RU: Обрабатывать отключение тормоза как полное отпускание, которое сбрасывает нажатие, блокировку и активное состояние.
+        """
+        self._brake_pressed = False
+        self._brake_active = False
+        self._brake_locked_until_release = False
+        self._brake_started_at = 0.0
+        self._apply_brake_state()
+
+    def _update_brake(self) -> None:
+        """EN: Turn brake off after the single active window expires and lock it until release.
+        RU: Выключать тормоз после истечения единственного окна активности и блокировать его до отпускания.
+        """
+        if not self._brake_active:
+            return
+        if (perf_counter() - self._brake_started_at) < self._brake_max_sec:
+            return
+        self._brake_active = False
+        self._brake_locked_until_release = True
+        self._apply_brake_state()
+
+    def _apply_brake_state(self) -> None:
+        """EN: Synchronize vertical speed factor with the current brake activation state.
+        RU: Синхронизировать коэффициент вертикальной скорости с текущим состоянием активации тормоза.
         """
         if self._paused_for_ad:
             return
+        if self._brake_active:
+            self._state.speed_y_factor = self._config.SPEED_Y_BRAKE_FACTOR
+            return
         self._state.speed_y_factor = self._get_active_level_speed_y_factor()
+
+    def _reset_brake_state(self) -> None:
+        """EN: Fully clear brake press, activation, timer, and release lock state.
+        RU: Полностью сбросить состояние нажатия, активации, таймера и блокировки тормоза до отпускания.
+        """
+        self._brake_pressed = False
+        self._brake_active = False
+        self._brake_locked_until_release = False
+        self._brake_started_at = 0.0
+        self._apply_brake_state()
 
     def _max_x_offset(self, width: float) -> float:
         """
@@ -286,6 +346,64 @@ class GameplayRuntime:
         RU: Использует коэффициент ширины корабля, умноженный на текущую ширину поверхности.
         """
         return self._config.SHIP_WIDTH * width
+
+    def _spacing_y(self, height: float) -> float:
+        """EN: Return the world-space spacing between horizontal road lines.
+        RU: Вернуть мировой шаг между горизонтальными линиями дороги.
+        """
+        return self._config.H_LINES_SPACING * height
+
+    def _world_y(self, height: float) -> float:
+        """EN: Convert cyclic Y state into a continuous world Y for render interpolation.
+        RU: Преобразовать циклическое Y-состояние в непрерывную world Y для интерполяции рендера.
+        """
+        return self._state.current_y_loop * self._spacing_y(height) + self._state.current_offset_y
+
+    def _capture_previous_simulation_state(self, height: float) -> None:
+        """EN: Snapshot the last completed simulation state before the next fixed step.
+        RU: Сохранить последнее завершенное simulation-состояние перед следующим fixed-step.
+        """
+        self._previous_offset_x = self._state.current_offset_x
+        self._previous_world_y = self._world_y(height)
+
+    def _sync_render_state_from_simulation(self, height: float) -> None:
+        """EN: Align render state and interpolation snapshots with the current simulation state.
+        RU: Синхронизировать render-state и снапшоты интерполяции с текущим simulation-state.
+        """
+        self._state.render_offset_x = self._state.current_offset_x
+        self._state.render_offset_y = self._state.current_offset_y
+        self._state.render_y_loop = self._state.current_y_loop
+        self._previous_offset_x = self._state.current_offset_x
+        world_y = self._world_y(height)
+        self._previous_world_y = world_y
+        self._current_world_y = world_y
+
+    def _update_render_state(self, alpha: float, height: float) -> None:
+        """EN: Interpolate render-only offsets between fixed simulation steps.
+        RU: Интерполировать render-only offsets между fixed-step обновлениями симуляции.
+        """
+        self._state.render_offset_x = self._lerp(
+            self._previous_offset_x,
+            self._state.current_offset_x,
+            alpha,
+        )
+        spacing_y = self._spacing_y(height)
+        if spacing_y <= 0:
+            self._state.render_offset_y = self._state.current_offset_y
+            self._state.render_y_loop = self._state.current_y_loop
+            return
+
+        render_world_y = self._lerp(self._previous_world_y, self._current_world_y, alpha)
+        render_y_loop = math.floor(render_world_y / spacing_y)
+        self._state.render_y_loop = render_y_loop
+        self._state.render_offset_y = render_world_y - render_y_loop * spacing_y
+
+    @staticmethod
+    def _lerp(start: float, end: float, alpha: float) -> float:
+        """EN: Return linear interpolation between two scalar values.
+        RU: Вернуть линейную интерполяцию между двумя скалярными значениями.
+        """
+        return start + (end - start) * alpha
 
     def _step_x(self, width: float) -> float:
         """
@@ -346,7 +464,9 @@ class GameplayRuntime:
         self._state.target_offset_x = max(
             offset_min, self._state.target_offset_x
         )
-        self._state.current_speed_x = 0
+        self._linear_active = False
+        self._linear_speed_x = 0.0
+        self._state.current_speed_x = 0.0
 
     def input_right(self) -> None:
         """EN: Dispatch right input to the engine input controller.
@@ -365,7 +485,9 @@ class GameplayRuntime:
         self._state.target_offset_x = min(
             offset_max, self._state.target_offset_x
         )
-        self._state.current_speed_x = 0
+        self._linear_active = False
+        self._linear_speed_x = 0.0
+        self._state.current_speed_x = 0.0
 
     def input_stop(self) -> None:
         """EN: Dispatch stop input to the engine input controller.
@@ -373,7 +495,10 @@ class GameplayRuntime:
         """
         if self._paused_for_ad:
             return
-        self._state.current_speed_x = 0
+        self._linear_active = False
+        self._linear_speed_x = 0.0
+        self._state.current_speed_x = 0.0
+        self._sync_target_offset_x()
 
     def input_left_step(self) -> None:
         """EN: Step left using the existing step logic.
@@ -393,10 +518,11 @@ class GameplayRuntime:
         """
         if self._paused_for_ad:
             return
+        self._sync_target_offset_x()
         if direction == 0:
             self._linear_speed_x = 0.0
             self._linear_active = False
-            self._state.current_speed_x = 0
+            self._state.current_speed_x = 0.0
             return
         self._linear_active = True
         speed = self._config.SPEED_X
@@ -407,22 +533,7 @@ class GameplayRuntime:
         """EN: Apply linear horizontal movement using V3 formula.
         RU: ????????? ???????? ?????????????? ???????? ?? ??????? V3.
         """
-        if self._paused_for_ad:
-            return
-        width = self._surface.width
-        if width <= 0:
-            return
-        time_factor = dt * 60
-        tile_width = self._tile_width_world(width)
-        speed_x = (self._linear_speed_x * tile_width) / (
-            100 * self._config.V_LINES_SPACING
-        )
-        self._state.target_offset_x += speed_x * time_factor
-        offset_min, offset_max = self._dynamic_offset_bounds(width)
-        if self._state.target_offset_x < offset_min:
-            self._state.target_offset_x = offset_min
-        elif self._state.target_offset_x > offset_max:
-            self._state.target_offset_x = offset_max
+        return
 
     def _smooth_offset_x(self, dt: float, width: float) -> None:
         """EN: Smoothly move current X offset toward target using dt-based max delta.
@@ -436,7 +547,8 @@ class GameplayRuntime:
 
         diff = self._state.target_offset_x - self._state.current_offset_x
         step_x = self._step_x(width)
-        max_delta = step_x * self._x_smoothing_ratio * (dt * 60)
+        smoothing_speed = step_x * self._x_smoothing_ratio * X_SMOOTHING_BASE_FPS
+        max_delta = smoothing_speed * dt
         if abs(diff) <= self._x_snap_epsilon:
             self._state.current_offset_x = self._state.target_offset_x
         else:
@@ -447,3 +559,70 @@ class GameplayRuntime:
             self._state.current_offset_x = offset_min
         elif self._state.current_offset_x > offset_max:
             self._state.current_offset_x = offset_max
+
+    def _fixed_update(self, dt: float, width: float, height: float) -> None:
+        """EN: Advance gameplay logic using a fixed timestep before rendering.
+        RU: РћР±РЅРѕРІРёС‚СЊ Р»РѕРіРёРєСѓ gameplay С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Рј С€Р°РіРѕРј РґРѕ СЂРµРЅРґРµСЂР°.
+        """
+        if not self._state.state_game_has_started or self._state.state_game_over:
+            return
+
+        perspective_point_x = width / 2
+        perspective_point_y = height * 0.75
+        motion = self._motion.step(dt, self._state, (width, height), self._config)
+        if self._linear_active:
+            self._clamp_current_offset_x(width)
+            self._sync_target_offset_x()
+        else:
+            self._smooth_offset_x(dt, width)
+
+        for _ in range(motion.advanced_rows):
+            self._tiles.prune_passed_tiles(self._state)
+            self._tiles.generate_more(self._state, self._config)
+
+        ship_points = self._ship_engine.get_ship_points_world()
+        on_tiles = self._collision.get_ship_points_on_tiles(
+            ship_points,
+            self._tiles.tiles_coordinates,
+            self._geometry,
+            self._state,
+            width,
+            height,
+            self._config,
+            perspective_point_x,
+            perspective_point_y,
+        )
+        if not on_tiles or not all(on_tiles):
+            outcome = self._session.register_loss()
+            if outcome == LossOutcome.SOFT_RESET:
+                respawn_to_start(self._state, self._ship_engine, self._tiles, self._config)
+                self._sync_target_offset_x()
+                self._sync_render_state_from_simulation(height)
+            else:
+                self._state.mark_game_over()
+                if self.on_game_over:
+                    self.on_game_over()
+            if self.on_loss:
+                self.on_loss()
+
+    def _clamp_current_offset_x(self, width: float) -> None:
+        """EN: Clamp the live X offset to current visible-road bounds.
+        RU: РћРіСЂР°РЅРёС‡РёС‚СЊ С‚РµРєСѓС‰РёР№ X-offset РіСЂР°РЅРёС†Р°РјРё РІРёРґРёРјРѕР№ РґРѕСЂРѕРіРё.
+        """
+        offset_min, offset_max = self._dynamic_offset_bounds(width)
+        if self._state.current_offset_x < offset_min:
+            self._state.current_offset_x = offset_min
+        elif self._state.current_offset_x > offset_max:
+            self._state.current_offset_x = offset_max
+
+    def _sync_target_offset_x(self) -> None:
+        """EN: Keep target X aligned with the live offset when no step motion is pending.
+        RU: РЎРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°С‚СЊ target X СЃ С‚РµРєСѓС‰РёРј offset, РєРѕРіРґР° РЅРµС‚ РѕС‚РґРµР»СЊРЅРѕРіРѕ step-РґРІРёР¶РµРЅРёСЏ.
+        """
+        self._state.target_offset_x = self._state.current_offset_x
+
+    def _reset_timing(self) -> None:
+        """EN: Clear accumulated frame time before the next main-loop tick.
+        RU: РЎР±СЂРѕСЃРёС‚СЊ РЅР°РєРѕРїР»РµРЅРЅРѕРµ РІСЂРµРјСЏ РєР°РґСЂР° РїРµСЂРµРґ СЃР»РµРґСѓСЋС‰РёРј С‚РёРєРѕРј.
+        """
+        self._dt_accumulator = 0.0

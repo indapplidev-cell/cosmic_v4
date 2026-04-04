@@ -6,6 +6,9 @@ RU: Математика перспективной проекции для пр
 """
 
 
+PERSPECTIVE_CURVE_POWER = 4.0
+
+
 class Perspective:
     """
     Hold a perspective point and provide transform helpers.
@@ -44,7 +47,7 @@ class Perspective:
 
         RU: Прямое 2D-преобразование (тождественное с округлением).
         """
-        return int(x), int(y)
+        return float(x), float(y)
 
     def transform_perspective(self, x, y, height):
         """
@@ -59,9 +62,9 @@ class Perspective:
         diff_x = x - self.perspective_point_x
         diff_y = self.perspective_point_y - lin_y
         factor_y = diff_y / self.perspective_point_y
-        factor_y = pow(factor_y, 4)
+        factor_y = pow(factor_y, PERSPECTIVE_CURVE_POWER)
 
         tr_x = self.perspective_point_x + diff_x * factor_y
         tr_y = self.perspective_point_y - factor_y * self.perspective_point_y
 
-        return int(tr_x), int(tr_y)
+        return float(tr_x), float(tr_y)

@@ -23,6 +23,9 @@ class GameState:
         self.target_offset_x = 0.0
         self.current_offset_y = 0
         self.current_y_loop = 0
+        self.render_offset_x = 0.0
+        self.render_offset_y = 0.0
+        self.render_y_loop = 0
         self.current_speed_x = 0.0
         self.speed_y_factor = 1.0
 
@@ -36,6 +39,9 @@ class GameState:
         self.target_offset_x = 0.0
         self.current_offset_y = 0
         self.current_y_loop = 0
+        self.render_offset_x = 0.0
+        self.render_offset_y = 0.0
+        self.render_y_loop = 0
         self.current_speed_x = 0.0
         self.speed_y_factor = 1.0
         self.state_game_over = False

@@ -6,8 +6,6 @@ EN: Single tap triggers step; hold triggers linear after delay.
 RU: Одиночный тап делает шаг; удержание включает линейный режим.
 """
 
-from time import time
-
 from kivy.clock import Clock
 
 
@@ -32,7 +30,6 @@ class TouchAdapter:
         self._hold_event = None
         self._hold_uid = None
         self._hold_dir = None
-        self._hold_started_at = 0.0
         self._down_cb = self._on_touch_down
         self._up_cb = self._on_touch_up
         self._hold_delay = 0.02
@@ -42,7 +39,6 @@ class TouchAdapter:
         RU: Очистить состояние удержания и таймеры.
         """
         self._stop_hold()
-        self._hold_started_at = 0.0
 
     def attach(self, widget) -> None:
         """
@@ -109,10 +105,9 @@ class TouchAdapter:
         """
         self._hold_uid = uid
         self._hold_dir = direction
-        self._hold_started_at = time()
         if self._hold_event:
             return
-        self._hold_event = Clock.schedule_interval(self._hold_tick, 0)
+        self._hold_event = Clock.schedule_once(self._hold_tick, self._hold_delay)
 
     def _stop_hold(self) -> None:
         """EN: Stop hold delay timer.
@@ -128,13 +123,10 @@ class TouchAdapter:
         """EN: Start linear mode after hold delay.
         RU: Запустить линейный режим после задержки удержания.
         """
+        self._hold_event = None
         if not self._hold_uid:
-            return
-        elapsed = time() - self._hold_started_at
-        if elapsed < self._hold_delay:
             return
         if self._hold_dir == "left":
             self._linear.start_left()
         elif self._hold_dir == "right":
             self._linear.start_right()
-        self._stop_hold()
