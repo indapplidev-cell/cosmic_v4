@@ -5,7 +5,7 @@
 - Fill local dev values
 - Run dev stack:
 ```bash
-docker compose -f server/infra/docker-compose.yml --env-file server/.env up --build
+docker compose -f server/infrastructure/docker/docker-compose.yml --env-file server/.env up --build
 ```
 
 ## Production VPS/VDS
@@ -30,7 +30,7 @@ API_DOMAIN=api.example.com
 ```
 - Run production backend stack without local postgres container:
 ```bash
-docker compose -f server/infra/docker-compose.prod.yml --env-file server/.env up --build -d
+docker compose -f server/infrastructure/docker/docker-compose.prod.yml --env-file server/.env up --build -d
 ```
 
 ## Alembic

@@ -26,7 +26,7 @@ cp server/.env.example server/.env
 3. Запуск:
 
 ```bash
-docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build
+docker compose -f server/infrastructure/docker/docker-compose.yml --env-file server/.env up -d --build
 ```
 
 4. Проверка:
@@ -81,15 +81,15 @@ RU:
 
 EN:
 - Run static SQL interpolation check:
-  - `python -m server.scripts.sql_injection_check`
+  - `python tools/server/sql_injection_check.py`
 - Run payload validation smoke checks:
-  - `python -m server.scripts.validation_smoke`
+  - `python tools/server/validation_smoke.py`
 
 RU:
 - Запустить статическую проверку SQL-интерполяции:
-  - `python -m server.scripts.sql_injection_check`
+  - `python tools/server/sql_injection_check.py`
 - Запустить smoke-проверки валидации payload:
-  - `python -m server.scripts.validation_smoke`
+  - `python tools/server/validation_smoke.py`
 ## Session Metrics Endpoint (EN/RU)
 
 EN:
@@ -119,7 +119,7 @@ EN:
   - `JWT_SECRET` (>=32 chars)
   - `RESET_SECRET`
 - Start stack with bot:
-  - `docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build postgres api bot`
+  - `docker compose -f server/infrastructure/docker/docker-compose.yml --env-file server/.env up -d --build postgres api`
 - Flow:
   1) Authorized user calls `POST /telegram/link/request`.
   2) App opens bot deep-link with one-time start token.
@@ -134,7 +134,7 @@ RU:
   - `JWT_SECRET` (>=32 символов)
   - `RESET_SECRET`
 - Запуск стека с ботом:
-  - `docker compose -f server/infra/docker-compose.yml --env-file server/.env up -d --build postgres api bot`
+  - `docker compose -f server/infrastructure/docker/docker-compose.yml --env-file server/.env up -d --build postgres api`
 - Поток работы:
   1) Авторизованный пользователь вызывает `POST /telegram/link/request`.
   2) Приложение открывает deep-link бота с одноразовым start-token.

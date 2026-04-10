@@ -1,0 +1,39 @@
+services:
+  api:
+    image: cosmic-api:local
+    build:
+      context: ../../..
+      dockerfile: server/infrastructure/docker/Dockerfile
+    env_file:
+      - ../../.env
+    command: bash /app/server/infrastructure/scripts/entrypoint.sh
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+
+  caddy:
+    image: caddy:2
+    profiles:
+      - caddy
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - ../../.env
+    volumes:
+      - ../nginx/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
