@@ -13,4 +13,5 @@ COPY server /app/server
 COPY shared /app/shared
 
 RUN pip install --no-cache-dir -r /app/server/requirements.txt
-RUN chmod +x /app/server/infrastructure/scripts/entrypoint.sh
+RUN find /app/server/infrastructure/scripts -maxdepth 1 -name "*.sh" -exec sed -i 's/\r$//' {} \; \
+    && find /app/server/infrastructure/scripts -maxdepth 1 -name "*.sh" -exec chmod +x {} \;
