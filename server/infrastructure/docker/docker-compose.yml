@@ -35,6 +35,8 @@ services:
 
   caddy:
     image: caddy:2
+    profiles:
+      - caddy
     restart: unless-stopped
     depends_on:
       api:

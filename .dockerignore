@@ -11,6 +11,9 @@ server/.env
 **/__pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.mypy_cache/
+.venv*/
 
 engine/
 server/api/
