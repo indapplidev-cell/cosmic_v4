@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-_DOC_DIR = Path(__file__).resolve().parents[1] / "doc"
+_DOC_DIR = Path(__file__).resolve().parent / "content"
 _DOC_NAME_TO_BASE = {
     "policy": "policy",
     "rules": "rule",
