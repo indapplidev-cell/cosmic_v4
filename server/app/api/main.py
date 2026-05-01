@@ -105,8 +105,16 @@ from server.app.bootstrap.db_schema_guard import get_db_schema_status
 from server.app.docs.docs_service import get_doc_content
 from server.engine.manager.level_score_record_manager import upsert_level_score_record
 from server.engine.modes.survive_timed.campaign_progress_manager import get_campaign_progress
-from server.engine.modes.survive_timed.level_result_manager import upsert_level_result
+from server.engine.modes.survive_timed.level_result_manager import get_all_level_results, upsert_level_result
 from server.engine.modes.survive_timed.level_success_manager import record_survive_timed_level_success
+from server.app.branding.branding_service import (
+    e2m_game_icon_exists,
+    e2m_header_logo_exists,
+    e2m_profile_icon_exists,
+    get_e2m_game_icon_path,
+    get_e2m_header_logo_path,
+    get_e2m_profile_icon_path,
+)
 from server.app.config.settings import get_jwt_secret, get_reset_secret
 from server.db.sessions.session_factory import get_session
 
@@ -140,7 +148,13 @@ async def ensure_db_schema_is_current(request: Request, call_next):
     """
 
     path = request.url.path
-    if path in {"/healthz", "/meta/compat"}:
+    if path in {
+        "/healthz",
+        "/meta/compat",
+        "/branding/e2m_logo_header_white_1024.png",
+        "/branding/e2m_game_512.png",
+        "/branding/e2m_icon_512.png",
+    }:
         return await call_next(request)
 
     status = get_db_schema_status()
@@ -660,6 +674,33 @@ def payout_request_create(payload: PayoutRequestCreateRequest, request: Request)
     return _service_result_to_response(result)
 
 
+@app.get("/branding/e2m_logo_header_white_1024.png")
+def branding_header_logo() -> FileResponse:
+    """Serve the public e2m header logo PNG without auth or DB access."""
+
+    if not e2m_header_logo_exists():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(get_e2m_header_logo_path(), media_type="image/png")
+
+
+@app.get("/branding/e2m_game_512.png")
+def branding_game_icon() -> FileResponse:
+    """Serve the public e2m game icon PNG without auth or DB access."""
+
+    if not e2m_game_icon_exists():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(get_e2m_game_icon_path(), media_type="image/png")
+
+
+@app.get("/branding/e2m_icon_512.png")
+def branding_profile_icon() -> FileResponse:
+    """Serve the public e2m profile icon PNG without auth or DB access."""
+
+    if not e2m_profile_icon_exists():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(get_e2m_profile_icon_path(), media_type="image/png")
+
+
 @app.get("/main/miniapp")
 def paybot_miniapp_index() -> FileResponse:
     """EN: Serve static Telegram Mini App frontend for shared identity verification purposes.
@@ -909,6 +950,17 @@ def game_survive_timed_progress(request: Request) -> dict:
 
     auth_user_id = get_authenticated_user_id(request)
     result = get_campaign_progress(int(auth_user_id))
+    return _service_result_to_response(result)
+
+
+@app.get("/game/modes/survive-timed/level-results")
+def game_survive_timed_level_results(request: Request) -> dict:
+    """EN: Return authenticated server-authoritative survive_timed level results.
+    RU: Вернуть server-authoritative результаты уровней survive_timed для authenticated пользователя.
+    """
+
+    auth_user_id = get_authenticated_user_id(request)
+    result = get_all_level_results(int(auth_user_id))
     return _service_result_to_response(result)
 
 

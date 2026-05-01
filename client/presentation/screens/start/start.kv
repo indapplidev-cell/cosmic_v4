@@ -1,0 +1,282 @@
+#:import dp kivy.metrics.dp
+#:import rgba kivy.utils.get_color_from_hex
+#:import get_load_background_source client.app.config.assets.get_load_background_source
+#:import main_theme client.presentation.themes.main_screen_theme
+
+<StartScreenView>:
+    md_bg_color: rgba(main_theme.ROOT_BG)
+
+    MDBoxLayout:
+        id: start_background
+        md_bg_color: rgba(main_theme.ROOT_BG)
+
+    MDBoxLayout:
+        id: main_layout
+        orientation: "vertical"
+        md_bg_color: rgba(main_theme.ROOT_BG)
+
+        MDBoxLayout:
+            id: topbar
+            orientation: "horizontal"
+            md_bg_color: rgba(main_theme.APPBAR_BG)
+
+            MDBoxLayout:
+                id: lefttopbar
+                padding: dp(main_theme.SPACE_SM)
+
+                MDCard:
+                    id: home_card
+                    style: "outlined"
+                    theme_bg_color: "Custom"
+                    md_bg_color: rgba(main_theme.SURFACE_ALT)
+                    theme_line_color: "Custom"
+                    line_color: rgba(main_theme.LINE_COLOR)
+                    line_width: main_theme.BORDER_WIDTH
+                    radius: [dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL)]
+                    ripple_behavior: False
+                    padding: dp(main_theme.SPACE_SM), 0, dp(main_theme.SPACE_SM), 0
+
+                    MDBoxLayout:
+                        orientation: "horizontal"
+                        spacing: 0
+
+                        MDRelativeLayout:
+                            id: home_card_visual_host
+
+                            MDLabel:
+                                id: home_card_text
+                                halign: "center"
+                                valign: "middle"
+                                text_size: self.size
+                                theme_text_color: "Custom"
+                                text_color: rgba(main_theme.TEXT_MAIN)
+
+                            Image:
+                                id: home_card_logo
+                                source: ""
+                                opacity: 0
+                                size_hint: 1, 1
+                                pos_hint: {"x": 0, "y": 0}
+                                fit_mode: "contain"
+                                mipmap: True
+
+            MDBoxLayout:
+                id: midltopbar
+                padding: dp(main_theme.SPACE_SM)
+
+                AdsBannerSlot:
+                    id: ads_banner_slot
+
+            MDBoxLayout:
+                id: righttopbar
+                padding: dp(main_theme.SPACE_SM)
+
+                MDCard:
+                    id: info_card
+                    style: "outlined"
+                    theme_bg_color: "Custom"
+                    md_bg_color: rgba(main_theme.INFO_SURFACE)
+                    theme_line_color: "Custom"
+                    line_color: rgba(main_theme.LINE_COLOR)
+                    line_width: main_theme.BORDER_WIDTH
+                    radius: [dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL)]
+                    ripple_behavior: False
+                    padding: dp(main_theme.SPACE_SM), 0, dp(main_theme.SPACE_SM), 0
+
+                    MDBoxLayout:
+                        orientation: "horizontal"
+                        spacing: dp(main_theme.SPACE_SM)
+
+                        MDIcon:
+                            icon: "information"
+                            size_hint_x: None
+                            width: dp(24)
+                            theme_text_color: "Custom"
+                            text_color: rgba(main_theme.ACCENT_INFO)
+
+                        MDLabel:
+                            id: info_card_text
+                            halign: "left"
+                            valign: "middle"
+                            text_size: self.size
+                            theme_text_color: "Custom"
+                            text_color: rgba(main_theme.TEXT_SECONDARY)
+
+                        MDBoxLayout:
+                            size_hint_x: None
+                            width: dp(18)
+                            orientation: "vertical"
+                            spacing: dp(3)
+                            padding: 0, dp(14), 0, dp(14)
+
+                            MDBoxLayout:
+                                size_hint_y: None
+                                size_hint_x: None
+                                width: dp(18)
+                                height: dp(1)
+                                md_bg_color: rgba(main_theme.ACCENT_INFO_SOFT)
+
+                            MDBoxLayout:
+                                size_hint_y: None
+                                size_hint_x: None
+                                height: dp(1)
+                                width: dp(10)
+                                md_bg_color: rgba(main_theme.ACCENT_INFO_SOFT)
+
+        MDRelativeLayout:
+            id: contentbar
+            md_bg_color: rgba(main_theme.ROOT_BG)
+
+            MDCard:
+                id: mission_banner
+                style: "outlined"
+                theme_bg_color: "Custom"
+                md_bg_color: rgba(main_theme.BANNER_BG)
+                theme_line_color: "Custom"
+                line_color: rgba(main_theme.BANNER_BORDER)
+                line_width: main_theme.BORDER_WIDTH
+                radius: [dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL), dp(main_theme.RADIUS_PANEL)]
+                ripple_behavior: False
+                padding: 0
+                spacing: 0
+                size_hint: 0.82, 0.78
+                pos_hint: {"center_x": 0.5, "center_y": 0.5}
+
+                MDRelativeLayout:
+                    id: mission_banner_layer
+                    size_hint: 1, 1
+
+                    FitImage:
+                        source: get_load_background_source()
+                        opacity: 1 if self.source else 0
+                        size_hint: 1, 1
+                        pos_hint: {"x": 0, "y": 0}
+                        size: mission_banner_layer.size
+                        pos: mission_banner_layer.pos
+
+                    MDBoxLayout:
+                        id: mission_banner_overlay
+                        size_hint: 1, 1
+                        pos_hint: {"x": 0, "y": 0}
+                        md_bg_color: main_theme.BANNER_OVERLAY_STRONG_RGBA
+
+            MDBoxLayout:
+                id: content_top_line
+                size_hint_y: None
+                height: dp(1)
+                pos_hint: {"top": 1}
+                md_bg_color: rgba(main_theme.BANNER_DIVIDER)
+
+            MDBoxLayout:
+                id: content_bottom_line
+                size_hint_y: None
+                height: dp(1)
+                pos_hint: {"y": 0}
+                md_bg_color: rgba(main_theme.BANNER_DIVIDER)
+
+            AnchorLayout:
+                id: content_center
+                anchor_x: "center"
+                anchor_y: "center"
+
+                MDBoxLayout:
+                    id: title_row
+                    orientation: "horizontal"
+                    size_hint: None, None
+                    width: min(root.width * 0.70, dp(520)) if root.width else dp(420)
+                    height: dp(48)
+                    spacing: dp(main_theme.SPACE_SM)
+
+                    MDBoxLayout:
+                        size_hint_y: None
+                        height: dp(1)
+                        pos_hint: {"center_y": 0.5}
+                        md_bg_color: rgba(main_theme.LINE_SOFT)
+
+                    MDIcon:
+                        icon: "rocket-launch"
+                        size_hint_x: None
+                        width: dp(28)
+                        theme_text_color: "Custom"
+                        text_color: rgba(main_theme.ACCENT_MARS)
+
+                    MDLabel:
+                        id: title_lbl
+                        size_hint_x: None
+                        width: self.texture_size[0]
+                        halign: "center"
+                        valign: "middle"
+                        text_size: None, None
+                        theme_text_color: "Custom"
+                        text_color: rgba(main_theme.TEXT_MAIN)
+
+                    MDBoxLayout:
+                        size_hint_y: None
+                        height: dp(1)
+                        pos_hint: {"center_y": 0.5}
+                        md_bg_color: rgba(main_theme.LINE_SOFT)
+
+        MDBoxLayout:
+            id: bottombar
+            md_bg_color: rgba(main_theme.SURFACE_DEEP)
+
+            AnchorLayout:
+                id: bottom_center
+
+                MDBoxLayout:
+                    id: btn_stack
+
+                    MDButton:
+                        id: game_btn
+                        style: "filled"
+                        theme_bg_color: "Custom"
+                        md_bg_color: rgba(main_theme.ACCENT_MARS)
+                        radius: [dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON)]
+                        theme_height: "Custom"
+                        height: dp(main_theme.CTA_BUTTON_HEIGHT)
+
+                        MDButtonIcon:
+                            id: game_btn_icon
+                            icon: "rocket-launch"
+                            theme_text_color: "Custom"
+                            text_color: 1, 1, 1, 1
+                            font_size: dp(22)
+
+                        MDButtonText:
+                            id: game_btn_text
+                            theme_text_color: "Custom"
+                            text_color: 1, 1, 1, 1
+
+                    MDButton:
+                        id: profile_btn
+                        style: "outlined"
+                        theme_bg_color: "Custom"
+                        md_bg_color: rgba(main_theme.SURFACE)
+                        theme_line_color: "Custom"
+                        line_color: rgba(main_theme.LINE_COLOR)
+                        line_width: main_theme.BORDER_WIDTH
+                        radius: [dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON)]
+                        theme_height: "Custom"
+                        height: dp(main_theme.SECONDARY_BUTTON_HEIGHT)
+
+                        MDButtonText:
+                            id: profile_btn_text
+                            theme_text_color: "Custom"
+                            text_color: rgba(main_theme.TEXT_MAIN)
+
+                    MDButton:
+                        id: settings_btn
+                        style: "outlined"
+                        theme_bg_color: "Custom"
+                        md_bg_color: rgba(main_theme.SURFACE)
+                        theme_line_color: "Custom"
+                        line_color: rgba(main_theme.LINE_COLOR)
+                        line_width: main_theme.BORDER_WIDTH
+                        radius: [dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON), dp(main_theme.RADIUS_BUTTON)]
+                        theme_height: "Custom"
+                        height: dp(main_theme.SECONDARY_BUTTON_HEIGHT)
+
+                        MDButtonText:
+                            id: settings_btn_text
+                            theme_text_color: "Custom"
+                            text_color: rgba(main_theme.TEXT_MAIN)
