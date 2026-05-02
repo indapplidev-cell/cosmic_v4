@@ -114,38 +114,94 @@
             # LEFT
             MDButton:
                 id: btn_left
-                style: "outlined"
+                style: "text"
                 size_hint: None, None
+                theme_bg_color: "Custom"
+                md_bg_color: 0, 0, 0, 0
+                theme_line_color: "Custom"
+                line_color: 0, 0, 0, 0
+                shadow_color: 0, 0, 0, 0
+                ripple_alpha: 0
                 on_press: root.on_screen_control("left", True)
                 on_release: root.on_screen_control("left", False)
-                MDButtonIcon:
-                    id: ico_left_top
-                    icon: "arrow-left"
+            Image:
+                id: left_icon
+                source: root.left_arrow_icon_source
+                size_hint: None, None
+                size: btn_left.size
+                center: btn_left.center
+                opacity: btn_left.opacity if self.source else 0
+                fit_mode: "contain"
+                mipmap: True
+            Image:
+                id: steering_icon
+                source: root.steering_icon_source
+                size_hint: None, None
+                size: 0, 0
+                opacity: 0
+                fit_mode: "contain"
+                mipmap: True
             MDButton:
                 id: btn_brake_left
-                style: "outlined"
+                style: "text"
                 size_hint: None, None
+                theme_bg_color: "Custom"
+                md_bg_color: 0, 0, 0, 0
+                theme_line_color: "Custom"
+                line_color: 0, 0, 0, 0
+                shadow_color: 0, 0, 0, 0
+                ripple_alpha: 0
                 on_press: root.on_screen_control("brake", True)
                 on_release: root.on_screen_control("brake", False)
-                MDButtonIcon:
-                    id: ico_left_bottom
-                    icon: "arrow-down"
+            Image:
+                id: brake_icon_left
+                source: root.brake_icon_source
+                size_hint: None, None
+                size: btn_brake_left.size
+                center: btn_brake_left.center
+                opacity: btn_brake_left.opacity if self.source else 0
+                fit_mode: "contain"
+                mipmap: True
             # RIGHT
             MDButton:
                 id: btn_right
-                style: "outlined"
+                style: "text"
                 size_hint: None, None
+                theme_bg_color: "Custom"
+                md_bg_color: 0, 0, 0, 0
+                theme_line_color: "Custom"
+                line_color: 0, 0, 0, 0
+                shadow_color: 0, 0, 0, 0
+                ripple_alpha: 0
                 on_press: root.on_screen_control("right", True)
                 on_release: root.on_screen_control("right", False)
-                MDButtonIcon:
-                    id: ico_right_top
-                    icon: "arrow-right"
+            Image:
+                id: right_icon
+                source: root.right_arrow_icon_source
+                size_hint: None, None
+                size: btn_right.size
+                center: btn_right.center
+                opacity: btn_right.opacity if self.source else 0
+                fit_mode: "contain"
+                mipmap: True
             MDButton:
                 id: btn_brake_right
-                style: "outlined"
+                style: "text"
                 size_hint: None, None
+                theme_bg_color: "Custom"
+                md_bg_color: 0, 0, 0, 0
+                theme_line_color: "Custom"
+                line_color: 0, 0, 0, 0
+                shadow_color: 0, 0, 0, 0
+                ripple_alpha: 0
                 on_press: root.on_screen_control("brake", True)
                 on_release: root.on_screen_control("brake", False)
-                MDButtonIcon:
-                    id: ico_right_bottom
-                    icon: "arrow-down"
+            Image:
+                id: brake_icon_right
+                source: root.brake_icon_source
+                size_hint: None, None
+                size: btn_brake_right.size
+                center: btn_brake_right.center
+                opacity: btn_brake_right.opacity if self.source else 0
+                fit_mode: "contain"
+                mipmap: True

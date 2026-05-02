@@ -11,6 +11,10 @@ from client.app.config.config import API_BASE_URL
 
 CLIENT_ROOT = Path(__file__).resolve().parents[2]
 LOAD_BACKGROUND_PATH = CLIENT_ROOT / "assets" / "images" / "e2m_bg_download.png"
+BRAKE_ICON_PATH = CLIENT_ROOT / "assets" / "icons" / "gameplay" / "icon_break_512.png"
+LEFT_ARROW_ICON_PATH = CLIENT_ROOT / "assets" / "icons" / "gameplay" / "icon_arrows_left_512.png"
+RIGHT_ARROW_ICON_PATH = CLIENT_ROOT / "assets" / "icons" / "gameplay" / "icon_arrows_right_512.png"
+STEERING_ICON_PATH = CLIENT_ROOT / "assets" / "icons" / "gameplay" / "icon_rule_512.png"
 HEADER_LOGO_ROUTE = "/branding/e2m_logo_header_white_1024.png"
 HEADER_LOGO_FILENAME = "e2m_logo_header_white_1024.png"
 GAME_ICON_ROUTE = "/branding/e2m_game_512.png"
@@ -29,6 +33,58 @@ def get_load_background_source() -> str:
     """Return the loading background source or an empty string when unavailable."""
 
     path = get_load_background_path()
+    return str(path) if path.is_file() else ""
+
+
+def get_brake_icon_path() -> Path:
+    """Return the absolute path to the gameplay brake icon."""
+
+    return BRAKE_ICON_PATH
+
+
+def get_brake_icon_source() -> str:
+    """Return the gameplay brake icon source or an empty string when unavailable."""
+
+    path = get_brake_icon_path()
+    return str(path) if path.is_file() else ""
+
+
+def get_left_arrow_icon_path() -> Path:
+    """Return the absolute path to the gameplay left-arrow icon."""
+
+    return LEFT_ARROW_ICON_PATH
+
+
+def get_left_arrow_icon_source() -> str:
+    """Return the gameplay left-arrow icon source or an empty string when unavailable."""
+
+    path = get_left_arrow_icon_path()
+    return str(path) if path.is_file() else ""
+
+
+def get_right_arrow_icon_path() -> Path:
+    """Return the absolute path to the gameplay right-arrow icon."""
+
+    return RIGHT_ARROW_ICON_PATH
+
+
+def get_right_arrow_icon_source() -> str:
+    """Return the gameplay right-arrow icon source or an empty string when unavailable."""
+
+    path = get_right_arrow_icon_path()
+    return str(path) if path.is_file() else ""
+
+
+def get_steering_icon_path() -> Path:
+    """Return the absolute path to the gameplay steering icon."""
+
+    return STEERING_ICON_PATH
+
+
+def get_steering_icon_source() -> str:
+    """Return the gameplay steering icon source or an empty string when unavailable."""
+
+    path = get_steering_icon_path()
     return str(path) if path.is_file() else ""
 
 
